@@ -493,6 +493,11 @@ builder.Services.AddScoped<IAgentOrchestrator, AgentOrchestrator>();
 builder.Services.AddScoped<IAgentConfigurationService, AgentConfigurationService>();
 builder.Services.AddScoped<AgentTemplateSeeder>();
 
+// Register Query Intent Classification and Statistical Answer services
+builder.Services.AddScoped<IQueryIntentClassifier, QueryIntentClassifier>();
+builder.Services.AddScoped<IDocumentStatisticsService, DocumentStatisticsService>();
+builder.Services.AddScoped<IStatisticalAnswerGenerator, StatisticalAnswerGenerator>();
+
 // Register background services
 builder.Services.AddHostedService<BatchEmbeddingProcessor>();
 builder.Services.AddHostedService<IngestionSchedulerService>();
