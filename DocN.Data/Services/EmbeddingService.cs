@@ -43,6 +43,11 @@ public class EmbeddingService : IEmbeddingService
     private EmbeddingClient? _client;
     private bool _initialized = false;
 
+    /// <summary>
+    /// Costruttore del servizio embedding con dipendenze iniettate.
+    /// </summary>
+    /// <param name="context">Contesto database per accesso configurazione AI</param>
+    /// <param name="cacheService">Servizio cache opzionale per ottimizzare performance</param>
     public EmbeddingService(ApplicationDbContext context, ICacheService? cacheService = null)
     {
         _context = context;
@@ -54,6 +59,7 @@ public class EmbeddingService : IEmbeddingService
     /// </summary>
     /// <remarks>
     /// Chiamato al primo utilizzo. Fallisce silenziosamente se DB non pronto.
+    /// Thread-safe: usa flag booleano con volatile semantics implicite.
     /// </remarks>
     private void EnsureInitialized()
     {
@@ -61,7 +67,11 @@ public class EmbeddingService : IEmbeddingService
         
         try
         {
-            var config = _context.AIConfigurations.FirstOrDefault(c => c.IsActive);
+            // OTTIMIZZAZIONE: AsNoTracking per query read-only senza necessità di tracking
+            var config = _context.AIConfigurations
+                .AsNoTracking()
+                .FirstOrDefault(c => c.IsActive);
+            
             if (config != null && !string.IsNullOrEmpty(config.AzureOpenAIEndpoint) && !string.IsNullOrEmpty(config.AzureOpenAIKey))
             {
                 var azureClient = new AzureOpenAIClient(new Uri(config.AzureOpenAIEndpoint), new AzureKeyCredential(config.AzureOpenAIKey));
@@ -123,19 +133,26 @@ public class EmbeddingService : IEmbeddingService
         }
     }
 
+    /// <summary>
+    /// Ricerca documenti simili usando similarità coseno su embedding vettoriali.
+    /// </summary>
+    /// <param name="queryEmbedding">Vettore embedding della query</param>
+    /// <param name="topK">Numero massimo di risultati da restituire (default 5)</param>
+    /// <returns>Lista documenti ordinati per score di similarità decrescente</returns>
+    /// <remarks>
+    /// ATTENZIONE: Implementazione dimostrativa con limitazioni scalabilità.
+    /// Per produzione usare: SQL Server 2025 VECTOR, Azure Cognitive Search, o DB vettoriale dedicato.
+    /// Carica tutti i documenti in memoria - NON scalabile per dataset grandi.
+    /// OTTIMIZZAZIONE: Usa AsNoTracking per query read-only senza tracking EF.
+    /// </remarks>
     public async Task<List<Document>> SearchSimilarDocumentsAsync(float[] queryEmbedding, int topK = 5)
     {
-        // WARNING: This is a simplified version for demonstration purposes only
-        // In production, you should use:
-        // 1. SQL Server 2025 native vector search with VECTOR data type
-        // 2. Azure Cognitive Search with vector search
-        // 3. A dedicated vector database like Pinecone, Weaviate, or Qdrant
-        // Loading all documents into memory is NOT scalable for large datasets
-        // Query the actual mapped fields: EmbeddingVector768 or EmbeddingVector1536
-        var documents = await Task.Run(() => _context.Documents
+        // OTTIMIZZAZIONE: AsNoTracking per evitare tracking overhead su query read-only
+        var documents = await _context.Documents
+            .AsNoTracking()
             .Where(d => (d.EmbeddingVector768 != null && d.EmbeddingVector768.Length > 0) ||
                         (d.EmbeddingVector1536 != null && d.EmbeddingVector1536.Length > 0))
-            .ToList());
+            .ToListAsync();
         
         var scoredDocuments = documents
             .Where(d => d.EmbeddingVector != null) // Use the property getter

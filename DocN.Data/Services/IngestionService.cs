@@ -10,8 +10,16 @@ using System.Security.Cryptography;
 namespace DocN.Data.Services;
 
 /// <summary>
-/// Service for managing ingestion schedules and executing ingestion tasks
+/// Servizio per gestione schedule di ingestion e esecuzione task di importazione documenti.
 /// </summary>
+/// <remarks>
+/// Responsabilità:
+/// - Gestione CRUD schedule ingestion con supporto cron e intervalli
+/// - Esecuzione ingestion da connettori esterni (SharePoint, OneDrive, etc.)
+/// - Tracciamento log e metriche per ogni esecuzione
+/// - Deduplicazione documenti basata su hash e percorso sorgente
+/// - Integrazione con Hangfire per scheduling automatico
+/// </remarks>
 public class IngestionService : IIngestionService
 {
     private readonly DocArcContext _context;
@@ -21,6 +29,14 @@ public class IngestionService : IIngestionService
     private readonly ConnectorHandlerFactory _handlerFactory;
     private readonly IIngestionSchedulerHelper? _schedulerHelper;
 
+    /// <summary>
+    /// Costruttore con dependency injection delle dipendenze richieste.
+    /// </summary>
+    /// <param name="context">Contesto database DocArc per schedule e log</param>
+    /// <param name="appContext">Contesto database applicazione per utenti</param>
+    /// <param name="logger">Logger per diagnostica e monitoraggio</param>
+    /// <param name="connectorService">Servizio per interazione con connettori</param>
+    /// <param name="schedulerHelper">Helper opzionale per integrazione Hangfire</param>
     public IngestionService(
         DocArcContext context,
         ApplicationDbContext appContext,
@@ -36,6 +52,14 @@ public class IngestionService : IIngestionService
         _schedulerHelper = schedulerHelper;
     }
 
+    /// <summary>
+    /// Recupera tutti gli schedule di ingestion per un utente specifico.
+    /// </summary>
+    /// <param name="userId">ID utente proprietario degli schedule</param>
+    /// <returns>Lista schedule ordinati per data creazione (più recenti prima)</returns>
+    /// <remarks>
+    /// Include dati del connettore associato tramite eager loading.
+    /// </remarks>
     public async Task<List<IngestionSchedule>> GetUserSchedulesAsync(string userId)
     {
         try
@@ -53,6 +77,16 @@ public class IngestionService : IIngestionService
         }
     }
 
+    /// <summary>
+    /// Recupera un singolo schedule di ingestion verificando ownership utente.
+    /// </summary>
+    /// <param name="scheduleId">ID dello schedule da recuperare</param>
+    /// <param name="userId">ID utente per verifica autorizzazione</param>
+    /// <returns>Schedule trovato o null se non esistente/non autorizzato</returns>
+    /// <remarks>
+    /// Include dati del connettore associato tramite eager loading.
+    /// Filtro su OwnerId previene accesso non autorizzato cross-utente.
+    /// </remarks>
     public async Task<IngestionSchedule?> GetScheduleAsync(int scheduleId, string userId)
     {
         try
@@ -68,6 +102,18 @@ public class IngestionService : IIngestionService
         }
     }
 
+    /// <summary>
+    /// Crea un nuovo schedule di ingestion con calcolo automatico prossima esecuzione.
+    /// </summary>
+    /// <param name="schedule">Dati schedule da creare</param>
+    /// <returns>Schedule creato con ID assegnato dal database</returns>
+    /// <remarks>
+    /// Operazioni eseguite:
+    /// 1. Imposta timestamp CreatedAt e UpdatedAt a UTC corrente
+    /// 2. Calcola NextExecutionAt da CronExpression se schedule è abilitato e di tipo Scheduled
+    /// 3. Persiste su database
+    /// 4. Registra job in Hangfire per esecuzione automatica (se schedulerHelper disponibile)
+    /// </remarks>
     public async Task<IngestionSchedule> CreateScheduleAsync(IngestionSchedule schedule)
     {
         try
@@ -100,6 +146,20 @@ public class IngestionService : IIngestionService
         }
     }
 
+    /// <summary>
+    /// Aggiorna uno schedule esistente verificando ownership utente.
+    /// </summary>
+    /// <param name="schedule">Dati aggiornati dello schedule</param>
+    /// <param name="userId">ID utente per verifica autorizzazione</param>
+    /// <returns>Schedule aggiornato</returns>
+    /// <exception cref="UnauthorizedAccessException">Se schedule non trovato o utente non autorizzato</exception>
+    /// <remarks>
+    /// Campi aggiornabili: Name, ScheduleType, CronExpression, IntervalMinutes, IsEnabled,
+    /// DefaultCategory, DefaultVisibility, FilterConfiguration, GenerateEmbeddingsImmediately,
+    /// EnableAIAnalysis, Description.
+    /// Ricalcola NextExecutionAt se schedule abilitato e tipo Scheduled.
+    /// Aggiorna job in Hangfire per riflettere modifiche scheduling.
+    /// </remarks>
     public async Task<IngestionSchedule> UpdateScheduleAsync(IngestionSchedule schedule, string userId)
     {
         try
@@ -153,6 +213,15 @@ public class IngestionService : IIngestionService
         }
     }
 
+    /// <summary>
+    /// Elimina uno schedule di ingestion verificando ownership utente.
+    /// </summary>
+    /// <param name="scheduleId">ID dello schedule da eliminare</param>
+    /// <param name="userId">ID utente per verifica autorizzazione</param>
+    /// <returns>true se eliminato con successo, false se non trovato</returns>
+    /// <remarks>
+    /// Rimuove il job schedulato da Hangfire prima di eliminare dal database.
+    /// </remarks>
     public async Task<bool> DeleteScheduleAsync(int scheduleId, string userId)
     {
         try
@@ -181,6 +250,33 @@ public class IngestionService : IIngestionService
         }
     }
 
+    /// <summary>
+    /// Esegue manualmente un'ingestion da uno schedule specifico.
+    /// </summary>
+    /// <param name="scheduleId">ID dello schedule da eseguire</param>
+    /// <param name="userId">ID utente che avvia l'esecuzione manuale</param>
+    /// <returns>Log ingestion con risultati e statistiche</returns>
+    /// <exception cref="UnauthorizedAccessException">Se schedule non trovato o utente non autorizzato</exception>
+    /// <exception cref="InvalidOperationException">Se connettore non trovato</exception>
+    /// <remarks>
+    /// Workflow completo:
+    /// 1. Crea log ingestion con status Running
+    /// 2. Recupera schedule e connettore
+    /// 3. Valida esistenza owner in AspNetUsers (per integrità FK)
+    /// 4. Lista file da connettore
+    /// 5. Filtra cartelle e file già processati (deduplicazione)
+    /// 6. Scarica file non duplicati
+    /// 7. Calcola hash SHA256 per ogni file
+    /// 8. Crea entry Document nel database
+    /// 9. Batch save ogni 20 documenti per performance
+    /// 10. Aggiorna statistiche schedule e connettore
+    /// 
+    /// OTTIMIZZAZIONI:
+    /// - Batch duplicate detection con dizionario in-memory
+    /// - Batch save documenti ogni 20 record
+    /// - AsNoTracking su query read-only esistenti documenti
+    /// - Deduplicazione per path e hash file
+    /// </remarks>
     public async Task<IngestionLog> ExecuteIngestionAsync(int scheduleId, string userId)
     {
         var log = new IngestionLog
@@ -241,12 +337,15 @@ public class IngestionService : IIngestionService
             log.DocumentsSkipped += files.Count - nonFolderFiles.Count;
             
             // Batch duplicate detection - get all file paths from this connector
+            // OTTIMIZZAZIONE: AsNoTracking per query read-only, non serve tracking EF
             var filePaths = nonFolderFiles.Select(f => f.Path).ToList();
             var existingDocuments = await _context.Documents
+                .AsNoTracking()
                 .Where(d => d.SourceConnectorId == connector.Id && filePaths.Contains(d.SourceFilePath))
                 .Select(d => new { d.SourceFilePath, d.SourceLastModified, d.SourceFileHash })
                 .ToListAsync();
             
+            // OTTIMIZZAZIONE: Crea dizionario in-memory per lookup O(1) invece di query ripetute
             var existingDocumentsByPath = existingDocuments.ToDictionary(d => d.SourceFilePath ?? "");
             
             // Get connector handler for file download
@@ -346,7 +445,7 @@ public class IngestionService : IIngestionService
                     documentsToAdd.Add(document);
                     log.DocumentsProcessed++;
                     
-                    // Batch save every 20 documents
+                    // OTTIMIZZAZIONE: Batch save ogni 20 documenti per ridurre roundtrip DB
                     if (documentsToAdd.Count >= 20)
                     {
                         _context.Documents.AddRange(documentsToAdd);
@@ -405,6 +504,14 @@ public class IngestionService : IIngestionService
         }
     }
 
+    /// <summary>
+    /// Recupera i log di esecuzione di uno schedule specifico.
+    /// </summary>
+    /// <param name="scheduleId">ID dello schedule</param>
+    /// <param name="userId">ID utente per verifica autorizzazione</param>
+    /// <param name="count">Numero massimo log da restituire (default 20)</param>
+    /// <returns>Lista log ordinati per data avvio (più recenti prima)</returns>
+    /// <exception cref="UnauthorizedAccessException">Se schedule non trovato o utente non autorizzato</exception>
     public async Task<List<IngestionLog>> GetIngestionLogsAsync(int scheduleId, string userId, int count = 20)
     {
         try
@@ -429,6 +536,14 @@ public class IngestionService : IIngestionService
         }
     }
 
+    /// <summary>
+    /// Aggiorna il timestamp della prossima esecuzione per uno schedule.
+    /// </summary>
+    /// <param name="scheduleId">ID dello schedule da aggiornare</param>
+    /// <remarks>
+    /// Chiamato dopo ogni esecuzione completata per ricalcolare prossima esecuzione.
+    /// Funziona solo per schedule abilitati di tipo Scheduled con cron expression valida.
+    /// </remarks>
     public async Task UpdateNextExecutionTimeAsync(int scheduleId)
     {
         try
@@ -452,6 +567,15 @@ public class IngestionService : IIngestionService
         }
     }
 
+    /// <summary>
+    /// Calcola prossima data/ora di esecuzione da cron expression.
+    /// </summary>
+    /// <param name="cronExpression">Cron expression in formato standard (es. "0 0 * * *" = mezzanotte ogni giorno)</param>
+    /// <returns>DateTime UTC della prossima occorrenza, o null se expression invalida/null</returns>
+    /// <remarks>
+    /// Usa libreria Cronos per parsing e calcolo.
+    /// Timezone: UTC per consistenza con timestamp database.
+    /// </remarks>
     private DateTime? CalculateNextExecutionTime(string? cronExpression)
     {
         if (string.IsNullOrEmpty(cronExpression))
@@ -471,6 +595,13 @@ public class IngestionService : IIngestionService
         }
     }
     
+    /// <summary>
+    /// Ottiene directory upload per salvataggio file ingestionati.
+    /// </summary>
+    /// <returns>Percorso assoluto directory uploads</returns>
+    /// <remarks>
+    /// Usa stessa directory degli upload manuali: wwwroot/uploads
+    /// </remarks>
     private string GetUploadDirectory()
     {
         // Use the same uploads directory as manual uploads
@@ -478,6 +609,11 @@ public class IngestionService : IIngestionService
         return baseDirectory;
     }
     
+    /// <summary>
+    /// Sanitizza nome file rimuovendo caratteri non validi per filesystem.
+    /// </summary>
+    /// <param name="fileName">Nome file originale potenzialmente con caratteri invalidi</param>
+    /// <returns>Nome file sicuro con caratteri invalidi sostituiti da underscore</returns>
     private string GetSafeFileName(string fileName)
     {
         // Remove invalid characters from filename
@@ -486,6 +622,14 @@ public class IngestionService : IIngestionService
         return safeFileName;
     }
     
+    /// <summary>
+    /// Genera percorso file univoco aggiungendo suffisso numerico se necessario.
+    /// </summary>
+    /// <param name="filePath">Percorso file desiderato</param>
+    /// <returns>Percorso file garantito univoco con suffisso _N se originale esiste</returns>
+    /// <remarks>
+    /// Previene sovrascrittura file esistenti aggiungendo _1, _2, etc. prima estensione.
+    /// </remarks>
     private string GetUniqueFilePath(string filePath)
     {
         if (!File.Exists(filePath))

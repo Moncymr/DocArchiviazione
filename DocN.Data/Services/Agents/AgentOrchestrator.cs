@@ -5,8 +5,14 @@ using System.Diagnostics;
 namespace DocN.Data.Services.Agents;
 
 /// <summary>
-/// Orchestrates multiple agents to handle complex workflows
+/// Orchestratore multi-agente per gestire workflow complessi di recupero, sintesi e classificazione.
 /// </summary>
+/// <remarks>
+/// Coordina tre agenti specializzati:
+/// - RetrievalAgent: recupero documenti/chunk rilevanti
+/// - SynthesisAgent: generazione risposte da contenuti recuperati
+/// - ClassificationAgent: classificazione e tagging documenti
+/// </remarks>
 public class AgentOrchestrator : IAgentOrchestrator
 {
     private readonly IRetrievalAgent _retrievalAgent;
@@ -14,6 +20,14 @@ public class AgentOrchestrator : IAgentOrchestrator
     private readonly IClassificationAgent _classificationAgent;
     private readonly ApplicationDbContext _context;
 
+    /// <summary>
+    /// Costruttore con dependency injection degli agenti e del contesto database.
+    /// </summary>
+    /// <param name="retrievalAgent">Agente per recupero documenti e chunk</param>
+    /// <param name="synthesisAgent">Agente per sintesi risposte</param>
+    /// <param name="classificationAgent">Agente per classificazione documenti</param>
+    /// <param name="context">Contesto database EF Core</param>
+    /// <exception cref="ArgumentNullException">Se qualche dipendenza è null</exception>
     public AgentOrchestrator(
         IRetrievalAgent retrievalAgent,
         ISynthesisAgent synthesisAgent,
@@ -27,10 +41,20 @@ public class AgentOrchestrator : IAgentOrchestrator
     }
 
     /// <summary>
-    /// Process a query using multi-agent workflow:
-    /// 1. RetrievalAgent finds relevant documents/chunks
-    /// 2. SynthesisAgent generates answer from retrieved content
+    /// Processa una query utente tramite workflow multi-agente orchestrato.
     /// </summary>
+    /// <param name="query">Query utente in linguaggio naturale</param>
+    /// <param name="userId">ID utente opzionale per filtrare documenti accessibili</param>
+    /// <param name="conversationId">ID conversazione opzionale per contesto storico</param>
+    /// <returns>Risultato contenente risposta, documenti/chunk recuperati e metriche timing</returns>
+    /// <remarks>
+    /// Workflow:
+    /// 1. Carica storico conversazione se presente (per contesto)
+    /// 2. RetrievalAgent: cerca chunk rilevanti (fallback a documenti interi)
+    /// 3. SynthesisAgent: genera risposta da contenuti recuperati
+    /// Metriche: traccia tempi di retrieval, synthesis e totale per monitoring.
+    /// OTTIMIZZAZIONE: AsNoTracking su query read-only storico messaggi.
+    /// </remarks>
     public async Task<AgentOrchestrationResult> ProcessQueryAsync(
         string query,
         string? userId = null,
@@ -42,10 +66,12 @@ public class AgentOrchestrator : IAgentOrchestrator
         try
         {
             // Load conversation history if provided
+            // OTTIMIZZAZIONE: AsNoTracking per query read-only
             List<Message>? conversationHistory = null;
             if (conversationId.HasValue)
             {
                 conversationHistory = await _context.Messages
+                    .AsNoTracking()
                     .Where(m => m.ConversationId == conversationId.Value)
                     .OrderBy(m => m.Timestamp)
                     .ToListAsync();
@@ -63,8 +89,10 @@ public class AgentOrchestrator : IAgentOrchestrator
                 result.RetrievalStrategy = "chunk-based";
                 
                 // Also get the parent documents for context
+                // OTTIMIZZAZIONE: AsNoTracking per query read-only
                 var docIds = chunks.Select(c => c.DocumentId).Distinct().ToList();
                 result.RetrievedDocuments = await _context.Documents
+                    .AsNoTracking()
                     .Where(d => docIds.Contains(d.Id))
                     .ToListAsync();
             }
@@ -118,15 +146,25 @@ public class AgentOrchestrator : IAgentOrchestrator
     }
 
     /// <summary>
-    /// Classify a document using the classification agent
+    /// Classifica un documento usando l'agente di classificazione AI.
     /// </summary>
+    /// <param name="document">Documento da classificare</param>
+    /// <returns>Risultato contenente categoria suggerita, tag estratti e tipo documento</returns>
+    /// <remarks>
+    /// Esegue tre task di classificazione in parallelo per efficienza:
+    /// 1. Suggerimento categoria (es. "Fatture", "Contratti")
+    /// 2. Estrazione tag automatici dal contenuto
+    /// 3. Classificazione tipo documento (PDF, Word, etc.)
+    /// OTTIMIZZAZIONE: Task.WhenAll per esecuzione parallela e riduzione latency totale.
+    /// </remarks>
     public async Task<DocumentClassificationResult> ClassifyDocumentAsync(Document document)
     {
         var result = new DocumentClassificationResult();
 
         try
         {
-            // Run classification tasks in parallel for efficiency
+            // OTTIMIZZAZIONE: Esecuzione parallela dei tre task di classificazione
+            // Riduce latency totale da somma a max(task1, task2, task3)
             var categoryTask = _classificationAgent.SuggestCategoryAsync(document);
             var tagsTask = _classificationAgent.ExtractTagsAsync(document);
             var typeTask = _classificationAgent.ClassifyDocumentTypeAsync(document);
