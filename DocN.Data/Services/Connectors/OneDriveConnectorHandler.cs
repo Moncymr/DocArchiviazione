@@ -25,14 +25,51 @@ public class OneDriveCredentials
 }
 
 /// <summary>
-/// Handler for OneDrive connectors using Microsoft Graph API
+/// Handler per connettori OneDrive utilizzando Microsoft Graph API.
 /// </summary>
+/// <remarks>
+/// Implementa l'integrazione con OneDrive for Business/Personal tramite:
+/// - Microsoft Graph API per operazioni su file e cartelle
+/// - Azure.Identity per l'autenticazione OAuth 2.0 con flusso Client Credentials
+/// - Supporto per navigazione ricorsiva delle cartelle
+/// - Gestione degli item ID e percorsi relativi
+/// 
+/// Autenticazione richiesta:
+/// - ClientId: Application (client) ID dall'Azure AD app registration
+/// - ClientSecret: Client secret generato per l'app
+/// - TenantId: ID del tenant Azure AD
+/// - Permessi API: Files.Read.All o Files.ReadWrite.All
+/// </remarks>
 public class OneDriveConnectorHandler : BaseConnectorHandler
 {
+    /// <summary>
+    /// Inizializza una nuova istanza della classe <see cref="OneDriveConnectorHandler"/>.
+    /// </summary>
+    /// <param name="logger">Logger per la registrazione di eventi e errori.</param>
     public OneDriveConnectorHandler(ILogger logger) : base(logger)
     {
     }
     
+    /// <summary>
+    /// Testa la connessione a OneDrive verificando l'autenticazione e l'accesso al drive dell'utente.
+    /// </summary>
+    /// <param name="configuration">Configurazione JSON contenente FolderPath (opzionale, default "/").</param>
+    /// <param name="encryptedCredentials">Credenziali JSON crittografate con ClientId, ClientSecret e TenantId.</param>
+    /// <returns>
+    /// Tupla con:
+    /// - success: true se la connessione è valida
+    /// - message: conferma accesso o descrizione errore
+    /// </returns>
+    /// <remarks>
+    /// Il test verifica:
+    /// 1. Validità del formato della configurazione JSON
+    /// 2. Presenza e completezza delle credenziali (ClientId, ClientSecret, TenantId)
+    /// 3. Autenticazione OAuth 2.0 tramite ClientSecretCredential
+    /// 4. Accesso al drive dell'utente tramite Microsoft Graph API (endpoint /me/drive)
+    /// 5. Accessibilità della cartella specifica (se FolderPath diverso da "/")
+    /// 
+    /// Utilizza il pattern async/await per operazioni non bloccanti con Microsoft Graph.
+    /// </remarks>
     public override async Task<(bool success, string message)> TestConnectionAsync(string configuration, string? encryptedCredentials)
     {
         try
@@ -84,6 +121,30 @@ public class OneDriveConnectorHandler : BaseConnectorHandler
         }
     }
     
+    /// <summary>
+    /// Elenca tutti i file disponibili in OneDrive a partire dal percorso specificato.
+    /// </summary>
+    /// <param name="configuration">Configurazione JSON con FolderPath e opzione Recursive.</param>
+    /// <param name="encryptedCredentials">Credenziali OAuth 2.0 crittografate (ClientId, ClientSecret, TenantId).</param>
+    /// <param name="path">Percorso specifico da cui iniziare la scansione (opzionale, usa config.FolderPath se null).</param>
+    /// <returns>Lista di <see cref="ConnectorFileInfo"/> con metadati dei file trovati.</returns>
+    /// <remarks>
+    /// Operazioni eseguite:
+    /// 1. Parsing e validazione della configurazione e credenziali
+    /// 2. Creazione del GraphServiceClient autenticato
+    /// 3. Recupero dell'ID del drive tramite endpoint /me/drive
+    /// 4. Scansione ricorsiva (se abilitata) a partire dal percorso specificato
+    /// 5. Estrazione metadati: nome, percorso completo, dimensione, data modifica UTC, tipo MIME
+    /// 
+    /// Percorsi supportati:
+    /// - "/" per la root del drive
+    /// - Percorsi relativi senza slash iniziale per l'API ItemWithPath
+    /// 
+    /// La ricorsione processa automaticamente tutte le sottocartelle quando abilitata.
+    /// Gli errori su cartelle specifiche vengono loggati come warning senza interrompere l'elaborazione.
+    /// Il percorso completo viene ricostruito durante la ricorsione per fornire path assoluti.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">Lanciata se configurazione, credenziali o accesso al drive sono invalidi.</exception>
     public override async Task<List<ConnectorFileInfo>> ListFilesAsync(string configuration, string? encryptedCredentials, string? path = null)
     {
         var fileInfos = new List<ConnectorFileInfo>();
@@ -127,6 +188,31 @@ public class OneDriveConnectorHandler : BaseConnectorHandler
         return fileInfos;
     }
     
+    /// <summary>
+    /// Scarica un file specifico da OneDrive utilizzando il suo percorso.
+    /// </summary>
+    /// <param name="configuration">Configurazione JSON (non utilizzata nel download).</param>
+    /// <param name="encryptedCredentials">Credenziali OAuth 2.0 crittografate.</param>
+    /// <param name="filePath">Percorso del file da scaricare (relativo alla root, con o senza slash iniziale).</param>
+    /// <returns>MemoryStream contenente il contenuto del file scaricato.</returns>
+    /// <remarks>
+    /// Processo di download tramite Microsoft Graph API:
+    /// 1. Validazione presenza credenziali
+    /// 2. Autenticazione e creazione del GraphServiceClient
+    /// 3. Recupero dell'ID del drive
+    /// 4. Download del contenuto tramite endpoint /drives/{driveId}/root:/{path}:/content
+    /// 5. Copia dello stream in MemoryStream per garantire disponibilità dopo chiusura connessione
+    /// 6. Reset posizione stream a 0 per la lettura
+    /// 
+    /// Note sui percorsi:
+    /// - Il slash iniziale viene rimosso automaticamente per compatibilità con ItemWithPath API
+    /// - I percorsi possono contenere sottocartelle (es. "Documents/Subfolder/file.pdf")
+    /// 
+    /// Il file viene copiato in memoria per evitare problemi di ciclo di vita della connessione HTTP.
+    /// Il chiamante è responsabile della disposizione dello stream restituito.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">Lanciata se credenziali sono invalide o accesso al drive fallisce.</exception>
+    /// <exception cref="FileNotFoundException">Lanciata se il file specificato non esiste in OneDrive.</exception>
     public override async Task<Stream> DownloadFileAsync(string configuration, string? encryptedCredentials, string filePath)
     {
         try
@@ -176,6 +262,26 @@ public class OneDriveConnectorHandler : BaseConnectorHandler
         }
     }
     
+    /// <summary>
+    /// Crea un client Microsoft Graph autenticato utilizzando le credenziali OAuth 2.0.
+    /// </summary>
+    /// <param name="credentials">Credenziali contenenti ClientId, ClientSecret e TenantId.</param>
+    /// <returns>GraphServiceClient autenticato e pronto per chiamate API.</returns>
+    /// <remarks>
+    /// Autenticazione tramite Azure Identity:
+    /// 1. Crea un ClientSecretCredential con TenantId, ClientId e ClientSecret
+    /// 2. Utilizza il flusso OAuth 2.0 Client Credentials Grant
+    /// 3. Istanzia GraphServiceClient con la credential configurata
+    /// 
+    /// Requisiti Azure AD:
+    /// - App registration in Azure AD
+    /// - Client secret generato per l'app
+    /// - Permessi API Microsoft Graph: Files.Read.All o Files.ReadWrite.All (Application permissions)
+    /// - Admin consent concesso per i permessi dell'applicazione
+    /// 
+    /// Il client gestisce automaticamente il rinnovo del token OAuth e le retry policy.
+    /// Utilizza gli endpoint standard di Microsoft Graph (https://graph.microsoft.com).
+    /// </remarks>
     private GraphServiceClient CreateGraphClient(OneDriveCredentials credentials)
     {
         var clientSecretCredential = new ClientSecretCredential(
@@ -187,6 +293,36 @@ public class OneDriveConnectorHandler : BaseConnectorHandler
         return new GraphServiceClient(clientSecretCredential);
     }
     
+    /// <summary>
+    /// Elenca ricorsivamente i file da una cartella OneDrive e dalle sue sottocartelle.
+    /// </summary>
+    /// <param name="graphClient">GraphServiceClient autenticato.</param>
+    /// <param name="driveId">ID univoco del drive OneDrive.</param>
+    /// <param name="folderPath">Percorso relativo della cartella da elaborare ("/" per root).</param>
+    /// <param name="fileInfos">Lista di accumulo dove aggiungere i file trovati.</param>
+    /// <param name="recursive">Se true, elabora ricorsivamente tutte le sottocartelle.</param>
+    /// <remarks>
+    /// Operazioni eseguite tramite Microsoft Graph API:
+    /// 1. Determina l'endpoint API in base al percorso:
+    ///    - Root ("/") → /drives/{driveId}/root/children
+    ///    - Percorso specifico → /drives/{driveId}/root:/{path}:/children
+    /// 2. Recupera gli item (file e cartelle) nella location corrente
+    /// 3. Distingue file da cartelle tramite proprietà Folder e File
+    /// 4. Per ogni file: estrae metadati (nome, dimensione, data modifica UTC, MIME type)
+    /// 5. Per ogni cartella (se ricorsione abilitata): chiamata ricorsiva
+    /// 
+    /// Costruzione percorsi:
+    /// - Rimuove slash iniziali/finali per normalizzazione
+    /// - Costruisce percorsi completi concatenando parent path e nome item
+    /// - Mantiene slash iniziale nei percorsi risultanti per coerenza
+    /// 
+    /// Gestione date:
+    /// - Utilizza LastModifiedDateTime in formato UTC
+    /// - Converte DateTimeOffset in DateTime per compatibilità
+    /// 
+    /// Gli errori su cartelle specifiche vengono loggati come warning
+    /// ma non interrompono l'elaborazione delle altre cartelle.
+    /// </remarks>
     private async Task ListFilesRecursiveAsync(GraphServiceClient graphClient, string driveId, string folderPath, List<ConnectorFileInfo> fileInfos, bool recursive)
     {
         try
