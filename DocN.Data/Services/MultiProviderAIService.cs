@@ -902,10 +902,13 @@ Analyze the document content carefully and propose a descriptive, specific categ
 2. The subject matter (finance, legal, technical, marketing, HR, etc.)
 3. The industry or domain (if identifiable)
 
-Examples of GOOD categories: 'Financial Reports', 'Legal Contracts', 'Technical Documentation', 'Marketing Materials', 'Meeting Minutes', 'Invoice - Supplier', 'HR - Employee Contracts'.
-Examples of BAD categories: 'Documents', 'General', 'Other', 'Uncategorized', 'Files'.
+Examples of GOOD categories (in English, reasoning in Italian):
+- 'Financial Reports', 'Legal Contracts', 'Technical Documentation', 'Marketing Materials', 'Meeting Minutes', 'Invoice - Supplier', 'HR - Employee Contracts'
 
-Always respond in Italian for the category and reasoning.";
+Examples of BAD categories to AVOID:
+- 'Documents', 'General', 'Other', 'Uncategorized', 'Files', 'PDF Documents', 'Word Documents'
+
+Provide category names in English (for consistency) but explain your reasoning in Italian.";
             
                 var userPrompt = $@"Analizza questo documento e suggerisci la MIGLIORE categoria possibile. Spiega anche la tua motivazione.
 
@@ -965,7 +968,7 @@ Rispondi in formato JSON:
                 {
                     // Only use inference when AI completely fails to provide any category
                     category = InferCategoryFromFileNameOrContent(fileName, extractedText);
-                    reasoning = $"L'AI non ha fornito alcuna categoria. Categoria inferita dal nome file o contenuto: {reasoning}";
+                    reasoning = $"L'AI non ha fornito alcuna categoria. Categoria inferita dal nome file o contenuto basandosi su pattern di riconoscimento.";
                 }
                 // Trust the AI's suggestion even if it's generic - AI knows better than simple pattern matching
                 // The improved prompt should prevent generic responses most of the time
