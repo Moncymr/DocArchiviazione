@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using DocN.Data;
 using DocN.Data.Models;
 using DocN.Data.Services.Agents;
+using DocN.Core.Interfaces;
+using DocN.Data.Services;
 
 namespace DocN.Server.Controllers;
 
@@ -17,15 +19,24 @@ public class ChatController : ControllerBase
     private readonly IAgentOrchestrator _orchestrator;
     private readonly ApplicationDbContext _context;
     private readonly ILogger<ChatController> _logger;
+    private readonly IQueryIntentClassifier _queryIntentClassifier;
+    private readonly IDocumentStatisticsService _documentStatisticsService;
+    private readonly IStatisticalAnswerGenerator _statisticalAnswerGenerator;
 
     public ChatController(
         IAgentOrchestrator orchestrator,
         ApplicationDbContext context,
-        ILogger<ChatController> logger)
+        ILogger<ChatController> logger,
+        IQueryIntentClassifier queryIntentClassifier,
+        IDocumentStatisticsService documentStatisticsService,
+        IStatisticalAnswerGenerator statisticalAnswerGenerator)
     {
         _orchestrator = orchestrator;
         _context = context;
         _logger = logger;
+        _queryIntentClassifier = queryIntentClassifier;
+        _documentStatisticsService = documentStatisticsService;
+        _statisticalAnswerGenerator = statisticalAnswerGenerator;
     }
 
     /// <summary>
@@ -50,6 +61,101 @@ public class ChatController : ControllerBase
             }
 
             _logger.LogInformation("Processing chat query: {Query}", request.Message);
+
+            // Classify query intent to determine processing path
+            var queryIntent = await _queryIntentClassifier.ClassifyAsync(request.Message);
+            
+            _logger.LogInformation("Query classified as: {Intent}", queryIntent);
+
+            // Handle statistical and metadata queries without vector search
+            if (queryIntent == QueryIntent.Statistical || queryIntent == QueryIntent.MetadataQuery)
+            {
+                var startTime = DateTime.UtcNow;
+                
+                // Get document statistics from database
+                var statistics = await _documentStatisticsService.GetStatisticsAsync(request.UserId ?? string.Empty);
+                
+                // Generate natural language answer from statistics
+                var answer = await _statisticalAnswerGenerator.GenerateAnswerAsync(
+                    request.Message, 
+                    statistics);
+                
+                var responseTime = (long)(DateTime.UtcNow - startTime).TotalMilliseconds;
+                
+                _logger.LogInformation(
+                    "Statistical query answered in {ResponseTime}ms without vector search",
+                    responseTime);
+                
+                // Get or create conversation for saving
+                Conversation? statConversation = null;
+                if (request.ConversationId.HasValue)
+                {
+                    statConversation = await _context.Conversations
+                        .Include(c => c.Messages)
+                        .FirstOrDefaultAsync(c => c.Id == request.ConversationId.Value);
+                }
+                else if (!string.IsNullOrEmpty(request.UserId))
+                {
+                    statConversation = new Conversation
+                    {
+                        UserId = request.UserId,
+                        Title = TruncateText(request.Message, 100),
+                        CreatedAt = DateTime.UtcNow,
+                        LastMessageAt = DateTime.UtcNow
+                    };
+                    _context.Conversations.Add(statConversation);
+                    await _context.SaveChangesAsync();
+                }
+                
+                // Save messages to conversation
+                if (statConversation != null)
+                {
+                    var userMessage = new Message
+                    {
+                        ConversationId = statConversation.Id,
+                        Role = "user",
+                        Content = request.Message,
+                        Timestamp = DateTime.UtcNow
+                    };
+
+                    var assistantMessage = new Message
+                    {
+                        ConversationId = statConversation.Id,
+                        Role = "assistant",
+                        Content = answer,
+                        ReferencedDocumentIds = new List<int>(), // No specific documents for statistical queries
+                        Timestamp = DateTime.UtcNow,
+                        Metadata = System.Text.Json.JsonSerializer.Serialize(new
+                        {
+                            query_intent = queryIntent.ToString(),
+                            total_documents = statistics.TotalDocuments,
+                            processing_method = "statistical_aggregation",
+                            response_time_ms = responseTime
+                        })
+                    };
+
+                    _context.Messages.Add(userMessage);
+                    _context.Messages.Add(assistantMessage);
+                    statConversation.LastMessageAt = DateTime.UtcNow;
+                    await _context.SaveChangesAsync();
+                }
+                
+                return Ok(new ChatResponse
+                {
+                    ConversationId = statConversation?.Id,
+                    Answer = answer,
+                    ReferencedDocuments = new List<DocumentReference>(), // No specific documents
+                    Metadata = new ChatMetadata
+                    {
+                        RetrievalTimeMs = responseTime,
+                        SynthesisTimeMs = 0,
+                        TotalTimeMs = responseTime,
+                        RetrievalStrategy = "statistical_aggregation",
+                        DocumentsRetrieved = 0,
+                        ChunksRetrieved = 0
+                    }
+                });
+            }
 
             // Get or create conversation
             Conversation? conversation = null;

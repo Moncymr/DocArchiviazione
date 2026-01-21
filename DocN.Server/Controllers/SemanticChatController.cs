@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using DocN.Data;
 using DocN.Core.Interfaces;
+using DocN.Data.Services;
 
 namespace DocN.Server.Controllers;
 
@@ -22,6 +23,9 @@ public class SemanticChatController : ControllerBase
     private readonly ApplicationDbContext _context;
     private readonly ILogger<SemanticChatController> _logger;
     private readonly IWebHostEnvironment _environment;
+    private readonly IQueryIntentClassifier _queryIntentClassifier;
+    private readonly IDocumentStatisticsService _documentStatisticsService;
+    private readonly IStatisticalAnswerGenerator _statisticalAnswerGenerator;
 
     /// <summary>
     /// Constructor - Il provider RAG viene iniettato automaticamente dal DI container.
@@ -30,12 +34,18 @@ public class SemanticChatController : ControllerBase
         ISemanticRAGService ragService,      // ← Provider RAG iniettato qui
         ApplicationDbContext context,
         ILogger<SemanticChatController> logger,
-        IWebHostEnvironment environment)
+        IWebHostEnvironment environment,
+        IQueryIntentClassifier queryIntentClassifier,
+        IDocumentStatisticsService documentStatisticsService,
+        IStatisticalAnswerGenerator statisticalAnswerGenerator)
     {
         _ragService = ragService;
         _context = context;
         _logger = logger;
         _environment = environment;
+        _queryIntentClassifier = queryIntentClassifier;
+        _documentStatisticsService = documentStatisticsService;
+        _statisticalAnswerGenerator = statisticalAnswerGenerator;
     }
 
     /// <summary>
@@ -101,7 +111,49 @@ public class SemanticChatController : ControllerBase
                 "Processing semantic chat query: {Query} for user: {UserId}",
                 request.Message, request.UserId);
 
-            // Process query using Semantic RAG service
+            // Classify query intent to determine processing path
+            var queryIntent = await _queryIntentClassifier.ClassifyAsync(request.Message);
+            
+            _logger.LogInformation(
+                "Query classified as: {Intent}",
+                queryIntent);
+
+            // Handle statistical and metadata queries without vector search
+            if (queryIntent == QueryIntent.Statistical || queryIntent == QueryIntent.MetadataQuery)
+            {
+                var startTime = DateTime.UtcNow;
+                
+                // Get document statistics from database
+                var statistics = await _documentStatisticsService.GetStatisticsAsync(request.UserId);
+                
+                // Generate natural language answer from statistics
+                var answer = await _statisticalAnswerGenerator.GenerateAnswerAsync(
+                    request.Message, 
+                    statistics);
+                
+                var responseTime = (long)(DateTime.UtcNow - startTime).TotalMilliseconds;
+                
+                _logger.LogInformation(
+                    "Statistical query answered in {ResponseTime}ms without vector search",
+                    responseTime);
+                
+                return Ok(new SemanticChatResponse
+                {
+                    ConversationId = request.ConversationId ?? 0,
+                    Answer = answer,
+                    SourceDocuments = new List<SemanticDocumentReference>(), // No specific documents for statistical queries
+                    ResponseTimeMs = responseTime,
+                    FromCache = false,
+                    Metadata = new Dictionary<string, object>
+                    {
+                        { "query_intent", queryIntent.ToString() },
+                        { "total_documents", statistics.TotalDocuments },
+                        { "processing_method", "statistical_aggregation" }
+                    }
+                });
+            }
+
+            // Process query using Semantic RAG service for semantic search
             var result = await _ragService.GenerateResponseAsync(
                 request.Message,
                 request.UserId,
