@@ -42,6 +42,21 @@ public class TesseractOCRService : IOCRService
     private const string TesseractLoadSystemDawg = "load_system_dawg";
     private const string TesseractLoadFreqDawg = "load_freq_dawg";
 
+    /// <summary>
+    /// Inizializza una nuova istanza del servizio OCR Tesseract
+    /// </summary>
+    /// <param name="logger">Logger per diagnostica e monitoraggio</param>
+    /// <param name="configuration">Configurazione applicazione per path tessdata</param>
+    /// <remarks>
+    /// <para><strong>Configurazione richiesta:</strong></para>
+    /// <list type="bullet">
+    /// <item><description>Tesseract:DataPath in appsettings.json (default: ./tessdata)</description></item>
+    /// <item><description>Cartella tessdata deve contenere file .traineddata per lingue desiderate</description></item>
+    /// </list>
+    /// 
+    /// <para><strong>Verifica disponibilità:</strong> Il costruttore verifica automaticamente se Tesseract è configurato
+    /// correttamente. Se non disponibile, il servizio ritorna stringhe vuote ma non blocca l'applicazione.</para>
+    /// </remarks>
     public TesseractOCRService(
         ILogger<TesseractOCRService> logger,
         IConfiguration configuration)
@@ -212,8 +227,20 @@ public class TesseractOCRService : IOCRService
     }
 
     /// <summary>
-    /// Check if Tesseract is available and properly configured
+    /// Verifica se Tesseract è disponibile e configurato correttamente
     /// </summary>
+    /// <returns>true se Tesseract è disponibile e funzionante, false altrimenti</returns>
+    /// <remarks>
+    /// <para><strong>Verifiche effettuate:</strong></para>
+    /// <list type="number">
+    /// <item><description>Esistenza cartella tessdata</description></item>
+    /// <item><description>Presenza file eng.traineddata (lingua inglese base)</description></item>
+    /// <item><description>Test inizializzazione engine Tesseract</description></item>
+    /// </list>
+    /// 
+    /// <para><strong>Fallback graceful:</strong> Se questa verifica fallisce, il servizio non blocca l'applicazione
+    /// ma ritorna stringhe vuote per le chiamate OCR.</para>
+    /// </remarks>
     private bool CheckTesseractAvailability()
     {
         try

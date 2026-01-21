@@ -12,8 +12,31 @@ using System.Net;
 namespace DocN.Data.Services;
 
 /// <summary>
-/// Service for managing alerts and notifications
+/// Servizio per gestione avvisi e notifiche del sistema RAG
 /// </summary>
+/// <remarks>
+/// <para><strong>Scopo:</strong> Fornire sistema di alerting centralizzato per monitoraggio qualità RAG e anomalie sistema</para>
+/// 
+/// <para><strong>Funzionalità chiave:</strong></para>
+/// <list type="bullet">
+/// <item><description>Gestione avvisi in memoria con ConcurrentDictionary (thread-safe)</description></item>
+/// <item><description>Integrazione con Prometheus AlertManager (opzionale)</description></item>
+/// <item><description>Notifiche multi-canale (email, webhook, Slack)</description></item>
+/// <item><description>Ciclo vita avvisi: Firing → Acknowledged → Resolved</description></item>
+/// <item><description>Severità configurabile (Critical, Warning, Info)</description></item>
+/// </list>
+/// 
+/// <para><strong>Use cases:</strong></para>
+/// <list type="bullet">
+/// <item><description>Qualità RAG bassa (hallucinations, low confidence)</description></item>
+/// <item><description>Performance degradation (latenza embedding, timeout AI)</description></item>
+/// <item><description>Errori sistema (database down, API failures)</description></item>
+/// <item><description>Anomalie utilizzo (quota exceeded, rate limits)</description></item>
+/// </list>
+/// 
+/// <para><strong>Integrazione Prometheus:</strong> Quando abilitato, invia avvisi a AlertManager per 
+/// aggregazione con metriche Prometheus e routing avanzato (PagerDuty, OpsGenie, etc.)</para>
+/// </remarks>
 public class AlertingService : IAlertingService
 {
     private readonly ILogger<AlertingService> _logger;
@@ -21,6 +44,12 @@ public class AlertingService : IAlertingService
     private readonly AlertManagerConfiguration _config;
     private readonly ConcurrentDictionary<string, Alert> _activeAlerts = new();
 
+    /// <summary>
+    /// Inizializza una nuova istanza del servizio alerting
+    /// </summary>
+    /// <param name="logger">Logger per diagnostica</param>
+    /// <param name="httpClientFactory">Factory per creazione HTTP client (notifiche webhook)</param>
+    /// <param name="config">Configurazione AlertManager e canali notifica</param>
     public AlertingService(
         ILogger<AlertingService> logger,
         IHttpClientFactory httpClientFactory,
@@ -31,6 +60,24 @@ public class AlertingService : IAlertingService
         _config = config.Value;
     }
 
+    /// <summary>
+    /// Invia un avviso al sistema di alerting
+    /// </summary>
+    /// <param name="alert">Avviso da inviare con dettagli (nome, severità, descrizione, labels)</param>
+    /// <param name="cancellationToken">Token per cancellazione operazione</param>
+    /// <returns>Task completato quando avviso è stato inviato a tutti i canali configurati</returns>
+    /// <remarks>
+    /// <para><strong>Processo invio:</strong></para>
+    /// <list type="number">
+    /// <item><description>Memorizza avviso in dizionario attivi (per query successive)</description></item>
+    /// <item><description>Log avviso con severità appropriata</description></item>
+    /// <item><description>Invia a Prometheus AlertManager se configurato</description></item>
+    /// <item><description>Invia notifiche a canali configurati (email, webhook, Slack)</description></item>
+    /// </list>
+    /// 
+    /// <para><strong>Gestione errori:</strong> Errori invio notifiche vengono loggati ma non bloccano il flusso.
+    /// L'avviso viene comunque memorizzato per query successive.</para>
+    /// </remarks>
     public async Task SendAlertAsync(Alert alert, CancellationToken cancellationToken = default)
     {
         try
@@ -58,6 +105,20 @@ public class AlertingService : IAlertingService
         }
     }
 
+    /// <summary>
+    /// Ottiene tutti gli avvisi attivi (Firing o Acknowledged)
+    /// </summary>
+    /// <param name="cancellationToken">Token per cancellazione operazione</param>
+    /// <returns>Collezione avvisi attivi ordinati per data inizio (più recenti prima)</returns>
+    /// <remarks>
+    /// <para><strong>Stati inclusi:</strong></para>
+    /// <list type="bullet">
+    /// <item><description>Firing: Avviso attivo non ancora gestito</description></item>
+    /// <item><description>Acknowledged: Avviso preso in carico ma non ancora risolto</description></item>
+    /// </list>
+    /// 
+    /// <para><strong>Performance:</strong> Query in-memory sul ConcurrentDictionary, molto veloce (< 1ms)</para>
+    /// </remarks>
     public Task<IEnumerable<Alert>> GetActiveAlertsAsync(CancellationToken cancellationToken = default)
     {
         var activeAlerts = _activeAlerts.Values
@@ -67,6 +128,17 @@ public class AlertingService : IAlertingService
         return Task.FromResult(activeAlerts.AsEnumerable());
     }
 
+    /// <summary>
+    /// Contrassegna un avviso come preso in carico
+    /// </summary>
+    /// <param name="alertId">ID univoco avviso da confermare</param>
+    /// <param name="acknowledgedBy">Nome utente/sistema che prende in carico l'avviso</param>
+    /// <param name="cancellationToken">Token per cancellazione operazione</param>
+    /// <returns>Task completato quando avviso è stato aggiornato</returns>
+    /// <remarks>
+    /// <para><strong>Transizione stato:</strong> Firing → Acknowledged</para>
+    /// <para><strong>Audit trail:</strong> Registra chi e quando ha preso in carico l'avviso per accountability</para>
+    /// </remarks>
     public Task AcknowledgeAlertAsync(string alertId, string acknowledgedBy, CancellationToken cancellationToken = default)
     {
         if (_activeAlerts.TryGetValue(alertId, out var alert))
@@ -84,6 +156,18 @@ public class AlertingService : IAlertingService
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Contrassegna un avviso come risolto
+    /// </summary>
+    /// <param name="alertId">ID univoco avviso da risolvere</param>
+    /// <param name="resolvedBy">Nome utente/sistema che risolve l'avviso</param>
+    /// <param name="cancellationToken">Token per cancellazione operazione</param>
+    /// <returns>Task completato quando avviso è stato risolto</returns>
+    /// <remarks>
+    /// <para><strong>Transizione stato:</strong> Acknowledged/Firing → Resolved</para>
+    /// <para><strong>Chiusura automatica:</strong> Imposta EndsAt a timestamp corrente per calcolo durata avviso</para>
+    /// <para><strong>Audit trail:</strong> Registra chi e quando ha risolto l'avviso</para>
+    /// </remarks>
     public Task ResolveAlertAsync(string alertId, string resolvedBy, CancellationToken cancellationToken = default)
     {
         if (_activeAlerts.TryGetValue(alertId, out var alert))
@@ -102,6 +186,25 @@ public class AlertingService : IAlertingService
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Ottiene statistiche aggregate sugli avvisi in un periodo temporale
+    /// </summary>
+    /// <param name="from">Data inizio periodo (default: 7 giorni fa)</param>
+    /// <param name="to">Data fine periodo (default: ora corrente)</param>
+    /// <param name="cancellationToken">Token per cancellazione operazione</param>
+    /// <returns>Statistiche aggregate (totali, per stato, per severità, per sorgente, tempo medio risoluzione)</returns>
+    /// <remarks>
+    /// <para><strong>Metriche calcolate:</strong></para>
+    /// <list type="bullet">
+    /// <item><description>Totale avvisi nel periodo</description></item>
+    /// <item><description>Conteggi per stato (Active, Acknowledged, Resolved)</description></item>
+    /// <item><description>Conteggi per severità (Critical, Warning, Info)</description></item>
+    /// <item><description>Conteggi per sorgente (RAGQuality, Performance, System)</description></item>
+    /// <item><description>Tempo medio risoluzione (MTTR - Mean Time To Resolve)</description></item>
+    /// </list>
+    /// 
+    /// <para><strong>Performance:</strong> Operazione in-memory su ConcurrentDictionary, molto veloce</para>
+    /// </remarks>
     public Task<AlertStatistics> GetAlertStatisticsAsync(
         DateTime? from = null, 
         DateTime? to = null, 
@@ -132,6 +235,17 @@ public class AlertingService : IAlertingService
         return Task.FromResult(statistics);
     }
 
+    /// <summary>
+    /// Invia avviso a Prometheus AlertManager
+    /// </summary>
+    /// <param name="alert">Avviso da inviare</param>
+    /// <param name="cancellationToken">Token per cancellazione</param>
+    /// <returns>Task completato quando avviso è stato inviato (o fallito con log errore)</returns>
+    /// <remarks>
+    /// <para><strong>Formato Prometheus:</strong> Converte Alert interno in formato AlertManager v2 API</para>
+    /// <para><strong>Endpoint:</strong> POST /api/v2/alerts con payload JSON array</para>
+    /// <para><strong>Gestione errori:</strong> Errori HTTP vengono loggati ma non propagati (fire-and-forget)</para>
+    /// </remarks>
     private async Task SendToAlertManagerAsync(Alert alert, CancellationToken cancellationToken)
     {
         try
@@ -170,6 +284,21 @@ public class AlertingService : IAlertingService
         }
     }
 
+    /// <summary>
+    /// Invia notifiche avviso a tutti i canali configurati (email, Slack, webhook)
+    /// </summary>
+    /// <param name="alert">Avviso da notificare</param>
+    /// <param name="cancellationToken">Token per cancellazione</param>
+    /// <returns>Task completato quando tutte le notifiche sono state inviate</returns>
+    /// <remarks>
+    /// <para><strong>Esecuzione parallela:</strong> Usa Task.WhenAll per inviare a tutti i canali simultaneamente</para>
+    /// <para><strong>Canali supportati:</strong></para>
+    /// <list type="bullet">
+    /// <item><description>Email (SMTP)</description></item>
+    /// <item><description>Slack (Incoming Webhooks)</description></item>
+    /// <item><description>Webhook generici (HTTP POST JSON)</description></item>
+    /// </list>
+    /// </remarks>
     private async Task SendNotificationsAsync(Alert alert, CancellationToken cancellationToken)
     {
         var tasks = new List<Task>();
@@ -195,6 +324,16 @@ public class AlertingService : IAlertingService
         await Task.WhenAll(tasks);
     }
 
+    /// <summary>
+    /// Invia notifica email per avviso
+    /// </summary>
+    /// <param name="alert">Avviso da notificare</param>
+    /// <param name="cancellationToken">Token per cancellazione</param>
+    /// <returns>Task completato quando email è stata inviata</returns>
+    /// <remarks>
+    /// <para><strong>Configurazione SMTP:</strong> Usa impostazioni da AlertManagerConfiguration.Routing.Email</para>
+    /// <para><strong>Formato email:</strong> HTML formattato con severità, descrizione, timestamp, labels</para>
+    /// </remarks>
     private async Task SendEmailNotificationAsync(Alert alert, CancellationToken cancellationToken)
     {
         try
@@ -228,6 +367,16 @@ public class AlertingService : IAlertingService
         }
     }
 
+    /// <summary>
+    /// Invia notifica a canale Slack tramite Incoming Webhook
+    /// </summary>
+    /// <param name="alert">Avviso da notificare</param>
+    /// <param name="cancellationToken">Token per cancellazione</param>
+    /// <returns>Task completato quando messaggio Slack è stato inviato</returns>
+    /// <remarks>
+    /// <para><strong>Formato messaggio:</strong> Usa Slack attachments API con colori severità</para>
+    /// <para><strong>Colori:</strong> Critical=danger (rosso), Warning=warning (giallo), Info=good (verde)</para>
+    /// </remarks>
     private async Task SendSlackNotificationAsync(Alert alert, CancellationToken cancellationToken)
     {
         try

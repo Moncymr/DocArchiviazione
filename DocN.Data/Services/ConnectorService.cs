@@ -7,14 +7,55 @@ using Microsoft.Extensions.Logging;
 namespace DocN.Data.Services;
 
 /// <summary>
-/// Service for managing document connectors
+/// Servizio per gestione connettori documenti esterni (Google Drive, SharePoint, Dropbox, etc.)
 /// </summary>
+/// <remarks>
+/// <para><strong>Scopo:</strong> Fornire integrazione con sistemi documentali esterni per import automatico documenti</para>
+/// 
+/// <para><strong>Funzionalità chiave:</strong></para>
+/// <list type="bullet">
+/// <item><description>Gestione configurazione connettori (tipo, credenziali criptate, opzioni)</description></item>
+/// <item><description>Test connessione per validazione credenziali</description></item>
+/// <item><description>Sincronizzazione documenti automatica/manuale</description></item>
+/// <item><description>Multi-tenancy con isolamento per OwnerId/TenantId</description></item>
+/// <item><description>Factory pattern per handler specifici per tipo connettore</description></item>
+/// </list>
+/// 
+/// <para><strong>Connettori supportati:</strong></para>
+/// <list type="bullet">
+/// <item><description>GoogleDrive - Google Drive API v3</description></item>
+/// <item><description>SharePoint - Microsoft Graph API</description></item>
+/// <item><description>Dropbox - Dropbox API v2</description></item>
+/// <item><description>OneDrive - Microsoft Graph API</description></item>
+/// <item><description>FTP/SFTP - File system remoti</description></item>
+/// <item><description>WebDAV - Storage WebDAV generico</description></item>
+/// </list>
+/// 
+/// <para><strong>Sicurezza:</strong></para>
+/// <list type="bullet">
+/// <item><description>Credenziali sempre criptate in database (EncryptedCredentials)</description></item>
+/// <item><description>Isolamento tenant (filtro su OwnerId/TenantId)</description></item>
+/// <item><description>OAuth 2.0 per Google Drive, SharePoint, OneDrive</description></item>
+/// </list>
+/// 
+/// <para><strong>Ottimizzazioni:</strong></para>
+/// <list type="bullet">
+/// <item><description>AsNoTracking() su tutte le query read-only (performance)</description></item>
+/// <item><description>Select projection per evitare caricare dati non necessari</description></item>
+/// <item><description>ConnectorHandlerFactory per dependency injection handlers specifici</description></item>
+/// </list>
+/// </remarks>
 public class ConnectorService : IConnectorService
 {
     private readonly DocArcContext _context;
     private readonly ILogger<ConnectorService> _logger;
     private readonly ConnectorHandlerFactory _handlerFactory;
 
+    /// <summary>
+    /// Inizializza una nuova istanza del servizio connettori
+    /// </summary>
+    /// <param name="context">Database context per accesso connettori</param>
+    /// <param name="logger">Logger per diagnostica</param>
     public ConnectorService(DocArcContext context, ILogger<ConnectorService> logger)
     {
         _context = context;
@@ -22,6 +63,19 @@ public class ConnectorService : IConnectorService
         _handlerFactory = new ConnectorHandlerFactory(logger);
     }
 
+    /// <summary>
+    /// Ottiene tutti i connettori dell'utente
+    /// </summary>
+    /// <param name="userId">ID utente proprietario connettori</param>
+    /// <returns>Lista connettori dell'utente ordinati per data creazione (più recenti prima)</returns>
+    /// <remarks>
+    /// <para><strong>Query optimization:</strong></para>
+    /// <list type="bullet">
+    /// <item><description>AsNoTracking() - Read-only query, no change tracking overhead</description></item>
+    /// <item><description>Select projection - Carica solo campi necessari per DTO</description></item>
+    /// <item><description>Filtro OwnerId - Isolamento tenant sicuro</description></item>
+    /// </list>
+    /// </remarks>
     public async Task<List<DocumentConnector>> GetUserConnectorsAsync(string userId)
     {
         try
@@ -56,6 +110,16 @@ public class ConnectorService : IConnectorService
         }
     }
 
+    /// <summary>
+    /// Ottiene un connettore specifico per ID
+    /// </summary>
+    /// <param name="connectorId">ID connettore da recuperare</param>
+    /// <param name="userId">ID utente proprietario (per security check)</param>
+    /// <returns>Connettore trovato o null se non esiste/non autorizzato</returns>
+    /// <remarks>
+    /// <para><strong>Security:</strong> Verifica che l'utente sia proprietario del connettore (OwnerId check)</para>
+    /// <para><strong>Optimization:</strong> AsNoTracking() + Select projection per performance</para>
+    /// </remarks>
     public async Task<DocumentConnector?> GetConnectorAsync(int connectorId, string userId)
     {
         try
@@ -88,6 +152,19 @@ public class ConnectorService : IConnectorService
         }
     }
 
+    /// <summary>
+    /// Crea un nuovo connettore per l'utente
+    /// </summary>
+    /// <param name="connector">Connettore da creare con configurazione e credenziali</param>
+    /// <returns>Connettore creato con ID assegnato</returns>
+    /// <exception cref="InvalidOperationException">Se la configurazione è invalida (es. contiene intero DocumentConnector invece che solo config specifiche)</exception>
+    /// <remarks>
+    /// <para><strong>Validazione configurazione:</strong> Verifica che Configuration contenga solo impostazioni specifiche
+    /// del connettore e non l'intero oggetto DocumentConnector (errore comune)</para>
+    /// 
+    /// <para><strong>Sicurezza credenziali:</strong> Le credenziali devono essere già criptate prima di chiamare questo metodo.
+    /// Il servizio non cripta automaticamente.</para>
+    /// </remarks>
     public async Task<DocumentConnector> CreateConnectorAsync(DocumentConnector connector)
     {
         try
