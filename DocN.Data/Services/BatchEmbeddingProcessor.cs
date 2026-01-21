@@ -11,8 +11,58 @@ using Microsoft.Extensions.Options;
 namespace DocN.Data.Services;
 
 /// <summary>
-/// Background service for batch processing document embeddings with enhanced workflow management
+/// Servizio di background per l'elaborazione batch degli embeddings dei documenti con gestione avanzata del workflow
 /// </summary>
+/// <remarks>
+/// <para><strong>Scopo:</strong> Processare automaticamente documenti e chunk in background per generare embeddings vettoriali</para>
+/// 
+/// <para><strong>Funzionalità chiave:</strong></para>
+/// <list type="bullet">
+/// <item><description>Elaborazione ciclica automatica con intervallo configurabile</description></item>
+/// <item><description>Circuit breaker per gestione errori consecutivi con timeout configurabile</description></item>
+/// <item><description>Coda retry per documenti falliti con tentativi multipli</description></item>
+/// <item><description>Elaborazione batch ottimizzata (10 documenti, 50 chunk per ciclo)</description></item>
+/// <item><description>Validazione dimensioni embedding (768/1536) con gestione errori vettoriali</description></item>
+/// <item><description>Logging dettagliato opzionale per diagnostica</description></item>
+/// </list>
+/// 
+/// <para><strong>Pattern di elaborazione:</strong></para>
+/// <list type="number">
+/// <item><description>Verifica circuit breaker (salta ciclo se aperto)</description></item>
+/// <item><description>Processa coda retry se abilitata</description></item>
+/// <item><description>Processa documenti pending (crea chunk + embeddings)</description></item>
+/// <item><description>Processa chunk pending (genera embeddings mancanti)</description></item>
+/// <item><description>Aggiorna stato documenti completati</description></item>
+/// </list>
+/// 
+/// <para><strong>Gestione stati workflow:</strong></para>
+/// <list type="bullet">
+/// <item><description><strong>Pending:</strong> Documento pronto per chunking</description></item>
+/// <item><description><strong>Processing:</strong> Chunking in corso o completato parzialmente</description></item>
+/// <item><description><strong>Completed:</strong> Tutti i chunk hanno embeddings</description></item>
+/// <item><description><strong>Retrying:</strong> In coda retry dopo errore temporaneo</description></item>
+/// <item><description><strong>NotRequired:</strong> Nessun chunk generabile</description></item>
+/// </list>
+/// 
+/// <para><strong>Circuit breaker:</strong></para>
+/// <list type="bullet">
+/// <item><description>Soglia errori consecutivi: Configurabile (default 3)</description></item>
+/// <item><description>Durata apertura: Configurabile (default 300 secondi = 5 minuti)</description></item>
+/// <item><description>Auto-reset: Dopo timeout, riprova con stato "half-open"</description></item>
+/// </list>
+/// 
+/// <para><strong>Ottimizzazioni:</strong></para>
+/// <list type="bullet">
+/// <item><description>Batch processing per ridurre overhead database</description></item>
+/// <item><description>Priorità documenti in Processing per completamento veloce</description></item>
+/// <item><description>Connection pooling EF Core tramite scoped services</description></item>
+/// <item><description>Logging condizionale per performance (EnableDetailedLogging)</description></item>
+/// <item><description>Validazione dimensioni embedding con helper dedicato</description></item>
+/// </list>
+/// 
+/// <para><strong>Integrazione Hangfire:</strong> Questo servizio è un BackgroundService autonomo, 
+/// ma può coesistere con job Hangfire schedulati per trigger manuali</para>
+/// </remarks>
 public class BatchEmbeddingProcessor : BackgroundService
 {
     private readonly IServiceProvider _serviceProvider;
@@ -24,6 +74,16 @@ public class BatchEmbeddingProcessor : BackgroundService
     private int _consecutiveFailures = 0;
     private DateTime? _circuitOpenUntil = null;
 
+    /// <summary>
+    /// Inizializza una nuova istanza del processore batch embeddings
+    /// </summary>
+    /// <param name="serviceProvider">Service provider per risoluzione dipendenze scoped</param>
+    /// <param name="logger">Logger per diagnostica e monitoraggio</param>
+    /// <param name="config">Configurazione batch processing (intervallo, batch size, circuit breaker)</param>
+    /// <remarks>
+    /// Il service provider viene usato per creare scope separati ad ogni ciclo,
+    /// garantendo isolation del DbContext e prevenendo memory leaks
+    /// </remarks>
     public BatchEmbeddingProcessor(
         IServiceProvider serviceProvider,
         ILogger<BatchEmbeddingProcessor> logger,
@@ -35,6 +95,32 @@ public class BatchEmbeddingProcessor : BackgroundService
         _processingInterval = TimeSpan.FromSeconds(_config.ProcessingIntervalSeconds);
     }
 
+    /// <summary>
+    /// Esegue il ciclo principale di elaborazione batch in background
+    /// </summary>
+    /// <param name="stoppingToken">Token per cancellazione durante shutdown applicazione</param>
+    /// <returns>Task completato quando il servizio viene arrestato</returns>
+    /// <remarks>
+    /// <para><strong>Ciclo di elaborazione:</strong></para>
+    /// <list type="number">
+    /// <item><description>Verifica stato circuit breaker (salta se aperto)</description></item>
+    /// <item><description>Processa coda retry documenti falliti (se abilitata)</description></item>
+    /// <item><description>Processa documenti pending (crea chunk + embeddings)</description></item>
+    /// <item><description>Processa chunk pending (genera embeddings mancanti)</description></item>
+    /// <item><description>Attende intervallo configurato prima del prossimo ciclo</description></item>
+    /// </list>
+    /// 
+    /// <para><strong>Circuit breaker logic:</strong></para>
+    /// <list type="bullet">
+    /// <item><description>Incrementa contatore errori consecutivi ad ogni eccezione</description></item>
+    /// <item><description>Apre circuit dopo soglia errori (previene tempesta di errori)</description></item>
+    /// <item><description>Attende timeout configurato prima di riprovare</description></item>
+    /// <item><description>Reset contatore su ciclo successful</description></item>
+    /// </list>
+    /// 
+    /// <para><strong>Gestione errori:</strong> Errori non fatali vengono loggati ma non interrompono il servizio.
+    /// Il circuit breaker protegge da errori ripetuti (es. database offline, API AI down)</para>
+    /// </remarks>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation(
@@ -110,8 +196,31 @@ public class BatchEmbeddingProcessor : BackgroundService
     }
 
     /// <summary>
-    /// Process documents in the retry queue
+    /// Processa documenti nella coda retry per riprovare elaborazioni fallite
     /// </summary>
+    /// <param name="cancellationToken">Token per cancellazione durante shutdown</param>
+    /// <returns>Task completato quando tutti i documenti retry sono stati processati</returns>
+    /// <remarks>
+    /// <para><strong>Logica retry:</strong></para>
+    /// <list type="number">
+    /// <item><description>Recupera documenti pronti per retry dal DocumentWorkflowService</description></item>
+    /// <item><description>Determina stato target basato su PreviousWorkflowState</description></item>
+    /// <item><description>Transizione a stato "Retrying" (audit trail)</description></item>
+    /// <item><description>Transizione a stato target per riprendere elaborazione</description></item>
+    /// <item><description>Registra errori e schedula prossimo retry se fallisce</description></item>
+    /// </list>
+    /// 
+    /// <para><strong>Mapping stati:</strong></para>
+    /// <list type="bullet">
+    /// <item><description>AwaitingConfirmation → Analyzing (ricomincia analisi)</description></item>
+    /// <item><description>Completed/Cancelled → Extracting (ricomincia da estrazione)</description></item>
+    /// <item><description>Altri stati validi → Riprendi da quello stato</description></item>
+    /// <item><description>Nessun stato precedente → Extracting (ricomincia da zero)</description></item>
+    /// </list>
+    /// 
+    /// <para><strong>Integrazione workflow:</strong> Usa IDocumentWorkflowService per gestione stati FSM (Finite State Machine)
+    /// con validazione transizioni e audit trail completo</para>
+    /// </remarks>
     private async Task ProcessRetryQueueAsync(CancellationToken cancellationToken)
     {
         using var scope = _serviceProvider.CreateScope();
@@ -202,8 +311,40 @@ public class BatchEmbeddingProcessor : BackgroundService
     }
 
     /// <summary>
-    /// Process documents that don't have embeddings yet
+    /// Processa documenti pending per creare chunk e generare embeddings
     /// </summary>
+    /// <param name="cancellationToken">Token per cancellazione durante shutdown</param>
+    /// <returns>Task completato quando tutti i documenti pending sono stati processati</returns>
+    /// <remarks>
+    /// <para><strong>Processo elaborazione:</strong></para>
+    /// <list type="number">
+    /// <item><description>Query documenti con stato Pending O Processing senza chunk (stuck documents)</description></item>
+    /// <item><description>Genera embedding documento intero (per ricerca full-document)</description></item>
+    /// <item><description>Crea chunk usando IChunkingService (sliding window + overlap)</description></item>
+    /// <item><description>Genera embeddings per ogni chunk (batch async)</description></item>
+    /// <item><description>Aggiorna stato a Completed se tutti i chunk hanno embeddings</description></item>
+    /// <item><description>Mantiene stato Processing se alcuni chunk falliscono (retry successivo)</description></item>
+    /// </list>
+    /// 
+    /// <para><strong>Query optimization:</strong></para>
+    /// <list type="bullet">
+    /// <item><description>Filtro su ExtractedText not null/empty (evita documenti invalidi)</description></item>
+    /// <item><description>Include documenti Processing senza chunk (recovery stuck documents)</description></item>
+    /// <item><description>Batch size 10 documenti per ciclo (bilanciamento throughput/latency)</description></item>
+    /// <item><description>Log statistiche distribuzione stati per diagnostica</description></item>
+    /// </list>
+    /// 
+    /// <para><strong>Gestione errori:</strong></para>
+    /// <list type="bullet">
+    /// <item><description>DbUpdateException → Verifica vector dimension mismatch con helper dedicato</description></item>
+    /// <item><description>Reset status a Pending su errore per retry successivo</description></item>
+    /// <item><description>Log dettagliato embedding dimensions per debugging</description></item>
+    /// <item><description>Continua con prossimo documento anche se uno fallisce</description></item>
+    /// </list>
+    /// 
+    /// <para><strong>Validazione embeddings:</strong> Usa EmbeddingValidationHelper per verificare 
+    /// dimensioni 768/1536 e compatibilità con schema pgvector PostgreSQL</para>
+    /// </remarks>
     private async Task ProcessPendingDocumentsAsync(CancellationToken cancellationToken)
     {
         using var scope = _serviceProvider.CreateScope();
@@ -419,8 +560,39 @@ public class BatchEmbeddingProcessor : BackgroundService
     }
 
     /// <summary>
-    /// Process document chunks that don't have embeddings yet
+    /// Processa chunk senza embeddings per completare documenti in Processing
     /// </summary>
+    /// <param name="cancellationToken">Token per cancellazione durante shutdown</param>
+    /// <returns>Task completato quando tutti i chunk pending sono stati processati</returns>
+    /// <remarks>
+    /// <para><strong>Strategia elaborazione:</strong></para>
+    /// <list type="number">
+    /// <item><description>Query chunk senza embeddings (ChunkEmbedding768 e ChunkEmbedding1536 null)</description></item>
+    /// <item><description>Prioritizza chunk da documenti Processing (completamento veloce)</description></item>
+    /// <item><description>Batch size 50 chunk per ciclo (aumentato da 20 per throughput)</description></item>
+    /// <item><description>Genera embeddings async con gestione errori individuali</description></item>
+    /// <item><description>Verifica completamento documenti e aggiorna stati</description></item>
+    /// </list>
+    /// 
+    /// <para><strong>Query optimization:</strong></para>
+    /// <list type="bullet">
+    /// <item><description>Include(c => c.Document) → Eager loading per evitare N+1 queries</description></item>
+    /// <item><description>OrderByDescending priorità Processing documents (completa documenti in corso prima)</description></item>
+    /// <item><description>ThenBy DocumentId, ChunkIndex → Ordinamento deterministico per testing</description></item>
+    /// <item><description>Log statistiche totali vs batch per monitoraggio progresso</description></item>
+    /// </list>
+    /// 
+    /// <para><strong>Aggiornamento stati:</strong></para>
+    /// <list type="bullet">
+    /// <item><description>Conta chunk per documento direttamente da DB (evita EF cache issues)</description></item>
+    /// <item><description>Confronta total chunks vs chunks with embeddings</description></item>
+    /// <item><description>Aggiorna a Completed solo se 100% chunk hanno embeddings</description></item>
+    /// <item><description>Batch update documenti in singola transazione (performance)</description></item>
+    /// </list>
+    /// 
+    /// <para><strong>Fault tolerance:</strong> Se salvataggio embeddings fallisce, log CRITICAL e re-throw
+    /// per trigger circuit breaker. Previene data loss parziali.</para>
+    /// </remarks>
     private async Task ProcessPendingChunksAsync(CancellationToken cancellationToken)
     {
         using var scope = _serviceProvider.CreateScope();
@@ -584,35 +756,84 @@ public class BatchEmbeddingProcessor : BackgroundService
 }
 
 /// <summary>
-/// Service for manually triggering batch processing
+/// Servizio per trigger manuale dell'elaborazione batch embeddings
 /// </summary>
+/// <remarks>
+/// Complementare a BatchEmbeddingProcessor per elaborazioni on-demand.
+/// Utile per trigger manuali via API o Hangfire jobs schedulati.
+/// </remarks>
 public interface IBatchProcessingService
 {
     /// <summary>
-    /// Process a specific document immediately
+    /// Processa un documento specifico immediatamente
     /// </summary>
+    /// <param name="documentId">ID documento da processare</param>
+    /// <returns>Task completato quando documento è stato processato</returns>
+    /// <exception cref="InvalidOperationException">Se dimensioni embedding non corrispondono allo schema database</exception>
     Task ProcessDocumentAsync(int documentId);
 
     /// <summary>
-    /// Process all pending documents
+    /// Processa tutti i documenti pending in un'unica operazione
     /// </summary>
+    /// <returns>Task completato quando tutti i documenti pending sono stati processati</returns>
+    /// <remarks>
+    /// Elaborazione sequenziale per evitare sovraccarico. Errori su singoli documenti
+    /// vengono loggati ma non interrompono l'elaborazione degli altri.
+    /// </remarks>
     Task ProcessAllPendingAsync();
 
     /// <summary>
-    /// Get statistics about pending processing
+    /// Ottiene statistiche sull'elaborazione embeddings
     /// </summary>
+    /// <returns>Statistiche documenti e chunk con/senza embeddings e copertura percentuale</returns>
     Task<BatchProcessingStats> GetStatsAsync();
 }
 
+/// <summary>
+/// Statistiche sull'elaborazione batch embeddings
+/// </summary>
 public class BatchProcessingStats
 {
+    /// <summary>
+    /// Numero documenti senza embeddings
+    /// </summary>
     public int DocumentsWithoutEmbeddings { get; set; }
+
+    /// <summary>
+    /// Numero chunk senza embeddings
+    /// </summary>
     public int ChunksWithoutEmbeddings { get; set; }
+
+    /// <summary>
+    /// Totale documenti nel sistema
+    /// </summary>
     public int TotalDocuments { get; set; }
+
+    /// <summary>
+    /// Totale chunk nel sistema
+    /// </summary>
     public int TotalChunks { get; set; }
+
+    /// <summary>
+    /// Percentuale copertura embeddings (0-100)
+    /// </summary>
     public double EmbeddingCoveragePercentage { get; set; }
 }
 
+/// <summary>
+/// Implementazione servizio batch processing per trigger manuali
+/// </summary>
+/// <remarks>
+/// <para><strong>Scopo:</strong> Fornire API programmatica per elaborazione embeddings on-demand</para>
+/// 
+/// <para><strong>Differenze da BatchEmbeddingProcessor:</strong></para>
+/// <list type="bullet">
+/// <item><description>Trigger manuale vs automatico</description></item>
+/// <item><description>Elaborazione sincrona vs background continuo</description></item>
+/// <item><description>Nessun circuit breaker (caller gestisce retry)</description></item>
+/// <item><description>Ideale per API endpoints e Hangfire jobs</description></item>
+/// </list>
+/// </remarks>
 public class BatchProcessingService : IBatchProcessingService
 {
     private readonly ApplicationDbContext _context;
@@ -620,6 +841,13 @@ public class BatchProcessingService : IBatchProcessingService
     private readonly IChunkingService _chunkingService;
     private readonly ILogger<BatchProcessingService> _logger;
 
+    /// <summary>
+    /// Inizializza una nuova istanza del servizio batch processing
+    /// </summary>
+    /// <param name="context">Database context per accesso documenti e chunk</param>
+    /// <param name="embeddingService">Servizio generazione embeddings (deprecato, usa IMultiProviderAIService)</param>
+    /// <param name="chunkingService">Servizio chunking documenti con sliding window</param>
+    /// <param name="logger">Logger per diagnostica</param>
     public BatchProcessingService(
         ApplicationDbContext context,
         IEmbeddingService embeddingService,
@@ -632,6 +860,7 @@ public class BatchProcessingService : IBatchProcessingService
         _logger = logger;
     }
 
+    /// <inheritdoc/>
     public async Task ProcessDocumentAsync(int documentId)
     {
         var document = await _context.Documents.FindAsync(documentId);
@@ -709,6 +938,7 @@ public class BatchProcessingService : IBatchProcessingService
         }
     }
 
+    /// <inheritdoc/>
     public async Task ProcessAllPendingAsync()
     {
         var pendingDocuments = await _context.Documents
@@ -734,6 +964,7 @@ public class BatchProcessingService : IBatchProcessingService
         }
     }
 
+    /// <inheritdoc/>
     public async Task<BatchProcessingStats> GetStatsAsync()
     {
         var totalDocs = await _context.Documents.CountAsync();

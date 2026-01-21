@@ -353,9 +353,20 @@ Restituisci l'analisi in formato JSON:
     /// <summary>
     /// Costruisce il prompt per la riformulazione della query
     /// </summary>
-    /// <param name="originalQuery">Query originale</param>
-    /// <param name="conversationContext">Contesto conversazionale opzionale</param>
-    /// <returns>Prompt formattato per l'AI</returns>
+    /// <param name="originalQuery">Query originale dell'utente</param>
+    /// <param name="conversationContext">Contesto conversazionale opzionale per risolvere riferimenti ambigui</param>
+    /// <returns>Prompt formattato per l'AI con istruzioni dettagliate</returns>
+    /// <remarks>
+    /// <para><strong>Funzionalità:</strong></para>
+    /// <list type="bullet">
+    /// <item><description>Include query originale e contesto conversazionale</description></item>
+    /// <item><description>Fornisce regole chiare per riformulazione (risolvi ambiguità, mantieni intento)</description></item>
+    /// <item><description>Richiede output pulito (solo query riformulata, no spiegazioni)</description></item>
+    /// </list>
+    /// 
+    /// <para><strong>Ottimizzazione temperatura AI:</strong> Questo metodo prepara il prompt per 
+    /// RewriteQueryAsync che usa temperature 0.3 (bassa) per risultati deterministici e precisi</para>
+    /// </remarks>
     private string BuildRewritePrompt(string originalQuery, string? conversationContext)
     {
         var promptBuilder = new StringBuilder();
