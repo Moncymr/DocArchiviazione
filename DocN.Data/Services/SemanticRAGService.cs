@@ -881,39 +881,53 @@ Il sistema non fornisce risposte basate su conoscenze generali, ma solo su infor
         var embeddingJson = System.Text.Json.JsonSerializer.Serialize(queryEmbedding);
 
         // Use raw SQL with VECTOR_DISTANCE function for document-level search
+        // Using CTE to calculate distance once for better performance
         var docSql = $@"
-            SELECT TOP (@topK)
-                d.Id,
-                d.FileName,
-                d.ActualCategory,
-                d.ExtractedText,
-                CAST(VECTOR_DISTANCE('cosine', d.{docVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension}))) AS FLOAT) AS SimilarityScore
-            FROM Documents d
-            WHERE d.OwnerId = @userId
-                AND d.{docVectorColumn} IS NOT NULL
-                AND VECTOR_DISTANCE('cosine', d.{docVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension}))) >= @minSimilarity
+            WITH ScoredDocs AS (
+                SELECT 
+                    d.Id,
+                    d.FileName,
+                    d.ActualCategory,
+                    d.ExtractedText,
+                    CAST(VECTOR_DISTANCE('cosine', d.{docVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension}))) AS FLOAT) AS SimilarityScore
+                FROM Documents d
+                WHERE d.OwnerId = @userId
+                    AND d.{docVectorColumn} IS NOT NULL
+            )
+            SELECT TOP (@topK) *
+            FROM ScoredDocs
+            WHERE SimilarityScore >= @minSimilarity
             ORDER BY SimilarityScore DESC";
 
         // Use raw SQL with VECTOR_DISTANCE function for chunk-level search
+        // Using CTE to calculate distance once for better performance
         var chunkSql = $@"
-            SELECT TOP (@topK)
-                dc.DocumentId,
-                dc.ChunkText,
-                dc.ChunkIndex,
-                d.FileName,
-                d.ActualCategory,
-                CAST(VECTOR_DISTANCE('cosine', dc.{chunkVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension}))) AS FLOAT) AS SimilarityScore
-            FROM DocumentChunks dc
-            INNER JOIN Documents d ON dc.DocumentId = d.Id
-            WHERE d.OwnerId = @userId
-                AND dc.{chunkVectorColumn} IS NOT NULL
-                AND VECTOR_DISTANCE('cosine', dc.{chunkVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension}))) >= @minSimilarity
+            WITH ScoredChunks AS (
+                SELECT 
+                    dc.DocumentId,
+                    dc.ChunkText,
+                    dc.ChunkIndex,
+                    d.FileName,
+                    d.ActualCategory,
+                    CAST(VECTOR_DISTANCE('cosine', dc.{chunkVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension}))) AS FLOAT) AS SimilarityScore
+                FROM DocumentChunks dc
+                INNER JOIN Documents d ON dc.DocumentId = d.Id
+                WHERE d.OwnerId = @userId
+                    AND dc.{chunkVectorColumn} IS NOT NULL
+            )
+            SELECT TOP (@topK) *
+            FROM ScoredChunks
+            WHERE SimilarityScore >= @minSimilarity
             ORDER BY SimilarityScore DESC";
 
         var results = new List<RelevantDocumentResult>();
         var existingDocIds = new HashSet<int>();
 
-        await _context.Database.OpenConnectionAsync();
+        // Ensure connection is open
+        if (_context.Database.GetDbConnection().State != System.Data.ConnectionState.Open)
+        {
+            await _context.Database.OpenConnectionAsync();
+        }
         var connection = _context.Database.GetDbConnection();
 
         // Execute chunk-level search (higher priority)
