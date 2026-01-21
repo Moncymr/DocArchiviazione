@@ -1,9 +1,5 @@
-using Azure.AI.OpenAI;
-using Azure;
 using DocN.Data.Models;
 using DocN.Data.Utilities;
-using OpenAI.Chat;
-using OpenAI.Embeddings;
 using Microsoft.Extensions.Logging;
 
 namespace DocN.Data.Services;
@@ -30,103 +26,45 @@ public interface IEmbeddingService
 }
 
 /// <summary>
-/// Implementazione servizio embedding con Azure OpenAI e caching opzionale.
+/// Implementazione servizio embedding con supporto multi-provider e caching opzionale.
 /// </summary>
 /// <remarks>
 /// Scopo: Generare embedding vettoriali per ricerca semantica con caching per performance.
-/// Provider: Azure OpenAI (text-embedding-ada-002 o configurato)
-/// Output: Float array dimensioni 1536 (o specifiche del modello)
+/// Provider: Multi-provider (Gemini, OpenAI, Azure OpenAI, Ollama, Groq) con fallback automatico
+/// Output: Float array dimensioni dipendenti dal provider configurato
 /// </remarks>
 public class EmbeddingService : IEmbeddingService
 {
     private readonly ApplicationDbContext _context;
     private readonly ICacheService? _cacheService;
     private readonly ILogger<EmbeddingService> _logger;
-    private EmbeddingClient? _client;
-    private bool _initialized = false;
+    private readonly IMultiProviderAIService _multiProviderAIService;
 
-    public EmbeddingService(ApplicationDbContext context, ILogger<EmbeddingService> logger, ICacheService? cacheService = null)
+    public EmbeddingService(
+        ApplicationDbContext context, 
+        ILogger<EmbeddingService> logger, 
+        IMultiProviderAIService multiProviderAIService,
+        ICacheService? cacheService = null)
     {
         _context = context;
         _logger = logger;
+        _multiProviderAIService = multiProviderAIService;
         _cacheService = cacheService;
     }
 
     /// <summary>
-    /// Inizializza client Azure OpenAI lazy-loading dalla configurazione database.
-    /// </summary>
-    /// <remarks>
-    /// Chiamato al primo utilizzo. Fallisce silenziosamente se DB non pronto.
-    /// </remarks>
-    private void EnsureInitialized()
-    {
-        if (_initialized) return;
-        
-        try
-        {
-            _logger.LogDebug("Initializing EmbeddingService - loading configuration from database");
-            
-            var config = _context.AIConfigurations.FirstOrDefault(c => c.IsActive);
-            if (config == null)
-            {
-                _logger.LogWarning("No active AI configuration found in database. Embedding generation will not be available. Please configure an active AIConfiguration record with Azure OpenAI credentials.");
-                _initialized = true;
-                return;
-            }
-            
-            if (string.IsNullOrEmpty(config.AzureOpenAIEndpoint))
-            {
-                _logger.LogWarning("Azure OpenAI Endpoint is not configured in the active AIConfiguration. Embedding generation will not be available.");
-                _initialized = true;
-                return;
-            }
-            
-            if (string.IsNullOrEmpty(config.AzureOpenAIKey))
-            {
-                _logger.LogWarning("Azure OpenAI API Key is not configured in the active AIConfiguration. Embedding generation will not be available.");
-                _initialized = true;
-                return;
-            }
-            
-            var deploymentName = config.EmbeddingDeploymentName ?? "text-embedding-ada-002";
-            _logger.LogInformation("Initializing Azure OpenAI Embedding client with endpoint: {Endpoint}, deployment: {Deployment}", 
-                config.AzureOpenAIEndpoint, deploymentName);
-            
-            var azureClient = new AzureOpenAIClient(new Uri(config.AzureOpenAIEndpoint), new AzureKeyCredential(config.AzureOpenAIKey));
-            _client = azureClient.GetEmbeddingClient(deploymentName);
-            
-            _logger.LogInformation("EmbeddingService initialized successfully with Azure OpenAI");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to initialize EmbeddingService. Embedding generation will not be available. Error: {ErrorMessage}", ex.Message);
-        }
-        finally
-        {
-            _initialized = true;
-        }
-    }
-
-    /// <summary>
-    /// Genera embedding vettoriale per testo con caching automatico.
+    /// Genera embedding vettoriale per testo con caching automatico e supporto multi-provider.
     /// </summary>
     /// <param name="text">Testo da convertire (max ~8000 tokens)</param>
     /// <returns>Float array embedding o null se provider non configurato</returns>
     /// <remarks>
     /// Scopo: Convertire testo in rappresentazione vettoriale per ricerca semantica.
     /// Cache: Controlla cache prima di chiamare API (risparmio costi e latency).
-    /// Output: Float[] dimensioni dipendenti da modello (1536 per ada-002).
+    /// Provider: Utilizza MultiProviderAIService per supporto completo di tutti i provider configurati.
+    /// Output: Float[] dimensioni dipendenti dal provider (768 per Gemini, 1536 per OpenAI/Azure, ecc.).
     /// </remarks>
     public async Task<float[]?> GenerateEmbeddingAsync(string text)
     {
-        EnsureInitialized();
-        
-        if (_client == null)
-        {
-            _logger.LogWarning("Cannot generate embedding: Azure OpenAI client is not initialized. Please ensure an active AIConfiguration is set up with valid Azure OpenAI credentials.");
-            return null;
-        }
-
         // Check cache first if available
         if (_cacheService != null)
         {
@@ -140,23 +78,31 @@ public class EmbeddingService : IEmbeddingService
 
         try
         {
-            _logger.LogDebug("Generating embedding for text (length: {Length})", text.Length);
-            var response = await _client.GenerateEmbeddingAsync(text);
-            var embedding = response.Value.ToFloats().ToArray();
+            _logger.LogDebug("Generating embedding for text (length: {Length}) using multi-provider service", text.Length);
             
-            _logger.LogDebug("Embedding generated successfully (dimensions: {Dimensions})", embedding.Length);
+            // Delegate to MultiProviderAIService which handles all provider types with fallback
+            var embedding = await _multiProviderAIService.GenerateEmbeddingAsync(text);
             
-            // Cache the result if caching is available
-            if (_cacheService != null && embedding != null)
+            if (embedding != null)
             {
-                await _cacheService.SetCachedEmbeddingAsync(text, embedding);
+                _logger.LogDebug("Embedding generated successfully (dimensions: {Dimensions})", embedding.Length);
+                
+                // Cache the result if caching is available
+                if (_cacheService != null)
+                {
+                    await _cacheService.SetCachedEmbeddingAsync(text, embedding);
+                }
+            }
+            else
+            {
+                _logger.LogWarning("Embedding generation returned null. Check MultiProviderAIService logs for details.");
             }
             
             return embedding;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to generate embedding. Error: {ErrorMessage}. This may be due to invalid API credentials, deployment name, or Azure OpenAI service issues.", ex.Message);
+            _logger.LogError(ex, "Failed to generate embedding. Error: {ErrorMessage}. Check that an active AIConfiguration is configured with valid credentials.", ex.Message);
             return null;
         }
     }
