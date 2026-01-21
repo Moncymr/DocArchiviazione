@@ -138,25 +138,36 @@ Rispondi SOLO con JSON valido, senza altri commenti.";
             ? documentText.Substring(0, 3000) 
             : documentText;
             
-        return $@"Estrai metadati strutturati dal seguente documento. Analizza il contenuto e identifica informazioni chiave.
+        return $@"Estrai metadati strutturati dal seguente documento utilizzando l'intelligenza artificiale per analizzare il contenuto.
+NON usare valori predefiniti o template fissi. Analizza il contenuto reale del documento per estrarre informazioni accurate.
 
 Nome file: {fileName}
 
 Documento:
 {text}
 
-Cerca di estrarre il maggior numero di metadati rilevanti, ad esempio:
-- Per FATTURE: invoice_number, invoice_date, invoice_year, total_amount, currency, vendor_name, customer_name, tax_id, payment_terms
-- Per CONTRATTI: contract_number, contract_date, contract_year, parties, expiration_date, renewal_terms, contract_value
-- Per DOCUMENTI GENERALI: document_type, author, creation_date, title, subject, company_name, reference_number, language
-- Altri metadati rilevanti specifici del tipo di documento
+ISTRUZIONI:
+1. Analizza attentamente il contenuto del documento per determinare il tipo di documento (fattura, contratto, rapporto, lettera, ecc.)
+2. In base al tipo identificato, estrai i metadati appropriati presenti nel documento:
+   - Per FATTURE: invoice_number, invoice_date, invoice_year, total_amount, currency, vendor_name, customer_name, tax_id, payment_terms, due_date
+   - Per CONTRATTI: contract_number, contract_date, contract_year, parties, signatories, expiration_date, renewal_terms, contract_value, contract_type
+   - Per DOCUMENTI GENERALI: document_type, author, creation_date, title, subject, company_name, reference_number, language, department
+   - Per RAPPORTI: report_type, report_date, report_period, prepared_by, report_title, summary, department, fiscal_year
+   - Altri metadati rilevanti specifici del tipo di documento identificato
 
-Fornisci un JSON con coppie chiave-valore dei metadati estratti.
-Usa nomi di campo in inglese e snake_case (es. invoice_number, creation_date).
-Se un campo non è presente, NON includerlo nel risultato.
+3. Estrai SOLO i valori che sono effettivamente presenti nel documento analizzato
+4. NON inventare o indovinare valori che non sono esplicitamente menzionati nel testo
+5. Se un campo non è presente nel documento, NON includerlo nel risultato
+6. Usa nomi di campo in inglese e snake_case (es. invoice_number, creation_date)
+7. Per le date, usa il formato ISO 8601 (YYYY-MM-DD) quando possibile
+8. Per gli importi monetari, includi sia il valore numerico che la valuta se disponibile
 
-Esempio: {{""document_type"": ""invoice"", ""invoice_number"": ""INV-2024-001"", ""invoice_date"": ""2024-01-15"", ""total_amount"": ""1000.00"", ""currency"": ""EUR""}}
+Esempio di risposta per una fattura:
+{{""document_type"": ""invoice"", ""invoice_number"": ""INV-2024-001"", ""invoice_date"": ""2024-01-15"", ""total_amount"": ""1000.00"", ""currency"": ""EUR"", ""vendor_name"": ""Acme Corp""}}
 
-Rispondi SOLO con JSON valido, senza altri commenti.";
+Esempio di risposta per un contratto:
+{{""document_type"": ""contract"", ""contract_number"": ""CT-2024-042"", ""contract_date"": ""2024-02-10"", ""parties"": ""Acme Corp, Beta Ltd"", ""contract_value"": ""50000.00"", ""currency"": ""EUR""}}
+
+Rispondi SOLO con JSON valido contenente i metadati estratti dall'analisi AI del documento, senza altri commenti o spiegazioni.";
     }
 }

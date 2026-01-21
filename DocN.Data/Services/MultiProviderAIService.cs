@@ -896,9 +896,16 @@ public class MultiProviderAIService : IMultiProviderAIService
                     : "This is a new system. You MUST suggest an appropriate category based on the document content.";
 
                 var systemPrompt = @"You are a document classification expert. Your task is to ALWAYS suggest a specific, meaningful category for documents.
-NEVER return 'Uncategorized' or generic categories. Analyze the content and propose a descriptive category name.
-Examples of good categories: 'Financial Reports', 'Legal Contracts', 'Technical Documentation', 'Marketing Materials', 'Meeting Minutes', etc.
-Always respond in Italian.";
+NEVER return 'Uncategorized', 'General', 'Other' or similar generic categories. 
+Analyze the document content carefully and propose a descriptive, specific category name based on:
+1. The document type (invoice, contract, report, letter, etc.)
+2. The subject matter (finance, legal, technical, marketing, HR, etc.)
+3. The industry or domain (if identifiable)
+
+Examples of GOOD categories: 'Financial Reports', 'Legal Contracts', 'Technical Documentation', 'Marketing Materials', 'Meeting Minutes', 'Invoice - Supplier', 'HR - Employee Contracts'.
+Examples of BAD categories: 'Documents', 'General', 'Other', 'Uncategorized', 'Files'.
+
+Always respond in Italian for the category and reasoning.";
             
                 var userPrompt = $@"Analizza questo documento e suggerisci la MIGLIORE categoria possibile. Spiega anche la tua motivazione.
 
@@ -953,16 +960,15 @@ Rispondi in formato JSON:
                 var category = result?.Category?.Trim() ?? string.Empty;
                 var reasoning = result?.Reasoning?.Trim() ?? "Nessuna motivazione fornita";
             
-                // If AI still returned generic/empty category, infer from filename or content
-                if (string.IsNullOrEmpty(category) || 
-                    category.Equals("Uncategorized", StringComparison.OrdinalIgnoreCase) ||
-                    category.Equals("General", StringComparison.OrdinalIgnoreCase) ||
-                    category.Equals("Other", StringComparison.OrdinalIgnoreCase))
+                // If AI returned completely empty category, use a fallback
+                if (string.IsNullOrEmpty(category))
                 {
-                    // Try to infer from file extension or name
+                    // Only use inference when AI completely fails to provide any category
                     category = InferCategoryFromFileNameOrContent(fileName, extractedText);
-                    reasoning = $"Categoria inferita dal nome file o contenuto. {reasoning}";
+                    reasoning = $"L'AI non ha fornito alcuna categoria. Categoria inferita dal nome file o contenuto: {reasoning}";
                 }
+                // Trust the AI's suggestion even if it's generic - AI knows better than simple pattern matching
+                // The improved prompt should prevent generic responses most of the time
             
                 return (category, reasoning, provider);
             }, "CategorySuggestion");
@@ -986,6 +992,11 @@ Rispondi in formato JSON:
         }
     }
     
+    /// <summary>
+    /// Last-resort fallback for category inference when AI completely fails to provide any category.
+    /// This method uses simple pattern matching and should only be used when AI is unavailable or returns null/empty.
+    /// The primary category suggestion should always come from AI analysis via SuggestCategoryAsync.
+    /// </summary>
     private string InferCategoryFromFileNameOrContent(string fileName, string extractedText)
     {
         // Try to infer category from file name
@@ -1131,27 +1142,39 @@ Respond in JSON format:
             
             await _logService.LogInfoAsync("Metadata", $"Extracting metadata with provider: {provider}", fileName);
             
-            var systemPrompt = "You are a metadata extraction expert. Extract structured metadata from documents.";
+            var systemPrompt = @"You are an AI-powered metadata extraction expert. Your task is to analyze document content and extract structured metadata using artificial intelligence.
+DO NOT use predefined templates or fixed values. Analyze the actual content of each document to extract accurate information.
+Extract ONLY information that is explicitly present in the document text.";
             
-            var userPrompt = $@"Extract structured metadata from this document. Analyze the content and identify key information.
+            var userPrompt = $@"Analyze this document using AI and extract structured metadata based on the actual content.
 
 File name: {fileName}
 
 Content: {TruncateText(extractedText, 3000)}
 
-Extract as many relevant metadata fields as possible, for example:
-- For INVOICES: invoice_number, invoice_date, invoice_year, total_amount, currency, vendor_name, customer_name, tax_id, payment_terms
-- For CONTRACTS: contract_number, contract_date, contract_year, parties, expiration_date, renewal_terms, contract_value
-- For GENERAL DOCUMENTS: document_type, author, creation_date, title, subject, company_name, reference_number, language
-- Other relevant metadata specific to the document type
+INSTRUCTIONS:
+1. Carefully analyze the document content to determine the document type (invoice, contract, report, letter, etc.)
+2. Based on the identified type, extract appropriate metadata that is present in the document:
+   - For INVOICES: invoice_number, invoice_date, invoice_year, total_amount, currency, vendor_name, customer_name, tax_id, payment_terms, due_date
+   - For CONTRACTS: contract_number, contract_date, contract_year, parties, signatories, expiration_date, renewal_terms, contract_value, contract_type
+   - For GENERAL DOCUMENTS: document_type, author, creation_date, title, subject, company_name, reference_number, language, department
+   - For REPORTS: report_type, report_date, report_period, prepared_by, report_title, summary, department, fiscal_year
+   - Other relevant metadata specific to the identified document type
 
-Respond in JSON format with key-value pairs.
-Use English field names in snake_case (e.g., invoice_number, creation_date).
-If a field is not present, DO NOT include it in the result.
+3. Extract ONLY values that are actually present in the analyzed document
+4. DO NOT invent or guess values that are not explicitly mentioned in the text
+5. If a field is not present in the document, DO NOT include it in the result
+6. Use English field names in snake_case (e.g., invoice_number, creation_date)
+7. For dates, use ISO 8601 format (YYYY-MM-DD) when possible
+8. For monetary amounts, include both the numeric value and currency if available
 
-Example: {{""document_type"": ""invoice"", ""invoice_number"": ""INV-2024-001"", ""invoice_date"": ""2024-01-15"", ""total_amount"": ""1000.00"", ""currency"": ""EUR""}}
+Example response for an invoice:
+{{""document_type"": ""invoice"", ""invoice_number"": ""INV-2024-001"", ""invoice_date"": ""2024-01-15"", ""total_amount"": ""1000.00"", ""currency"": ""EUR"", ""vendor_name"": ""Acme Corp""}}
 
-Respond ONLY with valid JSON, no other comments.";
+Example response for a contract:
+{{""document_type"": ""contract"", ""contract_number"": ""CT-2024-042"", ""contract_date"": ""2024-02-10"", ""parties"": ""Acme Corp, Beta Ltd"", ""contract_value"": ""50000.00"", ""currency"": ""EUR""}}
+
+Respond ONLY with valid JSON containing the metadata extracted through AI analysis of the document, without any other comments or explanations.";
 
             var response = await GenerateChatCompletionWithProviderAsync(systemPrompt, userPrompt, provider);
             
