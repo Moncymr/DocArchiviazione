@@ -1,8 +1,10 @@
-using Azure;
 using Azure.AI.OpenAI;
+using Azure;
 using DocN.Data.Models;
 using DocN.Data.Utilities;
+using OpenAI.Chat;
 using OpenAI.Embeddings;
+using Microsoft.Extensions.Logging;
 
 namespace DocN.Data.Services;
 
@@ -17,7 +19,7 @@ public interface IEmbeddingService
     /// <param name="text">Testo da convertire in embedding</param>
     /// <returns>Array float rappresentante embedding, null se provider non disponibile</returns>
     Task<float[]?> GenerateEmbeddingAsync(string text);
-
+    
     /// <summary>
     /// Ricerca documenti simili basandosi su embedding vettoriale query.
     /// </summary>
@@ -39,12 +41,14 @@ public class EmbeddingService : IEmbeddingService
 {
     private readonly ApplicationDbContext _context;
     private readonly ICacheService? _cacheService;
+    private readonly ILogger<EmbeddingService> _logger;
     private EmbeddingClient? _client;
     private bool _initialized = false;
 
-    public EmbeddingService(ApplicationDbContext context, ICacheService? cacheService = null)
+    public EmbeddingService(ApplicationDbContext context, ILogger<EmbeddingService> logger, ICacheService? cacheService = null)
     {
         _context = context;
+        _logger = logger;
         _cacheService = cacheService;
     }
 
@@ -57,20 +61,45 @@ public class EmbeddingService : IEmbeddingService
     private void EnsureInitialized()
     {
         if (_initialized) return;
-
+        
         try
         {
+            _logger.LogDebug("Initializing EmbeddingService - loading configuration from database");
+            
             var config = _context.AIConfigurations.FirstOrDefault(c => c.IsActive);
-            if (config != null && !string.IsNullOrEmpty(config.AzureOpenAIEndpoint) && !string.IsNullOrEmpty(config.AzureOpenAIKey))
+            if (config == null)
             {
-                var azureClient = new AzureOpenAIClient(new Uri(config.AzureOpenAIEndpoint), new AzureKeyCredential(config.AzureOpenAIKey));
-                _client = azureClient.GetEmbeddingClient(config.EmbeddingDeploymentName ?? "text-embedding-ada-002");
+                _logger.LogWarning("No active AI configuration found in database. Embedding generation will not be available. Please configure an active AIConfiguration record with Azure OpenAI credentials.");
+                _initialized = true;
+                return;
             }
+            
+            if (string.IsNullOrEmpty(config.AzureOpenAIEndpoint))
+            {
+                _logger.LogWarning("Azure OpenAI Endpoint is not configured in the active AIConfiguration. Embedding generation will not be available.");
+                _initialized = true;
+                return;
+            }
+            
+            if (string.IsNullOrEmpty(config.AzureOpenAIKey))
+            {
+                _logger.LogWarning("Azure OpenAI API Key is not configured in the active AIConfiguration. Embedding generation will not be available.");
+                _initialized = true;
+                return;
+            }
+            
+            var deploymentName = config.EmbeddingDeploymentName ?? "text-embedding-ada-002";
+            _logger.LogInformation("Initializing Azure OpenAI Embedding client with endpoint: {Endpoint}, deployment: {Deployment}", 
+                config.AzureOpenAIEndpoint, deploymentName);
+            
+            var azureClient = new AzureOpenAIClient(new Uri(config.AzureOpenAIEndpoint), new AzureKeyCredential(config.AzureOpenAIKey));
+            _client = azureClient.GetEmbeddingClient(deploymentName);
+            
+            _logger.LogInformation("EmbeddingService initialized successfully with Azure OpenAI");
         }
-        catch
+        catch (Exception ex)
         {
-            // Initialization can fail if database doesn't exist yet or AIConfigurations table is empty
-            // This is OK - the service will work without AI features
+            _logger.LogError(ex, "Failed to initialize EmbeddingService. Embedding generation will not be available. Error: {ErrorMessage}", ex.Message);
         }
         finally
         {
@@ -91,33 +120,43 @@ public class EmbeddingService : IEmbeddingService
     public async Task<float[]?> GenerateEmbeddingAsync(string text)
     {
         EnsureInitialized();
-
+        
         if (_client == null)
+        {
+            _logger.LogWarning("Cannot generate embedding: Azure OpenAI client is not initialized. Please ensure an active AIConfiguration is set up with valid Azure OpenAI credentials.");
             return null;
+        }
 
         // Check cache first if available
         if (_cacheService != null)
         {
             var cachedEmbedding = await _cacheService.GetCachedEmbeddingAsync(text);
             if (cachedEmbedding != null)
+            {
+                _logger.LogDebug("Embedding retrieved from cache for text (length: {Length})", text.Length);
                 return cachedEmbedding;
+            }
         }
 
         try
         {
+            _logger.LogDebug("Generating embedding for text (length: {Length})", text.Length);
             var response = await _client.GenerateEmbeddingAsync(text);
             var embedding = response.Value.ToFloats().ToArray();
-
+            
+            _logger.LogDebug("Embedding generated successfully (dimensions: {Dimensions})", embedding.Length);
+            
             // Cache the result if caching is available
             if (_cacheService != null && embedding != null)
             {
                 await _cacheService.SetCachedEmbeddingAsync(text, embedding);
             }
-
+            
             return embedding;
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Failed to generate embedding. Error: {ErrorMessage}. This may be due to invalid API credentials, deployment name, or Azure OpenAI service issues.", ex.Message);
             return null;
         }
     }
@@ -135,7 +174,7 @@ public class EmbeddingService : IEmbeddingService
             .Where(d => (d.EmbeddingVector768 != null && d.EmbeddingVector768.Length > 0) ||
                         (d.EmbeddingVector1536 != null && d.EmbeddingVector1536.Length > 0))
             .ToList());
-
+        
         var scoredDocuments = documents
             .Where(d => d.EmbeddingVector != null) // Use the property getter
             .Select(d => new
