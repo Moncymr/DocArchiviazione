@@ -1,0 +1,569 @@
+@page "/messages"
+@using DocN.Data
+@using DocN.Data.Models
+@using Microsoft.EntityFrameworkCore
+@rendermode InteractiveServer
+@inject ApplicationDbContext DbContext
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager Navigation
+
+<PageTitle>Messaggi - DocN</PageTitle>
+
+<div class="messages-page">
+    <div class="page-header">
+        <h1>
+            <span class="header-icon">💬</span>
+            Elenco Messaggi e Conversazioni
+        </h1>
+        <p class="page-description">
+            Consulta lo storico di tutte le conversazioni e i messaggi scambiati con l'AI
+        </p>
+    </div>
+
+    <AuthorizeView>
+        <Authorized>
+            @if (isLoading)
+            {
+                <div class="loading-container">
+                    <div class="loading-spinner"></div>
+                    <p>Caricamento conversazioni...</p>
+                </div>
+            }
+            else if (!conversations.Any())
+            {
+                <div class="empty-state">
+                    <div class="empty-icon">💭</div>
+                    <h3>Nessuna Conversazione</h3>
+                    <p>Non ci sono ancora conversazioni. Inizia a chattare con l'AI per vedere i tuoi messaggi qui.</p>
+                    <a href="/chat" class="btn btn-primary">
+                        <span>💬 Vai alla Chat</span>
+                    </a>
+                </div>
+            }
+            else
+            {
+                <div class="filters-section">
+                    <input type="text" 
+                           @bind="searchQuery" 
+                           @bind:event="oninput"
+                           @onkeyup="FilterConversations"
+                           placeholder="🔍 Cerca nelle conversazioni..."
+                           class="search-input" />
+                    
+                    <div class="filter-buttons">
+                        <button class="@GetFilterClass("all")" @onclick='() => SetFilter("all")'>
+                            Tutte (@totalConversations)
+                        </button>
+                        <button class="@GetFilterClass("starred")" @onclick='() => SetFilter("starred")'>
+                            ⭐ Preferite (@starredCount)
+                        </button>
+                        <button class="@GetFilterClass("archived")" @onclick='() => SetFilter("archived")'>
+                            📦 Archiviate (@archivedCount)
+                        </button>
+                    </div>
+                </div>
+
+                <div class="conversations-list">
+                    @foreach (var conversation in filteredConversations)
+                    {
+                        <div class="conversation-card @(selectedConversationId == conversation.Id ? "selected" : "")"
+                             @onclick="() => SelectConversation(conversation.Id)">
+                            <div class="conversation-header">
+                                <div class="conversation-title">
+                                    @if (conversation.IsStarred)
+                                    {
+                                        <span class="star-icon">⭐</span>
+                                    }
+                                    @if (conversation.IsArchived)
+                                    {
+                                        <span class="archive-icon">📦</span>
+                                    }
+                                    <h3>@(conversation.Title ?? "Conversazione senza titolo")</h3>
+                                </div>
+                                <div class="conversation-meta">
+                                    <span class="message-count">@conversation.Messages.Count messaggi</span>
+                                    <span class="date">@conversation.LastMessageAt.ToString("dd/MM/yyyy HH:mm")</span>
+                                </div>
+                            </div>
+
+                            @if (selectedConversationId == conversation.Id)
+                            {
+                                <div class="messages-container">
+                                    @foreach (var message in conversation.Messages.OrderBy(m => m.Timestamp))
+                                    {
+                                        <div class="message @(message.Role == "user" ? "user-message" : "assistant-message") @(message.IsError ? "error-message" : "")">
+                                            <div class="message-header">
+                                                <span class="message-role">@(message.Role == "user" ? "👤 Utente" : "🤖 Assistente")</span>
+                                                <span class="message-time">@message.Timestamp.ToString("HH:mm")</span>
+                                            </div>
+                                            <div class="message-content">
+                                                @message.Content
+                                            </div>
+                                            @if (message.UserRating.HasValue)
+                                            {
+                                                <div class="message-rating">
+                                                    Valutazione: @GetStars(message.UserRating.Value)
+                                                </div>
+                                            }
+                                            @if (!string.IsNullOrEmpty(message.UserFeedback))
+                                            {
+                                                <div class="message-feedback">
+                                                    <strong>Feedback:</strong> @message.UserFeedback
+                                                </div>
+                                            }
+                                            @if (message.IsError)
+                                            {
+                                                <div class="error-indicator">
+                                                    ❌ Messaggio con errore
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+
+                            @if (!string.IsNullOrEmpty(conversation.Tags))
+                            {
+                                <div class="conversation-tags">
+                                    @foreach (var tag in conversation.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                                    {
+                                        <span class="tag">@tag.Trim()</span>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+
+                @if (!filteredConversations.Any() && conversations.Any())
+                {
+                    <div class="empty-state">
+                        <div class="empty-icon">🔍</div>
+                        <h3>Nessun Risultato</h3>
+                        <p>Nessuna conversazione trovata con i criteri di ricerca selezionati.</p>
+                    </div>
+                }
+            }
+        </Authorized>
+        <NotAuthorized>
+            <div class="unauthorized-state">
+                <div class="unauthorized-icon">🔒</div>
+                <h2>Accesso Richiesto</h2>
+                <p>Devi effettuare il login per visualizzare i tuoi messaggi.</p>
+                <a href="/login" class="btn btn-primary">
+                    <span>🔐 Effettua il Login</span>
+                </a>
+            </div>
+        </NotAuthorized>
+    </AuthorizeView>
+</div>
+
+@code {
+    private List<Conversation> conversations = new();
+    private List<Conversation> filteredConversations = new();
+    private bool isLoading = true;
+    private string searchQuery = "";
+    private string currentFilter = "all";
+    private int? selectedConversationId = null;
+    private int totalConversations = 0;
+    private int starredCount = 0;
+    private int archivedCount = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity?.IsAuthenticated == true && user.Identity?.Name != null)
+        {
+            var userId = user.Identity.Name;
+            await LoadConversations(userId);
+        }
+
+        isLoading = false;
+    }
+
+    private async Task LoadConversations(string userId)
+    {
+        conversations = await DbContext.Conversations
+            .Include(c => c.Messages)
+            .Where(c => c.UserId == userId)
+            .OrderByDescending(c => c.LastMessageAt)
+            .ToListAsync();
+
+        totalConversations = conversations.Count;
+        starredCount = conversations.Count(c => c.IsStarred);
+        archivedCount = conversations.Count(c => c.IsArchived);
+
+        FilterConversations();
+    }
+
+    private void FilterConversations()
+    {
+        var filtered = conversations.AsEnumerable();
+
+        // Apply search filter
+        if (!string.IsNullOrWhiteSpace(searchQuery))
+        {
+            filtered = filtered.Where(c =>
+                (c.Title?.Contains(searchQuery, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                c.Messages.Any(m => m.Content.Contains(searchQuery, StringComparison.OrdinalIgnoreCase))
+            );
+        }
+
+        // Apply category filter
+        filtered = currentFilter switch
+        {
+            "starred" => filtered.Where(c => c.IsStarred),
+            "archived" => filtered.Where(c => c.IsArchived),
+            _ => filtered
+        };
+
+        filteredConversations = filtered.ToList();
+    }
+
+    private void SetFilter(string filter)
+    {
+        currentFilter = filter;
+        FilterConversations();
+    }
+
+    private string GetFilterClass(string filter)
+    {
+        return filter == currentFilter ? "filter-btn active" : "filter-btn";
+    }
+
+    private void SelectConversation(int conversationId)
+    {
+        if (selectedConversationId == conversationId)
+        {
+            selectedConversationId = null;
+        }
+        else
+        {
+            selectedConversationId = conversationId;
+        }
+    }
+
+    private string GetStars(int rating)
+    {
+        return new string('⭐', rating);
+    }
+}
+
+<style>
+    .messages-page {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 2rem;
+    }
+
+    .page-header {
+        margin-bottom: 2rem;
+        text-align: center;
+    }
+
+    .page-header h1 {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: #333;
+        margin-bottom: 0.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 1rem;
+    }
+
+    .header-icon {
+        font-size: 3rem;
+    }
+
+    .page-description {
+        font-size: 1.1rem;
+        color: #666;
+        max-width: 600px;
+        margin: 0 auto;
+    }
+
+    .loading-container {
+        text-align: center;
+        padding: 4rem 2rem;
+    }
+
+    .loading-spinner {
+        border: 4px solid rgba(255, 154, 118, 0.1);
+        border-left-color: #ff9a76;
+        border-radius: 50%;
+        width: 50px;
+        height: 50px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 1rem;
+    }
+
+    @@keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    .empty-state, .unauthorized-state {
+        text-align: center;
+        padding: 4rem 2rem;
+    }
+
+    .empty-icon, .unauthorized-icon {
+        font-size: 5rem;
+        margin-bottom: 1rem;
+    }
+
+    .empty-state h3, .unauthorized-state h2 {
+        font-size: 1.8rem;
+        color: #333;
+        margin-bottom: 1rem;
+    }
+
+    .empty-state p, .unauthorized-state p {
+        color: #666;
+        font-size: 1.1rem;
+        margin-bottom: 2rem;
+    }
+
+    .filters-section {
+        margin-bottom: 2rem;
+    }
+
+    .search-input {
+        width: 100%;
+        padding: 1rem 1.5rem;
+        border: 2px solid #e0e0e0;
+        border-radius: 12px;
+        font-size: 1rem;
+        margin-bottom: 1rem;
+        transition: all 0.3s;
+    }
+
+    .search-input:focus {
+        outline: none;
+        border-color: #ff6b35;
+        box-shadow: 0 0 0 3px rgba(255, 107, 53, 0.1);
+    }
+
+    .filter-buttons {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .filter-btn {
+        padding: 0.75rem 1.5rem;
+        border: 2px solid #e0e0e0;
+        background: white;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+
+    .filter-btn:hover {
+        border-color: #ff9a76;
+        background: rgba(255, 154, 118, 0.05);
+    }
+
+    .filter-btn.active {
+        background: linear-gradient(135deg, #ff9a76 0%, #ffb399 100%);
+        color: white;
+        border-color: #ff9a76;
+    }
+
+    .conversations-list {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+
+    .conversation-card {
+        background: white;
+        border: 2px solid #e0e0e0;
+        border-radius: 12px;
+        padding: 1.5rem;
+        transition: all 0.3s;
+        cursor: pointer;
+    }
+
+    .conversation-card:hover {
+        border-color: #ff9a76;
+        box-shadow: 0 4px 15px rgba(255, 154, 118, 0.1);
+    }
+
+    .conversation-card.selected {
+        border-color: #ff9a76;
+        box-shadow: 0 4px 20px rgba(255, 154, 118, 0.2);
+    }
+
+    .conversation-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        margin-bottom: 1rem;
+    }
+
+    .conversation-title {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .conversation-title h3 {
+        margin: 0;
+        font-size: 1.3rem;
+        color: #333;
+    }
+
+    .star-icon, .archive-icon {
+        font-size: 1.2rem;
+    }
+
+    .conversation-meta {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 0.25rem;
+        font-size: 0.9rem;
+        color: #666;
+    }
+
+    .message-count {
+        font-weight: 600;
+        color: #ff9a76;
+    }
+
+    .messages-container {
+        margin-top: 1.5rem;
+        padding-top: 1.5rem;
+        border-top: 2px solid #f0f0f0;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .message {
+        padding: 1rem;
+        border-radius: 8px;
+        border: 1px solid #e0e0e0;
+    }
+
+    .user-message {
+        background: rgba(59, 130, 246, 0.05);
+        border-color: rgba(59, 130, 246, 0.2);
+    }
+
+    .assistant-message {
+        background: rgba(255, 154, 118, 0.05);
+        border-color: rgba(255, 154, 118, 0.2);
+    }
+
+    .error-message {
+        background: rgba(220, 53, 69, 0.05);
+        border-color: rgba(220, 53, 69, 0.3);
+    }
+
+    .message-header {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 0.5rem;
+        font-size: 0.9rem;
+        font-weight: 600;
+    }
+
+    .message-role {
+        color: #333;
+    }
+
+    .message-time {
+        color: #999;
+    }
+
+    .message-content {
+        color: #333;
+        line-height: 1.6;
+        white-space: pre-wrap;
+    }
+
+    .message-rating {
+        margin-top: 0.5rem;
+        font-size: 0.9rem;
+        color: #666;
+    }
+
+    .message-feedback {
+        margin-top: 0.5rem;
+        padding: 0.5rem;
+        background: rgba(255, 255, 255, 0.5);
+        border-radius: 4px;
+        font-size: 0.9rem;
+        color: #666;
+    }
+
+    .error-indicator {
+        margin-top: 0.5rem;
+        color: #dc3545;
+        font-weight: 600;
+        font-size: 0.9rem;
+    }
+
+    .conversation-tags {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        margin-top: 1rem;
+    }
+
+    .tag {
+        padding: 0.25rem 0.75rem;
+        background: rgba(255, 154, 118, 0.1);
+        border-radius: 20px;
+        font-size: 0.85rem;
+        color: #ff9a76;
+        font-weight: 600;
+    }
+
+    .btn {
+        padding: 0.75rem 1.5rem;
+        border-radius: 8px;
+        text-decoration: none;
+        font-weight: 600;
+        transition: all 0.3s;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .btn-primary {
+        background: linear-gradient(135deg, #ff9a76 0%, #ffb399 100%);
+        color: white;
+        border: none;
+    }
+
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(255, 154, 118, 0.3);
+    }
+
+    @@media (max-width: 768px) {
+        .messages-page {
+            padding: 1rem;
+        }
+
+        .page-header h1 {
+            font-size: 1.8rem;
+            flex-direction: column;
+        }
+
+        .conversation-header {
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .conversation-meta {
+            align-items: flex-start;
+        }
+    }
+</style>

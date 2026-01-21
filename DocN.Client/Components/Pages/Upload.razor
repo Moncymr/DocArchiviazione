@@ -1,0 +1,2829 @@
+@*
+    Upload.razor - Componente Blazor per upload e elaborazione documenti
+    
+    Scopo:
+    Interfaccia utente completa per caricamento documenti con:
+    - Selezione file (click o drag-drop)
+    - Validazione formato e dimensione
+    - Analisi automatica contenuto (estrazione testo, OCR)
+    - Generazione embeddings per ricerca semantica
+    - Estrazione metadati AI (categoria, tag)
+    - Gestione errori e feedback utente
+    
+    Flusso operativo:
+    1. Utente seleziona file
+    2. Click "Analizza Documento" → Estrazione testo + OCR se immagine
+    3. AI suggerisce categoria e tag automaticamente
+    4. Utente può modificare metadati suggeriti
+    5. Click "Upload" → Salvataggio database + chunking + embeddings
+    6. Redirect a pagina Documents
+    
+    Formati supportati:
+    - Documenti: PDF, DOCX, XLSX, TXT
+    - Immagini: PNG, JPG, JPEG, TIFF, BMP (con OCR)
+    - Max size: 50 MB
+    
+    Dipendenze iniettate:
+    - IDocumentService: Salvataggio documenti
+    - IMultiProviderAIService: AI per metadati
+    - IFileProcessingService: Estrazione testo
+    - ISemanticRAGService: Embeddings
+    - ILogService: Logging operazioni
+    
+    Versione: 2.0 - Enhanced form with always-visible fields
+*@
+@page "/upload"
+@using Microsoft.AspNetCore.Components.Forms
+@using System.IO
+@using System.Net.Http
+@using DocN.Core.Interfaces
+@using DocN.Data.Services
+@using DocN.Data.Utilities
+@inject IDocumentService DocumentService
+@inject IMultiProviderAIService AIService
+@inject IFileProcessingService FileProcessingService
+@inject ISemanticRAGService SemanticRAGService
+@inject ILogService LogService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager Navigation
+@inject IConfiguration Configuration
+@rendermode InteractiveServer
+@implements IDisposable
+
+<PageTitle>Upload Document - DocN</PageTitle>
+
+@* Force no caching *@
+<HeadContent>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+</HeadContent>
+
+<div class="upload-container">
+    @* Version indicator - v2.0 with always-visible form fields *@
+    <div style="display: none;" data-version="2.0-enhanced-form"></div>
+    
+    <div class="upload-header">
+        <h2>📤 Upload Document</h2>
+        <div style="display: flex; gap: 10px;">
+            <button class="btn btn-info" @onclick="ToggleLogsModal">
+                📋 Visualizza Log Caricamento
+            </button>
+            <button class="btn btn-secondary" @onclick="GoBack">
+                ← Torna ai Documenti
+            </button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-error">
+            ❌ @errorMessage
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(successMessage))
+    {
+        <div class="alert alert-success">
+            ✅ @successMessage
+        </div>
+    }
+
+    <div class="upload-card">
+        <EditForm Model="@uploadModel" OnValidSubmit="HandleUpload">
+            <div class="form-section">
+                <h3>Seleziona File</h3>
+                <div class="file-upload-wrapper">
+                    <label for="fileInput" class="file-upload-button" style="cursor: pointer;">
+                        <span class="upload-icon-large">📤</span>
+                        <span class="upload-content">
+                            @if (selectedFile == null)
+                            {
+                                <span class="upload-title">Scegli un file da caricare</span>
+                                <span class="upload-subtitle">Clicca qui o trascina il file</span>
+                            }
+                            else
+                            {
+                                <span class="upload-title">File selected - Click to change</span>
+                                <span class="upload-subtitle">@selectedFile.Name</span>
+                            }
+                        </span>
+                    </label>
+                    <InputFile id="fileInput" OnChange="@HandleFileSelection" class="file-input-hidden" accept="@GetAcceptedExtensions()" />
+                </div>
+                
+                @if (selectedFile != null)
+                {
+                    <div class="file-info">
+                        <div class="file-icon">📄</div>
+                        <div class="file-details">
+                            <p><strong>@selectedFile.Name</strong></p>
+                            <p>Size: @FormatFileSize(selectedFile.Size)</p>
+                            <p>Type: @selectedFile.ContentType</p>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            @* Show Analyze Button in sticky position when file is selected and not yet processed *@
+            @if (selectedFile != null && !processingComplete && !isProcessing)
+            {
+                <div class="sticky-analyze-wrapper">
+                    <div class="analyze-button-section">
+                        <div class="analyze-instruction">
+                            <h3 style="color: #48bb78; margin: 0 0 0.5rem 0; font-size: 1.2rem;">
+                                👇 Clicca qui per analizzare il documento 👇
+                            </h3>
+                        </div>
+                        <button type="button" class="btn btn-process btn-large" @onclick="ProcessDocument">
+                            <span>🔬 Analizza Documento</span>
+                        </button>
+                    </div>
+                </div>
+            }
+
+            @if (isProcessing)
+            {
+                <div class="analyzing-section">
+                    <div class="spinner"></div>
+                    <p>🔄 Processing document: @processingStep</p>
+                    @if (elapsedSeconds > 0)
+                    {
+                        <p class="elapsed-time">⏱️ Elapsed time: @elapsedSeconds seconds</p>
+                        @if (elapsedSeconds > 60)
+                        {
+                            <p class="warning-text">⚠️ This operation is taking longer than expected. Please wait...</p>
+                        }
+                    }
+                </div>
+            }
+
+            @if (processingComplete && !string.IsNullOrEmpty(extractedText))
+            {
+                <div class="results-section">
+                    <h3>📋 Risultati Elaborazione</h3>
+                    
+                    @* Text Extraction Results *@
+                    <div class="result-card">
+                        <div class="result-header">
+                            <span class="result-icon">📝</span>
+                            <span class="result-title">Testo Estratto</span>
+                            <span class="result-status success">✓ Success</span>
+                        </div>
+                        <div class="result-content">
+                            <p class="text-preview">@GetTextPreview(extractedText, 200)</p>
+                            <small>@extractedText.Length caratteri estratti</small>
+                        </div>
+                    </div>
+
+                    @* Embedding Results *@
+                    @if (processingComplete)
+                    {
+                        @if (enableEmbeddings)
+                        {
+                            @if (embeddingGenerated)
+                            {
+                                <div class="result-card">
+                                    <div class="result-header">
+                                        <span class="result-icon">🧠</span>
+                                        <span class="result-title">Vector Embeddings (Vettori)</span>
+                                        <span class="result-status success">✓ Generato</span>
+                                    </div>
+                                    <div class="result-content">
+                                        <p>Vector embeddings generato con successo</p>
+                                        <small>Dimensioni: @(embedding?.Length ?? 0)</small>
+                                        <p style="margin-top: 0.5rem; color: #666; font-size: 0.875rem;">
+                                            ✓ Il documento può essere ricercato semanticamente
+                                        </p>
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="result-card">
+                                    <div class="result-header">
+                                        <span class="result-icon">🧠</span>
+                                        <span class="result-title">Vector Embeddings (Vettori)</span>
+                                        <span class="result-status" style="background: #fff3cd; color: #856404;">⚠️ Non generato</span>
+                                    </div>
+                                    <div class="result-content">
+                                        <p style="color: #856404; margin: 0 0 0.5rem 0;">
+                                            ⚠️ I vettori (embeddings) non sono stati generati.
+                                        </p>
+                                        @if (!string.IsNullOrEmpty(embeddingError))
+                                        {
+                                            <div class="reasoning-box" style="background: #fff3cd;">
+                                                <h4 style="color: #856404;">💡 Errore</h4>
+                                                <p style="color: #856404;">@embeddingError</p>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <small style="color: #856404;">Verifica la configurazione AI (Gemini/OpenAI/Azure OpenAI)</small>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <div class="result-card">
+                                <div class="result-header">
+                                    <span class="result-icon">🧠</span>
+                                    <span class="result-title">Vector Embeddings (Vettori)</span>
+                                    <span class="result-status" style="background: #e2e8f0; color: #4a5568;">ℹ️ Disabilitato</span>
+                                </div>
+                                <div class="result-content">
+                                    <p style="color: #4a5568; margin: 0;">
+                                        ℹ️ La generazione dei vettori (embeddings) è stata disabilitata. Per abilitarla, attiva l'opzione "Genera embeddings" nelle impostazioni di elaborazione qui sotto e rianalizza il documento.
+                                    </p>
+                                </div>
+                            </div>
+                        }
+                    }
+
+                    @* AI Category Analysis *@
+                    @if (enableAICategory && processingComplete)
+                    {
+                        @if (!string.IsNullOrEmpty(suggestedCategory))
+                        {
+                            <div class="result-card">
+                                <div class="result-header">
+                                    <span class="result-icon">🤖</span>
+                                    <span class="result-title">Analisi Categoria AI</span>
+                                    <span class="result-status success">✓ Completo</span>
+                                </div>
+                                <div class="result-content">
+                                    <div class="category-result">
+                                        <span class="category-badge">@suggestedCategory</span>
+                                    </div>
+                                    @if (!string.IsNullOrEmpty(categoryReasoning))
+                                    {
+                                        <div class="reasoning-box">
+                                            <h4>💡 Motivazione</h4>
+                                            <p>@categoryReasoning</p>
+                                            @if (!string.IsNullOrEmpty(aiProvider))
+                                            {
+                                                <p class="ai-provider-info">
+                                                    <strong>Provider AI utilizzato:</strong> @aiProvider
+                                                </p>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="result-card">
+                                <div class="result-header">
+                                    <span class="result-icon">🤖</span>
+                                    <span class="result-title">Analisi Categoria AI</span>
+                                    <span class="result-status" style="background: #fff3cd; color: #856404;">⚠️ Nessuna categoria</span>
+                                </div>
+                                <div class="result-content">
+                                    <p style="color: #856404; margin: 0 0 0.5rem 0;">
+                                        ⚠️ L'AI non è riuscita a suggerire una categoria specifica per questo documento.
+                                    </p>
+                                    @if (!string.IsNullOrEmpty(categoryReasoning))
+                                    {
+                                        <div class="reasoning-box" style="background: #fff3cd;">
+                                            <h4 style="color: #856404;">💡 Dettagli</h4>
+                                            <p style="color: #856404;">@categoryReasoning</p>
+                                            @if (!string.IsNullOrEmpty(aiProvider))
+                                            {
+                                                <p class="ai-provider-info warning">
+                                                    <strong>Provider AI utilizzato:</strong> @aiProvider
+                                                </p>
+                                            }
+                                        </div>
+                                    }
+                                    <p style="margin-top: 1rem; font-weight: 600;">
+                                        👇 Puoi inserire manualmente una categoria nel campo qui sotto
+                                    </p>
+                                </div>
+                            </div>
+                        }
+                    }
+
+                    @* AI Tag Extraction Results *@
+                    @if (enableTagExtraction && processingComplete && tagExtractionAttempted)
+                    {
+                        @if (tagExtractionSucceeded)
+                        {
+                            <div class="result-card">
+                                <div class="result-header">
+                                    <span class="result-icon">🏷️</span>
+                                    <span class="result-title">Estrazione Tag AI</span>
+                                    <span class="result-status success">✓ Successo</span>
+                                </div>
+                                <div class="result-content">
+                                    <p style="margin-bottom: 0.5rem;">✓ L'AI ha estratto i seguenti tag:</p>
+                                    <div style="display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem;">
+                                        @if (aiExtractedTags != null)
+                                        {
+                                            @foreach (var tag in aiExtractedTags)
+                                            {
+                                                <span class="extracted-tag">@tag</span>
+                                            }
+                                        }
+                                    </div>
+                                    <p style="margin-top: 1rem; color: #666; font-size: 0.875rem;">
+                                        ℹ️ I tag sono stati inseriti automaticamente nel campo Tag qui sotto. Puoi modificarli se necessario.
+                                    </p>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="result-card">
+                                <div class="result-header">
+                                    <span class="result-icon">🏷️</span>
+                                    <span class="result-title">Estrazione Tag AI</span>
+                                    <span class="result-status" style="background: #f8d7da; color: #721c24;">❌ Fallito</span>
+                                </div>
+                                <div class="result-content">
+                                    <p style="color: #721c24; margin: 0 0 0.5rem 0; font-weight: 600;">
+                                        ❌ L'AI non è riuscita a estrarre i tag dal documento
+                                    </p>
+                                    @if (!string.IsNullOrEmpty(tagExtractionError))
+                                    {
+                                        <div class="reasoning-box" style="background: #f8d7da; border-left-color: #dc3545;">
+                                            <h4 style="color: #721c24;">⚠️ Errore</h4>
+                                            <p style="color: #721c24;">@tagExtractionError</p>
+                                        </div>
+                                    }
+                                    <p style="margin-top: 1rem; font-weight: 600; color: #721c24;">
+                                        👇 Inserisci manualmente i tag nel campo qui sotto
+                                    </p>
+                                </div>
+                            </div>
+                        }
+                    }
+
+                    @* AI Metadata Extraction Results *@
+                    @if (enableMetadataExtraction && processingComplete && metadataExtractionAttempted)
+                    {
+                        @if (metadataExtractionSucceeded && extractedMetadata != null && extractedMetadata.Any())
+                        {
+                            <div class="result-card">
+                                <div class="result-header">
+                                    <span class="result-icon">📋</span>
+                                    <span class="result-title">Metadati Estratti</span>
+                                    <span class="result-status success">✓ @extractedMetadata.Count campi</span>
+                                </div>
+                                <div class="result-content">
+                                    <p style="margin-bottom: 0.5rem;">✓ L'AI ha estratto i seguenti metadati strutturati:</p>
+                                    <div class="metadata-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin-top: 1rem;">
+                                        @foreach (var metadata in extractedMetadata)
+                                        {
+                                            <div class="metadata-item" style="background: #f8f9fa; padding: 0.75rem; border-radius: 6px; border-left: 3px solid #28a745;">
+                                                <div style="font-size: 0.75rem; color: #6c757d; text-transform: uppercase; margin-bottom: 0.25rem;">
+                                                    @metadata.Key.Replace("_", " ")
+                                                </div>
+                                                <div style="font-weight: 600; color: #212529;">
+                                                    @metadata.Value
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                    <p style="margin-top: 1rem; color: #666; font-size: 0.875rem;">
+                                        ℹ️ I metadati sono stati estratti automaticamente dal documento usando l'intelligenza artificiale.
+                                    </p>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="result-card">
+                                <div class="result-header">
+                                    <span class="result-icon">📋</span>
+                                    <span class="result-title">Estrazione Metadati</span>
+                                    <span class="result-status" style="background: #fff3cd; color: #856404;">⚠️ Nessun dato</span>
+                                </div>
+                                <div class="result-content">
+                                    <p style="color: #856404; margin: 0 0 0.5rem 0;">
+                                        ⚠️ L'AI non è riuscita a estrarre metadati strutturati dal documento.
+                                    </p>
+                                    @if (!string.IsNullOrEmpty(metadataExtractionError))
+                                    {
+                                        <div class="reasoning-box" style="background: #fff3cd; border-left-color: #ffc107;">
+                                            <h4 style="color: #856404;">💡 Dettagli</h4>
+                                            <p style="color: #856404;">@metadataExtractionError</p>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    }
+
+                    @* Similar Documents Section *@
+                    @if (enableEmbeddings && processingComplete)
+                    {
+                        @if (embeddingGenerated && similarDocuments != null && similarDocuments.Any())
+                        {
+                            <div class="result-card">
+                                <div class="result-header">
+                                    <span class="result-icon">🔗</span>
+                                    <span class="result-title">Documenti Simili</span>
+                                    <span class="result-status success">✓ @similarDocuments.Count trovati</span>
+                                </div>
+                                <div class="result-content">
+                                    <p style="margin-bottom: 1rem;">
+                                        📊 Documenti più vicini vettorialmente (basati sulla similarità del contenuto):
+                                    </p>
+                                    <div class="similar-documents-list">
+                                        @foreach (var doc in similarDocuments.Take(SIMILAR_DOCUMENTS_COUNT))
+                                        {
+                                            <div class="similar-doc-item">
+                                                <div class="similar-doc-header">
+                                                    <span class="similar-doc-icon">📄</span>
+                                                    <span class="similar-doc-name">@doc.FileName</span>
+                                                    <span class="similarity-badge">@($"{doc.SimilarityScore:P0}")</span>
+                                                </div>
+                                                @if (!string.IsNullOrEmpty(doc.Category))
+                                                {
+                                                    <div class="similar-doc-category">
+                                                        📁 Categoria: <strong>@doc.Category</strong>
+                                                    </div>
+                                                }
+                                                @if (!string.IsNullOrEmpty(doc.RelevantChunk))
+                                                {
+                                                    <div class="similar-doc-preview">
+                                                        @GetTextPreview(doc.RelevantChunk, 100)
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                        else if (embeddingGenerated && (similarDocuments == null || !similarDocuments.Any()))
+                        {
+                            <div class="result-card">
+                                <div class="result-header">
+                                    <span class="result-icon">🔗</span>
+                                    <span class="result-title">Documenti Simili</span>
+                                    <span class="result-status" style="background: #e2e8f0; color: #4a5568;">ℹ️ Nessuno trovato</span>
+                                </div>
+                                <div class="result-content">
+                                    <p style="color: #4a5568; margin: 0 0 0.5rem 0;">
+                                        ℹ️ Nessun documento simile trovato tra i documenti <strong>già salvati</strong> nel tuo archivio.
+                                    </p>
+                                    <p style="color: #718096; margin: 0.5rem 0; font-size: 0.9rem;">
+                                        💡 <strong>Nota:</strong> La ricerca confronta questo documento con i file già presenti nel database. 
+                                    </p>
+                                    <div style="background: #edf2f7; padding: 1rem; border-radius: 8px; margin-top: 1rem; border-left: 3px solid #4299e1;">
+                                        <p style="margin: 0 0 0.5rem 0; font-weight: 600; color: #2d3748;">🔍 Debug Info:</p>
+                                        <p style="margin: 0; font-size: 0.875rem; color: #4a5568;">
+                                            Se hai caricato lo stesso file in precedenza:
+                                        </p>
+                                        <ul style="margin: 0.5rem 0 0 1.5rem; font-size: 0.875rem; color: #4a5568;">
+                                            <li>Assicurati di averlo salvato cliccando "Salva Documento"</li>
+                                            <li>Verifica che il file precedente avesse embeddings generati</li>
+                                            <li>Controlla di essere autenticato con lo stesso utente</li>
+                                            <li>Controlla la console del browser (F12) per log di debug</li>
+                                        </ul>
+                                        <p style="margin: 0.5rem 0 0 0; font-size: 0.875rem; color: #718096;">
+                                            <em>Soglia di similarità minima: @($"{SIMILAR_DOCUMENTS_MIN_SIMILARITY:P0}"). Con file identici dovremmo vedere ~100% di similarità.</em>
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                        else if (!embeddingGenerated)
+                        {
+                            <div class="result-card">
+                                <div class="result-header">
+                                    <span class="result-icon">🔗</span>
+                                    <span class="result-title">Documenti Simili</span>
+                                    <span class="result-status" style="background: #fff3cd; color: #856404;">⚠️ Non disponibile</span>
+                                </div>
+                                <div class="result-content">
+                                    <p style="color: #856404; margin: 0;">
+                                        ⚠️ La ricerca di documenti simili non è disponibile perché i vettori (embeddings) non sono stati generati. Per abilitare questa funzionalità, assicurati che la generazione degli embeddings sia abilitata e che la configurazione AI sia corretta.
+                                    </p>
+                                </div>
+                            </div>
+                        }
+                    }
+                    else if (!enableEmbeddings && processingComplete)
+                    {
+                        <div class="result-card">
+                            <div class="result-header">
+                                <span class="result-icon">🔗</span>
+                                <span class="result-title">Documenti Simili</span>
+                                <span class="result-status" style="background: #e2e8f0; color: #4a5568;">ℹ️ Disabilitato</span>
+                            </div>
+                            <div class="result-content">
+                                <p style="color: #4a5568; margin: 0;">
+                                    ℹ️ La ricerca di documenti simili è disabilitata. Per abilitarla, attiva l'opzione "Genera embeddings" nelle impostazioni di elaborazione qui sotto e rianalizza il documento.
+                                </p>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+
+            @* Show Category and Visibility form fields - ALWAYS visible *@
+            <div class="form-section">
+                <label class="form-label">
+                    📁 Categoria
+                </label>
+                @if (processingComplete && !string.IsNullOrEmpty(suggestedCategory) && !useCustomCategory)
+                {
+                    <input type="text" @bind="suggestedCategory" class="form-control" placeholder="Categoria suggerita da AI" />
+                    <label style="margin-top: 0.5rem;">
+                        <input type="checkbox" @bind="useCustomCategory" />
+                        Usa una categoria diversa
+                    </label>
+                }
+                else
+                {
+                    <input type="text" @bind="customCategory" class="form-control" placeholder="@GetCategoryPlaceholder()" />
+                    @if (processingComplete && string.IsNullOrEmpty(suggestedCategory))
+                    {
+                        <small style="color: #666; display: block; margin-top: 0.5rem;">
+                            ℹ️ Nessuna categoria suggerita dall'AI. Inserisci manualmente una categoria.
+                        </small>
+                    }
+                }
+            </div>
+
+            <div class="form-section">
+                <label class="form-label">
+                    👁️ Visibilità Documento
+                </label>
+                <select @bind="selectedVisibility" class="form-control">
+                    <option value="0">🔒 Privato - Solo tu puoi vedere questo documento</option>
+                    <option value="1">👥 Condiviso - Condividi con utenti specifici</option>
+                    <option value="2">🏢 Organizzazione - Tutti i membri dell'organizzazione</option>
+                    <option value="3">🌐 Pubblico - Tutti possono vedere</option>
+                </select>
+            </div>
+
+            <div class="form-section">
+                <label class="form-label">
+                    🏷️ Tag (separati da virgola)
+                </label>
+                <input type="text" @bind="documentTags" class="form-control" placeholder="es: contratto, legale, 2024" />
+            </div>
+
+            <div class="form-section">
+                <label class="form-label">
+                    📝 Note
+                </label>
+                <textarea @bind="documentNotes" class="form-control" rows="3" placeholder="Aggiungi note sul documento..."></textarea>
+            </div>
+
+            <div class="form-section">
+                <h3>⚙️ Opzioni di Elaborazione</h3>
+                <div class="processing-options">
+                    <label class="option-checkbox">
+                        <input type="checkbox" @bind="enableTextExtraction" />
+                        <span class="option-label">
+                            <span class="option-title">📝 Estrazione testo automatica</span>
+                            <span class="option-description">Extract text content from the document</span>
+                        </span>
+                    </label>
+                    
+                    <label class="option-checkbox">
+                        <input type="checkbox" @bind="enableAICategory" />
+                        <span class="option-label">
+                            <span class="option-title">🤖 Suggerisci categoria con AI</span>
+                            <span class="option-description">Let AI analyze and suggest a category</span>
+                        </span>
+                    </label>
+                    
+                    <label class="option-checkbox">
+                        <input type="checkbox" @bind="enableTagExtraction" />
+                        <span class="option-label">
+                            <span class="option-title">🏷️ Estrai tag automaticamente con AI</span>
+                            <span class="option-description">Let AI extract relevant tags and keywords</span>
+                        </span>
+                    </label>
+                    
+                    <label class="option-checkbox">
+                        <input type="checkbox" @bind="enableMetadataExtraction" />
+                        <span class="option-label">
+                            <span class="option-title">📋 Estrai metadati strutturati con AI</span>
+                            <span class="option-description">Extract structured metadata like invoice numbers, dates, authors, etc.</span>
+                        </span>
+                    </label>
+                    
+                    <label class="option-checkbox">
+                        <input type="checkbox" @bind="enableEmbeddings" />
+                        <span class="option-label">
+                            <span class="option-title">🧠 Genera embeddings (Gemini)</span>
+                            <span class="option-description">Generate vector embeddings for semantic search</span>
+                        </span>
+                    </label>
+                    
+                    <label class="option-checkbox">
+                        <input type="checkbox" @bind="generateChunkEmbeddingsImmediately" />
+                        <span class="option-label">
+                            <span class="option-title">⚡ Genera embeddings chunks immediatamente</span>
+                            <span class="option-description">Se disabilitato (consigliato), i chunks vengono creati subito ma gli embeddings generati in background per upload più veloci. Se abilitato, genera tutto durante l'upload (più lento ma completo subito).</span>
+                        </span>
+                    </label>
+                </div>
+            </div>
+
+            @* Show Save/Cancel buttons *@
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary" disabled="@(isUploading || selectedFile == null || !processingComplete)">
+                    @if (isUploading)
+                    {
+                        <span>⏳ Caricamento...</span>
+                    }
+                    else
+                    {
+                        <span>📤 Carica Documento</span>
+                    }
+                </button>
+                <button type="button" class="btn btn-secondary" @onclick="Cancel" disabled="@isUploading">
+                    Annulla
+                </button>
+            </div>
+            
+            @* Help text for upload button *@
+            @if (selectedFile != null && !processingComplete && !isProcessing)
+            {
+                <div class="help-text">
+                    <small>
+                        ℹ️ Clicca prima su "🔬 Analizza Documento" per abilitare il caricamento
+                    </small>
+                </div>
+            }
+        </EditForm>
+    </div>
+</div>
+
+@* Logs Modal *@
+@if (showLogsModal)
+{
+    <div class="modal-overlay" @onclick="ToggleLogsModal">
+        <div class="modal-content logs-modal" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>📋 Log Caricamento</h3>
+                <button class="btn-close" @onclick="ToggleLogsModal">×</button>
+            </div>
+            <div class="modal-body">
+                @if (isLoadingLogs)
+                {
+                    <div class="loading-message">
+                        <span class="spinner"></span> Caricamento log...
+                    </div>
+                }
+                else if (uploadLogs == null || !uploadLogs.Any())
+                {
+                    <div class="no-logs-message">
+                        <div style="font-size: 1.1rem; margin-bottom: 1rem;">
+                            ℹ️ Nessun log disponibile nelle ultime 24 ore.
+                        </div>
+                        <div style="font-size: 0.9rem; color: #666; text-align: left; max-width: 600px; margin: 0 auto;">
+                            <p style="margin: 0.5rem 0;"><strong>Possibili cause:</strong></p>
+                            <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
+                                <li>Nessun documento è stato analizzato nelle ultime 24 ore</li>
+                                <li>I log potrebbero essere associati a un altro utente</li>
+                                <li>Verifica la console del browser (F12) per dettagli di debug</li>
+                            </ul>
+                            <p style="margin: 1rem 0 0.5rem 0;"><strong>💡 Suggerimento:</strong></p>
+                            <p style="margin: 0.5rem 0;">
+                                Dopo aver analizzato un documento, clicca il pulsante "🔄 Aggiorna" per ricaricare i log.
+                                I log vengono salvati durante l'analisi del documento e mostrano tutti i passaggi eseguiti.
+                            </p>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="logs-container">
+                        @foreach (var log in uploadLogs)
+                        {
+                            <div class="log-entry log-@log.Level.ToLower()">
+                                <div class="log-header">
+                                    <span class="log-timestamp">@log.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</span>
+                                    <span class="log-level">@log.Level</span>
+                                    <span class="log-category">@log.Category</span>
+                                </div>
+                                <div class="log-message">@log.Message</div>
+                                @if (!string.IsNullOrEmpty(log.FileName))
+                                {
+                                    <div class="log-filename">📄 File: @log.FileName</div>
+                                }
+                                @if (!string.IsNullOrEmpty(log.Details))
+                                {
+                                    <div class="log-details">
+                                        <details>
+                                            <summary>Dettagli</summary>
+                                            <pre>@log.Details</pre>
+                                        </details>
+                                    </div>
+                                }
+                                @if (!string.IsNullOrEmpty(log.StackTrace))
+                                {
+                                    <div class="log-stacktrace">
+                                        <details>
+                                            <summary>Stack Trace</summary>
+                                            <pre>@log.StackTrace</pre>
+                                        </details>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="ToggleLogsModal">Chiudi</button>
+                <button class="btn btn-primary" @onclick="LoadUploadLogs">🔄 Aggiorna</button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .upload-container {
+        padding: 1.5rem;
+        max-width: 1000px;
+        margin: 0 auto;
+        background: #f5f7fa;
+        min-height: 100vh;
+    }
+
+    .upload-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 2rem;
+        padding: 1rem;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+
+    .upload-header h2 {
+        font-size: 1.75rem;
+        margin: 0;
+        color: #2d3748;
+        font-weight: 700;
+    }
+
+    .upload-card {
+        background: white;
+        padding: 2rem;
+        border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+
+    .form-section {
+        margin-bottom: 2rem;
+    }
+
+    .form-section h3 {
+        margin: 0 0 1rem 0;
+        font-size: 1.3rem;
+    }
+
+    .file-upload-wrapper {
+        position: relative;
+        margin-bottom: 1rem;
+    }
+
+    .file-input-hidden {
+        position: absolute;
+        width: 0.1px;
+        height: 0.1px;
+        opacity: 0;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        clip-path: inset(50%);
+    }
+
+    .file-upload-button {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 1rem;
+        width: 100%;
+        min-height: 200px;
+        padding: 2rem;
+        border: 3px solid #ff9a76;
+        border-radius: 12px;
+        cursor: pointer;
+        background: linear-gradient(135deg, #ff9a76 0%, #ffb399 100%);
+        box-shadow: 0 4px 15px rgba(255, 154, 118, 0.3);
+        transition: all 0.3s ease;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .file-upload-button::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0) 100%);
+        pointer-events: none;
+    }
+
+    .file-upload-button:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 8px 25px rgba(255, 154, 118, 0.5);
+        border-color: #ffb399;
+    }
+
+    .file-upload-button:active {
+        transform: translateY(-2px);
+    }
+
+    .upload-icon-large {
+        font-size: 4rem;
+        animation: float 3s ease-in-out infinite;
+    }
+
+    @@keyframes float {
+        0%, 100% { transform: translateY(0px); }
+        50% { transform: translateY(-10px); }
+    }
+
+    .upload-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+        z-index: 1;
+    }
+
+    .upload-title {
+        font-size: 1.5rem;
+        color: white;
+        font-weight: 700;
+        text-align: center;
+    }
+
+    .upload-subtitle {
+        font-size: 1rem;
+        color: rgba(255, 255, 255, 0.9);
+        text-align: center;
+    }
+
+    .file-info {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-top: 1rem;
+        padding: 1rem;
+        background: #f8f9fa;
+        border-radius: 5px;
+    }
+
+    .file-icon {
+        font-size: 3rem;
+    }
+
+    .file-details p {
+        margin: 0.25rem 0;
+        color: #666;
+    }
+
+    .analyzing-section {
+        text-align: center;
+        padding: 2rem;
+        background: #f8f9fa;
+        border-radius: 5px;
+        margin-bottom: 2rem;
+    }
+    
+    .analyzing-section .elapsed-time {
+        color: #666;
+        font-size: 0.95rem;
+        margin-top: 0.5rem;
+        font-weight: 500;
+    }
+    
+    .analyzing-section .warning-text {
+        color: #ff9800;
+        font-size: 0.9rem;
+        margin-top: 0.5rem;
+        font-weight: 600;
+        animation: blink 1.5s ease-in-out infinite;
+    }
+    
+    @@keyframes blink {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+
+    .spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #ff9a76;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 1rem;
+    }
+
+    @@keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    .suggestion-section {
+        margin-bottom: 2rem;
+    }
+
+    .results-section {
+        margin-bottom: 2rem;
+        padding: 1.5rem;
+        background: #f8f9fa;
+        border-radius: 12px;
+    }
+
+    .results-section h3 {
+        margin-bottom: 1.5rem;
+        color: #2d3748;
+        font-weight: 700;
+        font-size: 1.4rem;
+    }
+
+    .result-card {
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        margin-bottom: 1rem;
+        overflow: hidden;
+        transition: all 0.3s ease;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    }
+
+    .result-card:hover {
+        border-color: #ff6b35;
+        box-shadow: 0 4px 12px rgba(255, 107, 53, 0.15);
+        transform: translateY(-2px);
+    }
+
+    .result-header {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 1rem;
+        background: linear-gradient(135deg, rgba(255, 154, 118, 0.05) 0%, rgba(255, 179, 153, 0.05) 100%);
+        border-bottom: 1px solid #e9ecef;
+    }
+
+    .result-icon {
+        font-size: 1.5rem;
+    }
+
+    .result-title {
+        flex: 1;
+        font-weight: 600;
+        color: #333;
+    }
+
+    .result-status {
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.875rem;
+        font-weight: 600;
+    }
+
+    .result-status.success {
+        background: #d4edda;
+        color: #155724;
+    }
+
+    .result-content {
+        padding: 1rem;
+    }
+
+    .text-preview {
+        margin: 0 0 0.5rem 0;
+        line-height: 1.6;
+        color: #555;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+
+    .category-result {
+        margin-bottom: 1rem;
+    }
+
+    .suggestion-card {
+        background: #fff7f4;
+        padding: 1.5rem;
+        border-radius: 8px;
+        border-left: 4px solid #FF6B35;
+    }
+
+    .suggestion-header {
+        margin-bottom: 1rem;
+    }
+
+    .category-badge {
+        display: inline-block;
+        padding: 0.5rem 1rem;
+        background: linear-gradient(135deg, #ff9a76 0%, #ffb399 100%);
+        color: white;
+        border-radius: 5px;
+        font-weight: 600;
+    }
+
+    .reasoning-box {
+        margin-top: 1rem;
+        padding: 1rem;
+        background: white;
+        border-radius: 5px;
+    }
+
+    .reasoning-box h4 {
+        margin: 0 0 0.5rem 0;
+        color: #ff9a76;
+    }
+
+    .reasoning-box p {
+        margin: 0;
+        line-height: 1.6;
+        color: #333;
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 0.75rem;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        font-size: 1rem;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: #ff9a76;
+        box-shadow: 0 0 0 3px rgba(255, 154, 118, 0.1);
+    }
+
+    .analyze-button-section {
+        margin: 2rem 0;
+        text-align: center;
+        padding: 2rem;
+        background: linear-gradient(135deg, rgba(72, 187, 120, 0.05) 0%, rgba(56, 161, 105, 0.05) 100%);
+        border-radius: 12px;
+        border: 3px dashed #48bb78;
+        animation: pulse-border 2s ease-in-out infinite;
+    }
+
+    @@keyframes pulse-border {
+        0%, 100% {
+            border-color: #48bb78;
+            background: linear-gradient(135deg, rgba(72, 187, 120, 0.05) 0%, rgba(56, 161, 105, 0.05) 100%);
+        }
+        50% {
+            border-color: #38a169;
+            background: linear-gradient(135deg, rgba(72, 187, 120, 0.1) 0%, rgba(56, 161, 105, 0.1) 100%);
+        }
+    }
+
+    .btn-large {
+        padding: 1.5rem 3rem;
+        font-size: 1.4rem;
+        box-shadow: 0 6px 20px rgba(72, 187, 120, 0.4);
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        min-width: 300px;
+        animation: button-pulse 2s ease-in-out infinite;
+    }
+
+    @@keyframes button-pulse {
+        0%, 100% {
+            transform: scale(1);
+            box-shadow: 0 6px 20px rgba(72, 187, 120, 0.4);
+        }
+        50% {
+            transform: scale(1.05);
+            box-shadow: 0 8px 25px rgba(72, 187, 120, 0.6);
+        }
+    }
+
+    .btn-large:hover:not(:disabled) {
+        box-shadow: 0 8px 30px rgba(72, 187, 120, 0.6);
+        transform: scale(1.1);
+        animation: none;
+    }
+
+    .form-actions {
+        display: flex;
+        gap: 1rem;
+        margin-top: 2rem;
+        justify-content: flex-end;
+    }
+
+    .btn {
+        padding: 0.875rem 2rem;
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .btn-process {
+        background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+        color: white;
+        border: 2px solid transparent;
+    }
+
+    .btn-process:hover:not(:disabled) {
+        background: linear-gradient(135deg, #38a169 0%, #2f855a 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(72, 187, 120, 0.3);
+    }
+
+    .btn-primary {
+        background: linear-gradient(135deg, #ff9a76 0%, #ffb399 100%);
+        color: white;
+        border: 2px solid transparent;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+        background: linear-gradient(135deg, #ffb399 0%, #ffc4a8 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(255, 154, 118, 0.4);
+    }
+
+    .btn-secondary {
+        background: #e2e8f0;
+        color: #4a5568;
+        border: 2px solid #cbd5e0;
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+        background: #cbd5e0;
+        border-color: #a0aec0;
+        transform: translateY(-2px);
+    }
+
+    .alert {
+        padding: 1.25rem;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+        font-size: 1rem;
+        line-height: 1.6;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        animation: slideIn 0.3s ease-out;
+    }
+
+    @@keyframes slideIn {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .alert-success {
+        background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+        color: #155724;
+        border: 2px solid #28a745;
+        border-left: 5px solid #28a745;
+    }
+
+    .alert-error {
+        background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+        color: #721c24;
+        border: 2px solid #dc3545;
+        border-left: 5px solid #dc3545;
+        font-weight: 500;
+    }
+
+    .form-label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        color: #333;
+        font-size: 1rem;
+    }
+
+    .processing-options {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .option-checkbox {
+        display: flex;
+        align-items: flex-start;
+        gap: 1rem;
+        padding: 1rem;
+        border: 2px solid #e9ecef;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        background: white;
+    }
+
+    .option-checkbox:hover {
+        border-color: #ff9a76;
+        background: #fff4f0;
+        transform: translateX(4px);
+    }
+
+    .option-checkbox input[type="checkbox"] {
+        margin-top: 0.25rem;
+        width: 20px;
+        height: 20px;
+        cursor: pointer;
+        accent-color: #ff9a76;
+    }
+
+    .option-label {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        flex: 1;
+    }
+
+    .option-title {
+        font-weight: 600;
+        font-size: 1rem;
+        color: #333;
+    }
+
+    .option-description {
+        font-size: 0.875rem;
+        color: #666;
+    }
+
+    .option-checkbox:has(input:checked) {
+        border-color: #ff9a76;
+        background: linear-gradient(135deg, rgba(255, 154, 118, 0.05) 0%, rgba(255, 179, 153, 0.05) 100%);
+    }
+
+    .option-checkbox:has(input:checked) .option-title {
+        color: #ff9a76;
+    }
+    
+    .help-text {
+        text-align: center;
+        margin-top: 1rem;
+        padding: 0.75rem;
+        background: #e7f3ff;
+        border-radius: 5px;
+        border: 1px solid #90caf9;
+    }
+    
+    .help-text small {
+        color: #1976d2;
+        font-weight: 500;
+    }
+    
+    .extracted-tag {
+        display: inline-block;
+        padding: 0.5rem 1rem;
+        background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+        color: white;
+        border-radius: 20px;
+        font-size: 0.875rem;
+        font-weight: 600;
+        box-shadow: 0 2px 5px rgba(72, 187, 120, 0.3);
+        transition: all 0.3s ease;
+    }
+    
+    .extracted-tag:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 10px rgba(72, 187, 120, 0.4);
+    }
+
+    /* Similar Documents Styles */
+    .similar-documents-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .similar-doc-item {
+        padding: 1rem;
+        border: 1px solid #e9ecef;
+        border-radius: 8px;
+        background: #f8f9fa;
+        transition: all 0.3s ease;
+    }
+
+    .similar-doc-item:hover {
+        border-color: #ff6b35;
+        background: #fff;
+        transform: translateX(4px);
+        box-shadow: 0 2px 8px rgba(255, 107, 53, 0.15);
+    }
+
+    .similar-doc-header {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .similar-doc-icon {
+        font-size: 1.25rem;
+    }
+
+    .similar-doc-name {
+        flex: 1;
+        font-weight: 600;
+        color: #333;
+    }
+
+    .similarity-badge {
+        padding: 0.25rem 0.75rem;
+        background: linear-gradient(135deg, #ff9a76 0%, #ffb399 100%);
+        color: white;
+        border-radius: 12px;
+        font-size: 0.875rem;
+        font-weight: 600;
+    }
+
+    .similar-doc-category {
+        margin-bottom: 0.5rem;
+        color: #666;
+        font-size: 0.875rem;
+    }
+
+    .similar-doc-preview {
+        color: #555;
+        font-size: 0.875rem;
+        line-height: 1.5;
+        font-style: italic;
+        padding: 0.5rem;
+        background: white;
+        border-left: 3px solid #ff9a76;
+        border-radius: 4px;
+    }
+
+    /* Sticky Analyze Button */
+    .sticky-analyze-wrapper {
+        position: sticky;
+        top: 80px;
+        z-index: 100;
+        background: white;
+        padding: 1rem 0;
+        margin-bottom: 1rem;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        border-radius: 8px;
+    }
+
+    /* Improved Form Actions */
+    .form-actions {
+        position: sticky;
+        bottom: 0;
+        background: white;
+        padding: 1rem;
+        box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
+        border-radius: 8px;
+        margin-top: 1rem;
+        z-index: 50;
+    }
+
+    /* AI Provider Info */
+    .ai-provider-info {
+        margin-top: 0.5rem;
+        color: #666;
+        font-size: 0.875rem;
+        font-style: italic;
+    }
+
+    .ai-provider-info.warning {
+        color: #856404;
+    }
+
+    /* Modal Styles */
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .modal-content {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        max-width: 90%;
+        max-height: 85vh;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .logs-modal {
+        width: 900px;
+    }
+
+    .modal-header {
+        padding: 1.5rem;
+        border-bottom: 1px solid #e0e0e0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .modal-header h3 {
+        margin: 0;
+        font-size: 1.5rem;
+    }
+
+    .btn-close {
+        background: none;
+        border: none;
+        font-size: 2rem;
+        cursor: pointer;
+        color: #666;
+        line-height: 1;
+        padding: 0;
+        width: 32px;
+        height: 32px;
+    }
+
+    .btn-close:hover {
+        color: #333;
+    }
+
+    .modal-body {
+        padding: 1.5rem;
+        overflow-y: auto;
+        flex: 1;
+    }
+
+    .modal-footer {
+        padding: 1rem 1.5rem;
+        border-top: 1px solid #e0e0e0;
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+    }
+
+    .logs-container {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .log-entry {
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        padding: 12px;
+        background: #f9f9f9;
+    }
+
+    .log-entry.log-error {
+        border-left: 4px solid #dc3545;
+        background: #fff5f5;
+    }
+
+    .log-entry.log-warning {
+        border-left: 4px solid #ffc107;
+        background: #fffef5;
+    }
+
+    .log-entry.log-info {
+        border-left: 4px solid #17a2b8;
+        background: #f5fcfd;
+    }
+
+    .log-entry.log-debug {
+        border-left: 4px solid #6c757d;
+        background: #f8f9fa;
+    }
+
+    .log-header {
+        display: flex;
+        gap: 15px;
+        margin-bottom: 8px;
+        font-size: 0.85rem;
+        flex-wrap: wrap;
+    }
+
+    .log-timestamp {
+        color: #666;
+    }
+
+    .log-level {
+        font-weight: bold;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 0.8rem;
+    }
+
+    .log-entry.log-error .log-level {
+        background: #dc3545;
+        color: white;
+    }
+
+    .log-entry.log-warning .log-level {
+        background: #ffc107;
+        color: #333;
+    }
+
+    .log-entry.log-info .log-level {
+        background: #17a2b8;
+        color: white;
+    }
+
+    .log-entry.log-debug .log-level {
+        background: #6c757d;
+        color: white;
+    }
+
+    .log-category {
+        background: #e9ecef;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        color: #495057;
+    }
+
+    .log-message {
+        margin-bottom: 6px;
+        font-size: 0.95rem;
+        line-height: 1.5;
+    }
+
+    .log-filename {
+        font-size: 0.85rem;
+        color: #666;
+        margin-top: 6px;
+    }
+
+    .log-details details,
+    .log-stacktrace details {
+        margin-top: 8px;
+    }
+
+    .log-details summary,
+    .log-stacktrace summary {
+        cursor: pointer;
+        color: #007bff;
+        font-size: 0.85rem;
+        user-select: none;
+    }
+
+    .log-details summary:hover,
+    .log-stacktrace summary:hover {
+        text-decoration: underline;
+    }
+
+    .log-details pre,
+    .log-stacktrace pre {
+        background: #f4f4f4;
+        padding: 8px;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        overflow-x: auto;
+        margin-top: 6px;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+
+    .loading-message,
+    .no-logs-message {
+        text-align: center;
+        padding: 2rem;
+        color: #666;
+        font-size: 1.1rem;
+    }
+
+    .spinner {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border: 3px solid rgba(0, 0, 0, 0.1);
+        border-radius: 50%;
+        border-top-color: #007bff;
+        animation: spin 1s ease-in-out infinite;
+    }
+
+    @@keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    .btn-info {
+        background: #17a2b8;
+        color: white;
+    }
+
+    .btn-info:hover {
+        background: #138496;
+    }
+
+</style>
+
+@code {
+    // Constants
+    private const int UI_UPDATE_DELAY_MS = 500;
+    private const string STEP_EXTRACTING_TEXT = "Extracting text from file...";
+    private const string STEP_GENERATING_EMBEDDINGS = "Generating vector embeddings...";
+    private const string STEP_ANALYZING_AI = "Analyzing document with AI...";
+    private const string STEP_EXTRACTING_METADATA = "Estrazione metadati dal documento...";
+    private const string STEP_COMPLETE = "Processing complete!";
+    private const int SIMILAR_DOCUMENTS_COUNT = 5;
+    private const double SIMILAR_DOCUMENTS_MIN_SIMILARITY = 0.3;
+    
+    // Localization constants for Italian text
+    private const string CATEGORY_REASONING_SIMILAR_DOC_TEMPLATE = "Categoria suggerita basata su documento simile: '{0}' (Similarità: {1}). Trovati {2} documenti simili nella stessa categoria.";
+    
+    private class UploadModel
+    {
+        public string? Category { get; set; }
+        public int Visibility { get; set; }
+    }
+
+    private UploadModel uploadModel = new();
+    private IBrowserFile? selectedFile;
+    private bool isUploading = false;
+    private bool isProcessing = false;
+    private bool processingComplete = false;
+    private bool useCustomCategory = false;
+    private string? customCategory;
+    private string? suggestedCategory;
+    private string? categoryReasoning;
+    private string? aiProvider;
+    private int selectedVisibility = 0;
+    private string? errorMessage;
+    private string? successMessage;
+    private string currentUserId = string.Empty;
+    private string processingStep = "";
+    private string? documentTags;
+    private string? documentNotes;
+    private List<string>? aiExtractedTags;
+    
+    // Processing results
+    private string extractedText = string.Empty;
+    private float[]? embedding;
+    private bool embeddingGenerated = false;
+    private string? embeddingError;
+    private bool tagExtractionAttempted = false;
+    private bool tagExtractionSucceeded = false;
+    private string? tagExtractionError;
+    private bool metadataExtractionAttempted = false;
+    private bool metadataExtractionSucceeded = false;
+    private string? metadataExtractionError;
+    private Dictionary<string, string>? extractedMetadata;
+    private int? pageCount;
+    private string? detectedLanguage;
+    private string processingStatus = "Pending";
+    private string? processingError;
+    private DateTime? aiAnalysisDate;
+    private List<RelevantDocumentResult>? similarDocuments;
+    
+    // Progress tracking
+    private System.Diagnostics.Stopwatch? operationStopwatch;
+    private System.Threading.Timer? progressTimer;
+    private int elapsedSeconds = 0;
+    
+    // Processing options
+    private bool enableTextExtraction = true;
+    private bool enableAICategory = true;
+    private bool enableEmbeddings = true;
+    private bool enableTagExtraction = true;
+    private bool enableMetadataExtraction = true;
+    private bool generateChunkEmbeddingsImmediately = false; // Default: background generation (faster)
+    
+    // Logs modal
+    private bool showLogsModal = false;
+    private List<DocN.Data.Models.LogEntry> uploadLogs = new();
+    private bool isLoadingLogs = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        
+        // Only set currentUserId if user is authenticated, otherwise leave it empty
+        currentUserId = userId ?? string.Empty;
+    }
+
+    private async Task HandleFileSelection(InputFileChangeEventArgs e)
+    {
+        selectedFile = e.File;
+        errorMessage = null;
+        successMessage = null;
+        suggestedCategory = null;
+        categoryReasoning = null;
+        processingComplete = false;
+        embeddingGenerated = false;
+        embeddingError = null;
+        extractedText = string.Empty;
+        embedding = null;
+        documentTags = null;
+        aiExtractedTags = null;
+        tagExtractionAttempted = false;
+        tagExtractionSucceeded = false;
+        tagExtractionError = null;
+        metadataExtractionAttempted = false;
+        metadataExtractionSucceeded = false;
+        metadataExtractionError = null;
+        extractedMetadata = null;
+
+        // Validate file size
+        var maxSize = Configuration.GetValue<int>("FileStorage:MaxFileSizeMB", 50) * 1024 * 1024;
+        if (selectedFile.Size > maxSize)
+        {
+            errorMessage = $"File size exceeds maximum allowed size of {Configuration.GetValue<int>("FileStorage:MaxFileSizeMB", 50)}MB";
+            selectedFile = null;
+            return;
+        }
+
+        // Validate file extension - use comprehensive list of supported formats
+        var allowedExtensions = Configuration.GetSection("FileStorage:AllowedExtensions").Get<string[]>() 
+            ?? new[] { ".pdf", ".doc", ".docx", ".xlsx", ".xls", ".pptx", ".ppt", ".txt", ".md", ".csv", ".json", ".xml", ".html", ".htm", ".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif", ".gif", ".webp" };
+        var extension = Path.GetExtension(selectedFile.Name).ToLowerInvariant();
+        if (!allowedExtensions.Contains(extension))
+        {
+            errorMessage = $"File type '{extension}' is not allowed. Allowed types: {string.Join(", ", allowedExtensions)}";
+            selectedFile = null;
+            return;
+        }
+    }
+
+    private async Task ProcessDocument()
+    {
+        if (selectedFile == null) return;
+
+        isProcessing = true;
+        processingComplete = false;
+        errorMessage = null;
+        processingStatus = "Processing";
+        processingError = null;
+
+        try
+        {
+            // Step 1: Extract text
+            if (enableTextExtraction)
+            {
+                processingStep = STEP_EXTRACTING_TEXT;
+                StateHasChanged();
+                await Task.Delay(UI_UPDATE_DELAY_MS);
+
+                try
+                {
+                    using var stream = selectedFile.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024);
+                    
+                    // Use FileProcessingService for proper multi-format text extraction
+                    var processingResult = await FileProcessingService.ProcessFileAsync(
+                        stream, 
+                        selectedFile.Name, 
+                        selectedFile.ContentType);
+                    
+                    if (processingResult.Success)
+                    {
+                        extractedText = processingResult.ExtractedText;
+                        // Capture metadata from processing result
+                        pageCount = processingResult.PageCount;
+                        detectedLanguage = processingResult.DetectedLanguage;
+                        
+                        // Store the extracted metadata from file processing (Word, PDF, Images, etc.)
+                        if (processingResult.Metadata != null && processingResult.Metadata.Any())
+                        {
+                            // Initialize or merge with existing metadata
+                            if (extractedMetadata == null)
+                            {
+                                extractedMetadata = new Dictionary<string, string>(processingResult.Metadata);
+                            }
+                            else
+                            {
+                                // Merge metadata, file processing metadata takes precedence for duplicates
+                                foreach (var kvp in processingResult.Metadata)
+                                {
+                                    extractedMetadata[kvp.Key] = kvp.Value;
+                                }
+                            }
+                            
+                            metadataExtractionSucceeded = true;
+                            
+                            // Check if OCR was used and log accordingly
+                            if (processingResult.Metadata.TryGetValue("OCR_Enabled", out var ocrEnabled) && ocrEnabled == "true")
+                            {
+                                if (processingResult.Metadata.TryGetValue("OCR_CharCount", out var charCount))
+                                {
+                                    var ocrLang = processingResult.Metadata.TryGetValue("OCR_Language", out var lang) ? lang : "unknown";
+                                    await LogService.LogInfoAsync("OCR", "OCR text extraction successful", 
+                                        $"Extracted {charCount} characters using {ocrLang} language model",
+                                        userId: currentUserId, 
+                                        fileName: selectedFile.Name);
+                                }
+                                else if (processingResult.Metadata.TryGetValue("OCR_Error", out var ocrError))
+                                {
+                                    await LogService.LogWarningAsync("OCR", "OCR extraction failed", 
+                                        $"Error: {ocrError}",
+                                        userId: currentUserId, 
+                                        fileName: selectedFile.Name);
+                                }
+                                else if (processingResult.Metadata.TryGetValue("OCR_Result", out var ocrResult) && ocrResult == "No text detected")
+                                {
+                                    await LogService.LogInfoAsync("OCR", "OCR completed but no text detected", 
+                                        "The image was processed successfully but no text was found",
+                                        userId: currentUserId, 
+                                        fileName: selectedFile.Name);
+                                }
+                            }
+                            else if (processingResult.Metadata.TryGetValue("OCR_Enabled", out var ocrDisabled) && ocrDisabled == "false")
+                            {
+                                await LogService.LogInfoAsync("OCR", "OCR not available", 
+                                    "Tesseract OCR is not configured. Install tessdata files to enable OCR text extraction from images",
+                                    userId: currentUserId, 
+                                    fileName: selectedFile.Name);
+                            }
+                            
+                            await LogService.LogInfoAsync("Upload", "File processing extracted metadata", 
+                                $"Extracted {processingResult.Metadata.Count} metadata fields: {string.Join(", ", processingResult.Metadata.Select(kvp => $"{kvp.Key}={kvp.Value}"))}",
+                                userId: currentUserId, 
+                                fileName: selectedFile.Name);
+                        }
+                    }
+                    else
+                    {
+                        processingError = processingResult.ErrorMessage;
+                        // Fallback to simple text reading if processing fails
+                        if (stream.CanSeek)
+                        {
+                            stream.Position = 0;
+                            using var reader = new StreamReader(stream);
+                            extractedText = await reader.ReadToEndAsync();
+                        }
+                        else
+                        {
+                            // If stream is not seekable, reopen it
+                            using var fallbackStream = selectedFile.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024);
+                            using var fallbackReader = new StreamReader(fallbackStream);
+                            extractedText = await fallbackReader.ReadToEndAsync();
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Don't expose sensitive system information to users
+                    processingError = "Text extraction failed";
+                    await LogService.LogErrorAsync("Upload", "Text extraction error", 
+                        ex.Message, 
+                        userId: currentUserId, 
+                        fileName: selectedFile.Name, 
+                        stackTrace: ex.StackTrace);
+                    // Fallback to simple text reading on any error
+                    try
+                    {
+                        using var fallbackStream = selectedFile.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024);
+                        using var fallbackReader = new StreamReader(fallbackStream);
+                        extractedText = await fallbackReader.ReadToEndAsync();
+                    }
+                    catch
+                    {
+                        // If all else fails, set empty string
+                        extractedText = string.Empty;
+                    }
+                }
+            }
+
+            // Step 2: Generate embeddings
+            if (enableEmbeddings && !string.IsNullOrEmpty(extractedText))
+            {
+                processingStep = STEP_GENERATING_EMBEDDINGS;
+                StartProgressTimer(); // Start timer for embedding generation
+                StateHasChanged();
+                await Task.Delay(UI_UPDATE_DELAY_MS);
+
+                try
+                {
+                    await LogService.LogDebugAsync("Embedding", "Starting embedding generation", 
+                        $"Text length: {extractedText.Length} characters",
+                        userId: currentUserId, 
+                        fileName: selectedFile.Name);
+                    embedding = await AIService.GenerateEmbeddingAsync(extractedText);
+                    
+                    StopProgressTimer(); // Stop timer after embedding generation completes
+                    
+                    embeddingGenerated = embedding != null && embedding.Length > 0;
+                    
+                    if (embeddingGenerated && embedding != null)
+                    {
+                        embeddingError = null;
+                        
+                        // Calculate embedding statistics
+                        var mean = embedding.Average();
+                        var stdDev = Math.Sqrt(embedding.Select(v => Math.Pow(v - mean, 2)).Average());
+                        var min = embedding.Min();
+                        var max = embedding.Max();
+                        var sum = embedding.Sum();
+                        var magnitude = Math.Sqrt(embedding.Select(v => (double)v * v).Sum());
+                        
+                        // Log embedding vector details for debugging
+                        var embeddingDetails = $@"Embedding Length: {embedding.Length} dimensions
+First 10 values: [{string.Join(", ", embedding.Take(10).Select(v => v.ToString("F8")))}]
+Values 11-20: [{string.Join(", ", embedding.Skip(10).Take(10).Select(v => v.ToString("F8")))}]
+Last 10 values: [{string.Join(", ", embedding.Skip(Math.Max(0, embedding.Length - 10)).Select(v => v.ToString("F8")))}]
+Statistics: Mean={mean:F8}, StdDev={stdDev:F8}, Min={min:F8}, Max={max:F8}, Sum={sum:F8}, Magnitude={magnitude:F8}";
+                        
+                        await LogService.LogInfoAsync("Embedding", "Embedding generated successfully", 
+                            embeddingDetails,
+                            userId: currentUserId, 
+                            fileName: selectedFile.Name);
+                        
+                        // Step 2.5: Search for similar documents using the generated embedding
+                        try
+                        {
+                            processingStep = "Ricerca documenti simili...";
+                            StateHasChanged();
+                            await Task.Delay(UI_UPDATE_DELAY_MS);
+                            
+                            if (!string.IsNullOrEmpty(currentUserId))
+                            {
+                                await LogService.LogDebugAsync("SimilaritySearch", "Starting similarity search", 
+                                    $"Embedding length: {embedding!.Length}, MinSimilarity threshold: {SIMILAR_DOCUMENTS_MIN_SIMILARITY:P0}",
+                                    userId: currentUserId, 
+                                    fileName: selectedFile.Name);
+                                
+                                // Use the embedding we already generated instead of regenerating it from text
+                                similarDocuments = await SemanticRAGService.SearchDocumentsWithEmbeddingAsync(
+                                    embedding!,
+                                    currentUserId,
+                                    topK: SIMILAR_DOCUMENTS_COUNT,
+                                    minSimilarity: SIMILAR_DOCUMENTS_MIN_SIMILARITY);
+                                
+                                if (similarDocuments != null && similarDocuments.Any())
+                                {
+                                    var docList = string.Join(", ", similarDocuments.Select(doc => $"{doc.FileName} ({doc.SimilarityScore:P2})"));
+                                    await LogService.LogInfoAsync("SimilaritySearch", "Similar documents found", 
+                                        $"Found {similarDocuments.Count} similar documents: {docList}",
+                                        userId: currentUserId, 
+                                        fileName: selectedFile.Name);
+                                }
+                                else
+                                {
+                                    await LogService.LogDebugAsync("SimilaritySearch", "No similar documents found", 
+                                        $"Possible causes: 1) No previous documents with embeddings, 2) Documents have different OwnerId, 3) Similarity below threshold ({SIMILAR_DOCUMENTS_MIN_SIMILARITY:P0})",
+                                        userId: currentUserId, 
+                                        fileName: selectedFile.Name);
+                                }
+                            }
+                            else
+                            {
+                                await LogService.LogWarningAsync("SimilaritySearch", "Cannot search for similar documents - currentUserId is empty", 
+                                    userId: null, 
+                                    fileName: selectedFile.Name);
+                            }
+                        }
+                        catch (Exception simEx)
+                        {
+                            await LogService.LogErrorAsync("SimilaritySearch", "Error searching similar documents", 
+                                simEx.Message, 
+                                userId: currentUserId, 
+                                fileName: selectedFile.Name, 
+                                stackTrace: simEx.StackTrace);
+                            similarDocuments = null;
+                        }
+                    }
+                    else
+                    {
+                        embeddingError = "Embedding generation returned null. Check AI provider configuration (Gemini/OpenAI API keys).";
+                        await LogService.LogWarningAsync("Embedding", "Embedding generation returned null", 
+                            userId: currentUserId, 
+                            fileName: selectedFile.Name);
+                    }
+                }
+                catch (TimeoutException tex)
+                {
+                    StopProgressTimer(); // Stop timer on timeout
+                    // Timeout during embedding generation
+                    embeddingGenerated = false;
+                    embeddingError = $"⏱️ Timeout: {tex.Message}";
+                    await LogService.LogWarningAsync("Embedding", "Embedding generation timed out", 
+                        tex.Message, 
+                        userId: currentUserId, 
+                        fileName: selectedFile.Name);
+                }
+                catch (Exception ex)
+                {
+                    StopProgressTimer(); // Stop timer on error
+                    // Log but don't fail the whole process
+                    embeddingGenerated = false;
+                    embeddingError = $"❌ Errore: {ex.Message}";
+                    await LogService.LogErrorAsync("Embedding", "Embedding generation exception", 
+                        ex.Message, 
+                        userId: currentUserId, 
+                        fileName: selectedFile.Name, 
+                        stackTrace: ex.StackTrace);
+                }
+            }
+            else
+            {
+                // Log why embeddings were not generated
+                if (!enableEmbeddings)
+                {
+                    await LogService.LogDebugAsync("Embedding", "Embeddings not generated - checkbox unchecked", 
+                        "To search for similar documents, enable the 'Genera embeddings' option",
+                        userId: currentUserId, 
+                        fileName: selectedFile.Name);
+                }
+                else if (string.IsNullOrEmpty(extractedText))
+                {
+                    await LogService.LogWarningAsync("Embedding", "Embeddings not generated - extracted text is empty", 
+                        userId: currentUserId, 
+                        fileName: selectedFile.Name);
+                }
+            }
+
+            // Step 2.7: Suggest category from similar documents if found
+            if (similarDocuments != null && similarDocuments.Any())
+            {
+                var mostSimilarDoc = similarDocuments.First(); // Already ordered by similarity
+                if (!string.IsNullOrEmpty(mostSimilarDoc.Category))
+                {
+                    // Use the category from the most similar document
+                    suggestedCategory = mostSimilarDoc.Category;
+                    categoryReasoning = string.Format(
+                        CATEGORY_REASONING_SIMILAR_DOC_TEMPLATE,
+                        mostSimilarDoc.FileName,
+                        mostSimilarDoc.SimilarityScore.ToString("P1"),
+                        similarDocuments.Count);
+                    aiProvider = "Similarity-Based";
+                    
+                    await LogService.LogInfoAsync("Category", "Category suggested from similar document", 
+                        $"Category: '{suggestedCategory}', Most similar: '{mostSimilarDoc.FileName}' (Score: {mostSimilarDoc.SimilarityScore:P2})",
+                        userId: currentUserId, 
+                        fileName: selectedFile.Name);
+                }
+                else
+                {
+                    await LogService.LogDebugAsync("Category", "Most similar document has no category assigned", 
+                        userId: currentUserId, 
+                        fileName: selectedFile.Name);
+                }
+            }
+
+            // Step 3: AI category analysis (skip if already suggested from similar documents)
+            if (enableAICategory && !string.IsNullOrEmpty(extractedText) && string.IsNullOrEmpty(suggestedCategory))
+            {
+                processingStep = STEP_ANALYZING_AI;
+                StartProgressTimer(); // Start timer for AI operation
+                StateHasChanged();
+                await Task.Delay(UI_UPDATE_DELAY_MS);
+
+                try
+                {
+                    var result = await AIService.SuggestCategoryAsync(selectedFile.Name, extractedText);
+                    
+                    StopProgressTimer(); // Stop timer after AI operation completes
+                    
+                    aiProvider = result.Provider;
+                    await LogService.LogInfoAsync("Category", "AI category suggestion completed", 
+                        $"Category: '{result.Category}', Reasoning: '{result.Reasoning}', Provider: '{result.Provider}'",
+                        userId: currentUserId, 
+                        fileName: selectedFile.Name);
+                    
+                    // Check if category is valid
+                    if (!string.IsNullOrEmpty(result.Category) && result.Category != "Uncategorized")
+                    {
+                        suggestedCategory = result.Category;
+                        categoryReasoning = result.Reasoning;
+                    }
+                    else
+                    {
+                        // No valid category found
+                        suggestedCategory = null;
+                        categoryReasoning = result.Reasoning ?? "L'AI non è riuscita a determinare una categoria appropriata. Potrebbe essere necessario verificare la configurazione dell'API (Gemini/OpenAI).";
+                    }
+                }
+                catch (TimeoutException tex)
+                {
+                    StopProgressTimer(); // Stop timer on timeout
+                    // Timeout during category suggestion
+                    suggestedCategory = null;
+                    categoryReasoning = $"⏱️ Timeout: {tex.Message}";
+                    await LogService.LogWarningAsync("Category", "Category suggestion timeout", 
+                        tex.Message, 
+                        userId: currentUserId, 
+                        fileName: selectedFile.Name);
+                }
+                catch (Exception ex)
+                {
+                    StopProgressTimer(); // Stop timer on error
+                    // Category suggestion failed - user can still enter manually
+                    suggestedCategory = null;
+                    categoryReasoning = "Errore durante l'analisi della categoria. Verifica la configurazione AI o inserisci manualmente una categoria.";
+                    await LogService.LogErrorAsync("Category", "Category suggestion exception", 
+                        ex.Message, 
+                        userId: currentUserId, 
+                        fileName: selectedFile.Name, 
+                        stackTrace: ex.StackTrace);
+                }
+            }
+            else if (enableAICategory && !string.IsNullOrEmpty(suggestedCategory))
+            {
+                await LogService.LogDebugAsync("Category", "Skipping AI category analysis - category already suggested from similar documents", 
+                    fileName: selectedFile.Name);
+            }
+
+            // Step 4: AI tag extraction - always execute even if embeddings failed
+            if (enableTagExtraction && !string.IsNullOrEmpty(extractedText))
+            {
+                tagExtractionAttempted = true;
+                processingStep = "Extracting tags from document...";
+                StartProgressTimer(); // Start timer for AI operation
+                StateHasChanged();
+                await Task.Delay(UI_UPDATE_DELAY_MS);
+
+                try
+                {
+                    // Check if AI configuration is available
+                    var aiConfig = await AIService.GetActiveConfigurationAsync();
+                    if (aiConfig == null)
+                    {
+                        StopProgressTimer(); // Stop timer if no config
+                        tagExtractionSucceeded = false;
+                        tagExtractionError = "❌ Configurazione AI mancante. Configura almeno un provider AI (Gemini/OpenAI/Azure OpenAI) dalla pagina Configurazione.";
+                        await LogService.LogWarningAsync("Tag", "AI configuration not found", 
+                            "No active AI configuration available for tag extraction",
+                            fileName: selectedFile.Name, 
+                            userId: currentUserId);
+                    }
+                    else
+                    {
+                        aiExtractedTags = await AIService.ExtractTagsAsync(extractedText);
+                        
+                        StopProgressTimer(); // Stop timer after AI operation completes
+                        
+                        if (aiExtractedTags != null && aiExtractedTags.Any())
+                        {
+                            // Merge AI-extracted tags with any manually entered tags
+                            documentTags = string.Join(", ", aiExtractedTags);
+                            tagExtractionSucceeded = true;
+                            tagExtractionError = null;
+                            await LogService.LogInfoAsync("Tag", "Tags extracted successfully", 
+                                $"Extracted {aiExtractedTags.Count} tags: {documentTags}",
+                                userId: currentUserId, 
+                                fileName: selectedFile.Name);
+                        }
+                        else
+                        {
+                            tagExtractionSucceeded = false;
+                            tagExtractionError = "⚠️ L'AI non ha estratto tag dal documento. Possibili cause: documento troppo breve, contenuto non rilevante, o errore del provider AI. Puoi inserire i tag manualmente.";
+                            await LogService.LogWarningAsync("Tag", "No tags were extracted by AI", 
+                                $"AI Provider: {aiConfig.ChatProvider?.ToString() ?? "Unknown"}, Text length: {extractedText?.Length ?? 0} chars",
+                                fileName: selectedFile.Name, 
+                                userId: currentUserId);
+                        }
+                    }
+                }
+                catch (TimeoutException tex)
+                {
+                    StopProgressTimer(); // Stop timer on timeout
+                    // Timeout during tag extraction
+                    tagExtractionSucceeded = false;
+                    tagExtractionError = $"⏱️ Timeout: {tex.Message}";
+                    await LogService.LogWarningAsync("Tag", "Tag extraction timeout", 
+                        tex.Message, 
+                        userId: currentUserId, 
+                        fileName: selectedFile.Name);
+                }
+                catch (InvalidOperationException ex) when (ex.Message.Contains("API key") || ex.Message.Contains("configurata"))
+                {
+                    StopProgressTimer(); // Stop timer on error
+                    // AI configuration issue
+                    tagExtractionSucceeded = false;
+                    tagExtractionError = $"❌ Errore configurazione AI: {ex.Message}. Verifica le chiavi API nella pagina Configurazione.";
+                    await LogService.LogErrorAsync("Tag", "AI configuration error during tag extraction", 
+                        ex.Message, 
+                        userId: currentUserId, 
+                        fileName: selectedFile.Name, 
+                        stackTrace: ex.StackTrace);
+                }
+                catch (HttpRequestException ex)
+                {
+                    StopProgressTimer(); // Stop timer on error
+                    // Network or API communication error
+                    tagExtractionSucceeded = false;
+                    tagExtractionError = $"❌ Errore di rete o API: impossibile contattare il provider AI. Verifica la connessione internet e le chiavi API. Dettagli: {ex.Message}";
+                    await LogService.LogErrorAsync("Tag", "Network error during tag extraction", 
+                        ex.Message, 
+                        userId: currentUserId, 
+                        fileName: selectedFile.Name, 
+                        stackTrace: ex.StackTrace);
+                }
+                catch (Exception ex)
+                {
+                    StopProgressTimer(); // Stop timer on error
+                    // Generic error - provide actionable message
+                    tagExtractionSucceeded = false;
+                    var errorMessage = ex.Message;
+                    if (errorMessage.Contains("NotFound") || errorMessage.Contains("404") || errorMessage.Contains("NOT_FOUND"))
+                    {
+                        tagExtractionError = "❌ Modello AI non trovato. Verifica che il modello configurato sia disponibile e aggiornato.";
+                    }
+                    else if (errorMessage.Contains("Forbidden") || errorMessage.Contains("403") || errorMessage.Contains("Unauthorized") || errorMessage.Contains("401"))
+                    {
+                        tagExtractionError = "❌ Chiave API non valida o scaduta. Aggiorna la chiave API nella pagina Configurazione.";
+                    }
+                    else if (errorMessage.Contains("TooManyRequests") || errorMessage.Contains("429"))
+                    {
+                        tagExtractionError = "⚠️ Troppe richieste al provider AI. Riprova tra qualche minuto.";
+                    }
+                    else
+                    {
+                        tagExtractionError = $"❌ Errore durante l'estrazione tag: {errorMessage}. Verifica la configurazione AI o inserisci i tag manualmente.";
+                    }
+                    await LogService.LogErrorAsync("Tag", "Tag extraction exception", 
+                        ex.Message, 
+                        userId: currentUserId, 
+                        fileName: selectedFile.Name, 
+                        stackTrace: ex.StackTrace);
+                }
+            }
+
+            // Step 5: AI metadata extraction
+            if (enableMetadataExtraction && !string.IsNullOrEmpty(extractedText))
+            {
+                metadataExtractionAttempted = true;
+                processingStep = STEP_EXTRACTING_METADATA;
+                StateHasChanged();
+                await Task.Delay(UI_UPDATE_DELAY_MS);
+
+                try
+                {
+                    // Check if AI configuration is available
+                    var aiConfig = await AIService.GetActiveConfigurationAsync();
+                    if (aiConfig == null)
+                    {
+                        metadataExtractionSucceeded = false;
+                        metadataExtractionError = "❌ Configurazione AI mancante. Configura almeno un provider AI (Gemini/OpenAI/Azure OpenAI) dalla pagina Configurazione.";
+                        await LogService.LogWarningAsync("Metadata", "AI configuration not found", 
+                            "No active AI configuration available for metadata extraction",
+                            userId: currentUserId, 
+                            fileName: selectedFile.Name);
+                    }
+                    else
+                    {
+                        extractedMetadata = await AIService.ExtractMetadataAsync(extractedText, selectedFile?.Name ?? "");
+                        
+                        if (extractedMetadata != null && extractedMetadata.Any())
+                        {
+                            metadataExtractionSucceeded = true;
+                            metadataExtractionError = null;
+                            var metadataList = string.Join(", ", extractedMetadata.Select(kvp => $"{kvp.Key}={kvp.Value}"));
+                            await LogService.LogInfoAsync("Metadata", "AI metadata extraction completed", 
+                                $"Extracted {extractedMetadata.Count} metadata fields: {metadataList}",
+                                userId: currentUserId, 
+                                fileName: selectedFile?.Name ?? "Unknown");
+                        }
+                        else
+                        {
+                            metadataExtractionSucceeded = false;
+                            metadataExtractionError = "⚠️ L'AI non ha estratto metadati dal documento. Possibili cause: il documento non contiene metadati strutturati (es. fattura, contratto), il contenuto è troppo breve, o errore del provider AI.";
+                            await LogService.LogWarningAsync("Metadata", "No metadata extracted by AI", 
+                                $"AI Provider: {aiConfig.ChatProvider?.ToString() ?? "Unknown"}, File: {selectedFile?.Name ?? "Unknown"}, Text length: {extractedText?.Length ?? 0} chars",
+                                userId: currentUserId, 
+                                fileName: selectedFile?.Name ?? "Unknown");
+                        }
+                    }
+                }
+                catch (InvalidOperationException ex) when (ex.Message.Contains("API key") || ex.Message.Contains("configurata"))
+                {
+                    // AI configuration issue
+                    metadataExtractionSucceeded = false;
+                    metadataExtractionError = $"❌ Errore configurazione AI: {ex.Message}. Verifica le chiavi API nella pagina Configurazione.";
+                    await LogService.LogErrorAsync("Metadata", "AI configuration error during metadata extraction", 
+                        ex.Message, 
+                        userId: currentUserId, 
+                        fileName: selectedFile.Name, 
+                        stackTrace: ex.StackTrace);
+                }
+                catch (HttpRequestException ex)
+                {
+                    // Network or API communication error
+                    metadataExtractionSucceeded = false;
+                    metadataExtractionError = $"❌ Errore di rete o API: impossibile contattare il provider AI. Verifica la connessione internet e le chiavi API. Dettagli: {ex.Message}";
+                    await LogService.LogErrorAsync("Metadata", "Network error during metadata extraction", 
+                        ex.Message, 
+                        userId: currentUserId, 
+                        fileName: selectedFile.Name, 
+                        stackTrace: ex.StackTrace);
+                }
+                catch (Exception ex)
+                {
+                    // Generic error - provide actionable message
+                    metadataExtractionSucceeded = false;
+                    var errorMessage = ex.Message;
+                    if (errorMessage.Contains("NotFound") || errorMessage.Contains("404") || errorMessage.Contains("NOT_FOUND"))
+                    {
+                        metadataExtractionError = "❌ Modello AI non trovato. Verifica che il modello configurato sia disponibile e aggiornato.";
+                    }
+                    else if (errorMessage.Contains("Forbidden") || errorMessage.Contains("403") || errorMessage.Contains("Unauthorized") || errorMessage.Contains("401"))
+                    {
+                        metadataExtractionError = "❌ Chiave API non valida o scaduta. Aggiorna la chiave API nella pagina Configurazione.";
+                    }
+                    else if (errorMessage.Contains("TooManyRequests") || errorMessage.Contains("429"))
+                    {
+                        metadataExtractionError = "⚠️ Troppe richieste al provider AI. Riprova tra qualche minuto.";
+                    }
+                    else
+                    {
+                        metadataExtractionError = $"❌ Errore durante l'estrazione metadati: {errorMessage}. Verifica la configurazione AI.";
+                    }
+                    await LogService.LogErrorAsync("Metadata", "Metadata extraction exception", 
+                        ex.Message, 
+                        userId: currentUserId, 
+                        fileName: selectedFile.Name, 
+                        stackTrace: ex.StackTrace);
+                }
+            }
+
+            // Set AI analysis date if any AI processing was attempted
+            if (enableAICategory || enableTagExtraction || enableEmbeddings || enableMetadataExtraction)
+            {
+                aiAnalysisDate = DateTime.UtcNow;
+            }
+
+            processingComplete = true;
+            processingStatus = "Completed";
+            processingStep = STEP_COMPLETE;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "Errore durante l'elaborazione del documento. Riprova o contatta l'amministratore.";
+            processingStatus = "Failed";
+            processingError = ex.Message;
+            await LogService.LogErrorAsync("Upload", "Document processing error", 
+                ex.Message, 
+                userId: currentUserId, 
+                fileName: selectedFile.Name, 
+                stackTrace: ex.StackTrace);
+        }
+        finally
+        {
+            isProcessing = false;
+        }
+    }
+
+    private async Task HandleUpload()
+    {
+        if (selectedFile == null)
+        {
+            errorMessage = "Please select a file to upload";
+            return;
+        }
+        
+        if (!processingComplete)
+        {
+            errorMessage = "Please process the document first before saving";
+            return;
+        }
+
+        isUploading = true;
+        errorMessage = null;
+        successMessage = null;
+        string? savedFilePath = null;
+
+        try
+        {
+            // Determine the final category to use
+            string? finalCategory = null;
+            
+            if (useCustomCategory || string.IsNullOrEmpty(suggestedCategory))
+            {
+                // Use custom category (either user chose custom or no AI suggestion)
+                finalCategory = string.IsNullOrWhiteSpace(customCategory) ? null : customCategory;
+            }
+            else
+            {
+                // Use AI suggested category
+                finalCategory = suggestedCategory;
+            }
+            
+            // If no category at all, use a default
+            if (string.IsNullOrEmpty(finalCategory))
+            {
+                finalCategory = "Uncategorized";
+            }
+            
+            // Create upload directory if it doesn't exist
+            var uploadPath = Configuration.GetValue<string>("FileStorage:UploadPath") ?? "C:\\DocumentArchive\\Uploads";
+            Directory.CreateDirectory(uploadPath);
+
+            // Save file
+            var fileName = $"{Guid.NewGuid()}_{selectedFile.Name}";
+            var filePath = Path.Combine(uploadPath, fileName);
+            savedFilePath = filePath;
+
+            using (var stream = selectedFile.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024))
+            {
+                using var fileStream = File.Create(filePath);
+                await stream.CopyToAsync(fileStream);
+            }
+
+            // Create document record using already-processed data
+            var document = new Document
+            {
+                FileName = selectedFile.Name,
+                FilePath = filePath,
+                ContentType = selectedFile.ContentType,
+                FileSize = selectedFile.Size,
+                ExtractedText = extractedText,
+                SuggestedCategory = suggestedCategory,
+                CategoryReasoning = categoryReasoning,
+                ActualCategory = finalCategory,
+                Visibility = (DocumentVisibility)selectedVisibility,
+                OwnerId = string.IsNullOrEmpty(currentUserId) ? null : currentUserId,
+                UploadedAt = DateTime.UtcNow,
+                
+                // NEW FIELDS - Populate all missing fields
+                Notes = documentNotes,
+                PageCount = pageCount,
+                DetectedLanguage = detectedLanguage,
+                ProcessingStatus = processingStatus,
+                ProcessingError = processingError,
+                AIAnalysisDate = aiAnalysisDate,
+                AITagsJson = GetSerializedTags(aiExtractedTags),
+                ExtractedMetadataJson = GetSerializedMetadata(extractedMetadata),
+                TenantId = null // Will be set from user's tenant if available
+            };
+            
+            // Set embedding in the appropriate field based on dimension
+            if (embedding != null && embedding.Length > 0)
+            {
+                if (embedding.Length == 768)
+                {
+                    document.EmbeddingVector768 = embedding;
+                    document.EmbeddingDimension = 768;
+                }
+                else if (embedding.Length == 1536)
+                {
+                    document.EmbeddingVector1536 = embedding;
+                    document.EmbeddingDimension = 1536;
+                }
+                else
+                {
+                    // Unsupported dimension - set error message
+                    errorMessage = $"⚠️ Unsupported embedding dimension: {embedding.Length}. Expected 768 or 1536.";
+                }
+            }
+
+            // Set TenantId from user's tenant if user is authenticated
+            if (!string.IsNullOrEmpty(currentUserId))
+            {
+                var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+                var tenantClaim = authState.User.FindFirst("TenantId");
+                if (tenantClaim != null && int.TryParse(tenantClaim.Value, out var tenantId))
+                {
+                    document.TenantId = tenantId;
+                }
+            }
+
+            // Parse and add tags as DocumentTag entities
+            if (!string.IsNullOrWhiteSpace(documentTags))
+            {
+                var tagNames = documentTags.Split(',')
+                    .Select(t => t.Trim())
+                    .Where(t => !string.IsNullOrEmpty(t))
+                    .Distinct()
+                    .ToList();
+
+                foreach (var tagName in tagNames)
+                {
+                    document.Tags.Add(new DocumentTag
+                    {
+                        Name = tagName,
+                        Document = document
+                    });
+                }
+            }
+
+            // Save to database - wrapped in try-catch for better error handling
+            try
+            {
+                await DocumentService.CreateDocumentAsync(document, generateChunkEmbeddingsImmediately);
+                
+                // Save similar documents if they were found
+                if (similarDocuments != null && similarDocuments.Any())
+                {
+                    await DocumentService.SaveSimilarDocumentsAsync(document.Id, similarDocuments);
+                }
+                
+                successMessage = $"✅ Document '{selectedFile.Name}' saved successfully!";
+                
+                // Wait a moment then redirect
+                await Task.Delay(2000);
+                Navigation.NavigateTo("/documents");
+            }
+            catch (Exception dbEx)
+            {
+                // Database save failed - file is on disk but not in database
+                // Clean up the orphaned file to prevent disk space waste
+                try
+                {
+                    if (File.Exists(filePath))
+                    {
+                        File.Delete(filePath);
+                        Console.WriteLine($"Deleted orphaned file after database save failure: {filePath}");
+                    }
+                }
+                catch (Exception cleanupEx)
+                {
+                    Console.WriteLine($"Failed to delete orphaned file: {filePath}. Error: {cleanupEx.Message}");
+                }
+
+                // Check if this is a vector dimension mismatch error - if so, show the detailed error message
+                // since it contains actionable steps for the user/administrator
+                // Check both the main exception and inner exceptions for dimension mismatch
+                var isDimensionMismatch = EmbeddingValidationHelper.IsVectorDimensionMismatchError(dbEx.Message);
+                if (!isDimensionMismatch && dbEx.InnerException != null)
+                {
+                    isDimensionMismatch = EmbeddingValidationHelper.IsVectorDimensionMismatchError(dbEx.InnerException.Message);
+                }
+                
+                if (isDimensionMismatch)
+                {
+                    errorMessage = $"⚠️ ERRORE CRITICO - Salvataggio database fallito\n" +
+                                  $"📄 File: {selectedFile.Name}\n" +
+                                  $"Percorso file: {filePath}\n" +
+                                  $"(Il file è stato rimosso dal disco)\n\n" +
+                                  $"{dbEx.Message}";
+                }
+                else
+                {
+                    errorMessage = $"⚠️ ERRORE CRITICO: Il salvataggio nel database è fallito durante la creazione. " +
+                                  $"Il file su disco è stato rimosso automaticamente. " +
+                                  $"ID di riferimento per l'amministratore: {Path.GetFileName(filePath)}. " +
+                                  $"Contattare l'amministratore se il problema persiste.";
+                }
+                
+                // Log the error with full details for administrator including inner exceptions
+                var fullErrorMessage = dbEx.Message;
+                var innerEx = dbEx.InnerException;
+                var depth = 1;
+                while (innerEx != null && depth <= 3)
+                {
+                    fullErrorMessage += $"\n--- Inner Exception {depth} ---\n{innerEx.Message}";
+                    innerEx = innerEx.InnerException;
+                    depth++;
+                }
+                
+                await LogService.LogErrorAsync("Upload", "CRITICAL ERROR - File saved but DB create failed", 
+                    $"File name: {selectedFile.Name}\nFile path: {filePath}\nError: {fullErrorMessage}", 
+                    userId: currentUserId, 
+                    fileName: selectedFile.Name, 
+                    stackTrace: dbEx.StackTrace);
+                
+                // Force UI update to show error message
+                StateHasChanged();
+                
+                // Don't redirect on error
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            // File save or other error
+            if (savedFilePath != null && File.Exists(savedFilePath))
+            {
+                // File was created but something else went wrong
+                errorMessage = $"❌ Errore durante il processo di salvataggio. Il file potrebbe essere stato salvato parzialmente. " +
+                              $"ID di riferimento: {Path.GetFileName(savedFilePath)}. Contattare l'amministratore.";
+                
+                // Log full details for debugging - this will persist even if document save fails
+                await LogService.LogErrorAsync("Upload", "Upload error - File saved but other issue", 
+                    $"File path: {savedFilePath}\nError: {ex.Message}", 
+                    userId: currentUserId, 
+                    fileName: selectedFile.Name, 
+                    stackTrace: ex.StackTrace);
+            }
+            else
+            {
+                // File was not saved
+                errorMessage = "❌ Errore durante il salvataggio del file. Riprovare o contattare l'amministratore se il problema persiste.";
+                
+                // Log full error details - this will persist even if document save fails
+                await LogService.LogErrorAsync("Upload", "Upload error - File not saved", 
+                    $"Error: {ex.Message}", 
+                    userId: currentUserId, 
+                    fileName: selectedFile.Name, 
+                    stackTrace: ex.StackTrace);
+            }
+            
+            // Force UI update to show error message
+            StateHasChanged();
+        }
+        finally
+        {
+            isUploading = false;
+        }
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo("/documents");
+    }
+
+    private void GoBack()
+    {
+        Navigation.NavigateTo("/documents");
+    }
+    
+    private string? GetSerializedTags(List<string>? tags)
+    {
+        if (tags == null || !tags.Any())
+            return null;
+            
+        try
+        {
+            return System.Text.Json.JsonSerializer.Serialize(tags);
+        }
+        catch (Exception ex)
+        {
+            _ = LogService.LogErrorAsync("Upload", "Error serializing tags", ex.Message, userId: currentUserId, fileName: selectedFile?.Name);
+            return null;
+        }
+    }
+
+    private string? GetSerializedMetadata(Dictionary<string, string>? metadata)
+    {
+        if (metadata == null || !metadata.Any())
+            return null;
+            
+        try
+        {
+            return System.Text.Json.JsonSerializer.Serialize(metadata);
+        }
+        catch (Exception ex)
+        {
+            _ = LogService.LogErrorAsync("Upload", "Error serializing metadata", ex.Message, userId: currentUserId, fileName: selectedFile?.Name);
+            return null;
+        }
+    }
+
+    private string GetTextPreview(string text, int maxLength)
+    {
+        if (string.IsNullOrEmpty(text)) return "";
+        if (text.Length <= maxLength) return text;
+        return text[..maxLength] + "...";
+    }
+
+    private string GetAcceptedExtensions()
+    {
+        var extensions = Configuration.GetSection("FileStorage:AllowedExtensions").Get<string[]>() 
+            ?? new[] { ".pdf", ".doc", ".docx", ".xlsx", ".xls", ".pptx", ".ppt", ".txt", ".md", ".csv", ".json", ".xml", ".html", ".htm", ".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif", ".gif", ".webp" };
+        return string.Join(",", extensions);
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len /= 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+    
+    private string GetCategoryPlaceholder()
+    {
+        if (!processingComplete)
+        {
+            return "Inserisci categoria (opzionale - analizza prima il documento)";
+        }
+        return "Inserisci categoria manualmente";
+    }
+    
+    private async Task ToggleLogsModal()
+    {
+        showLogsModal = !showLogsModal;
+        if (showLogsModal)
+        {
+            await LoadUploadLogs();
+        }
+    }
+    
+    private async Task LoadUploadLogs()
+    {
+        isLoadingLogs = true;
+        errorMessage = null; // Clear any previous error messages
+        StateHasChanged();
+        
+        try
+        {
+            // Check if LogService is null
+            if (LogService == null)
+            {
+                errorMessage = "❌ Errore caricamento log: Servizio log non disponibile. Contatta l'amministratore.";
+                Console.WriteLine("[UPLOAD] LogService is null - cannot load logs");
+                return;
+            }
+            
+            // Load logs for the current user from the last 24 hours
+            var fromDate = DateTime.UtcNow.AddHours(-24);
+            
+            // If user is not authenticated (empty currentUserId), pass null to show all logs
+            // This helps with debugging and ensures users can see their upload logs
+            var userIdForQuery = string.IsNullOrEmpty(currentUserId) ? null : currentUserId;
+            
+            Console.WriteLine($"[UPLOAD] Loading logs for user: '{userIdForQuery ?? "(ALL USERS)"}', from: {fromDate:yyyy-MM-dd HH:mm:ss} UTC");
+            Console.WriteLine($"[UPLOAD] Current time: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC");
+            
+            uploadLogs = await LogService.GetUploadLogsAsync(userIdForQuery, fromDate, 100);
+            
+            if (uploadLogs == null)
+            {
+                Console.WriteLine("[UPLOAD] GetUploadLogsAsync returned null - initializing empty list");
+                uploadLogs = new List<DocN.Data.Models.LogEntry>();
+            }
+            
+            Console.WriteLine($"[UPLOAD] Loaded {uploadLogs.Count} log entries");
+            
+            // Debug: Show summary of what was loaded
+            if (uploadLogs.Any())
+            {
+                var categorySummary = uploadLogs.GroupBy(l => l.Category)
+                    .Select(g => $"{g.Key}({g.Count()})")
+                    .ToList();
+                Console.WriteLine($"[UPLOAD] Log categories: {string.Join(", ", categorySummary)}");
+                
+                var oldestLog = uploadLogs.OrderBy(l => l.Timestamp).FirstOrDefault();
+                var newestLog = uploadLogs.OrderByDescending(l => l.Timestamp).FirstOrDefault();
+                if (oldestLog != null && newestLog != null)
+                {
+                    Console.WriteLine($"[UPLOAD] Log time range: {oldestLog.Timestamp:yyyy-MM-dd HH:mm:ss} to {newestLog.Timestamp:yyyy-MM-dd HH:mm:ss} UTC");
+                }
+            }
+            else
+            {
+                Console.WriteLine("[UPLOAD] ⚠️ No logs found. Possible reasons:");
+                Console.WriteLine($"  - No documents were analyzed in the last 24 hours");
+                Console.WriteLine($"  - Logs are associated with a different userId: '{currentUserId}'");
+                Console.WriteLine($"  - Database connection issue");
+                Console.WriteLine($"  - Logs were not written during document processing");
+            }
+        }
+        catch (NullReferenceException nrEx)
+        {
+            errorMessage = $"❌ Errore caricamento log: Riferimento null. {nrEx.Message}";
+            Console.WriteLine($"[UPLOAD] NullReferenceException in LoadUploadLogs: {nrEx.Message}\n{nrEx.StackTrace}");
+            uploadLogs = new List<DocN.Data.Models.LogEntry>();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"❌ Errore caricamento log: {ex.Message}";
+            Console.WriteLine($"[UPLOAD] Exception in LoadUploadLogs: {ex.Message}\n{ex.StackTrace}");
+            uploadLogs = new List<DocN.Data.Models.LogEntry>();
+        }
+        finally
+        {
+            isLoadingLogs = false;
+            StateHasChanged();
+        }
+    }
+    
+    private void StartProgressTimer()
+    {
+        elapsedSeconds = 0;
+        operationStopwatch = System.Diagnostics.Stopwatch.StartNew();
+        
+        // Update elapsed time every second
+        progressTimer = new System.Threading.Timer(_ =>
+        {
+            elapsedSeconds = (int)operationStopwatch.Elapsed.TotalSeconds;
+            InvokeAsync(StateHasChanged);
+        }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+    }
+    
+    private void StopProgressTimer()
+    {
+        progressTimer?.Dispose();
+        progressTimer = null;
+        operationStopwatch?.Stop();
+        operationStopwatch = null;
+        elapsedSeconds = 0;
+    }
+    
+    public void Dispose()
+    {
+        StopProgressTimer();
+    }
+}

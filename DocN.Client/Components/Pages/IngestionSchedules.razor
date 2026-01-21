@@ -1,0 +1,1061 @@
+@page "/ingestion"
+@using System.Net.Http.Json
+@using DocN.Data.Models
+@using DocN.Data.Constants
+@using Microsoft.Extensions.Logging
+@inject IHttpClientFactory HttpClientFactory
+@inject NavigationManager Navigation
+@inject IJSRuntime JSRuntime
+@inject ILogger<IngestionSchedules> Logger
+@rendermode InteractiveServer
+
+<PageTitle>Ingestion Schedules - DocN</PageTitle>
+
+<style>
+    .ingestion-page {
+        min-height: 100vh;
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        padding: 2rem;
+    }
+    
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 2rem;
+        background: white;
+        padding: 2rem;
+        border-radius: 15px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    
+    .header-left h1 {
+        margin: 0;
+        font-size: 2.5rem;
+        background: linear-gradient(135deg, #FF6B35 0%, #F7931E 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+    
+    .subtitle {
+        margin: 0.5rem 0 0 0;
+        color: #666;
+    }
+    
+    .btn {
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 25px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+    
+    .btn-primary {
+        background: linear-gradient(135deg, #FF6B35 0%, #F7931E 100%);
+        color: white;
+        box-shadow: 0 4px 15px rgba(255, 107, 53, 0.3);
+    }
+    
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(255, 107, 53, 0.4);
+    }
+    
+    .loading-state, .empty-state {
+        text-align: center;
+        padding: 5rem 2rem;
+        background: white;
+        border-radius: 15px;
+    }
+    
+    .spinner-large {
+        width: 60px;
+        height: 60px;
+        border: 5px solid #f3f3f3;
+        border-top: 5px solid #FF6B35;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 2rem;
+    }
+    
+    @@keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    
+    .empty-icon {
+        font-size: 5rem;
+        margin-bottom: 1rem;
+    }
+    
+    .schedules-list {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+    }
+    
+    .schedule-card {
+        background: white;
+        border-radius: 15px;
+        padding: 1.5rem;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+        transition: all 0.3s;
+    }
+    
+    .schedule-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 8px 28px rgba(0,0,0,0.15);
+    }
+    
+    .schedule-card.disabled {
+        opacity: 0.6;
+    }
+    
+    .card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+    
+    .card-header h3 {
+        margin: 0;
+        font-size: 1.4rem;
+        color: #333;
+    }
+    
+    .badge {
+        padding: 0.4rem 0.8rem;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: 600;
+    }
+    
+    .badge-success {
+        background: #d4edda;
+        color: #155724;
+    }
+    
+    .badge-secondary {
+        background: #e2e3e5;
+        color: #383d41;
+    }
+    
+    .schedule-info {
+        margin: 1rem 0;
+    }
+    
+    .info-row {
+        display: flex;
+        align-items: center;
+        margin: 0.5rem 0;
+        font-size: 0.9rem;
+    }
+    
+    .info-label {
+        font-weight: 600;
+        color: #666;
+        width: 100px;
+    }
+    
+    .info-value {
+        color: #333;
+    }
+    
+    .card-actions {
+        display: flex;
+        gap: 0.5rem;
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid #f0f0f0;
+    }
+    
+    .btn-action {
+        flex: 1;
+        padding: 0.6rem;
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.3s;
+        font-weight: 600;
+    }
+    
+    .btn-action:hover {
+        background: #e9ecef;
+        transform: translateY(-2px);
+    }
+    
+    .btn-danger:hover {
+        background: #dc3545;
+        color: white;
+    }
+    
+    /* Modal Styles */
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+    
+    .modal-content {
+        background: white;
+        border-radius: 15px;
+        width: 600px;
+        max-width: 90%;
+        max-height: 90vh;
+        overflow-y: auto;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+    }
+    
+    .modal-header {
+        padding: 1.5rem;
+        border-bottom: 1px solid #e0e0e0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: linear-gradient(135deg, #FF6B35 0%, #F7931E 100%);
+        color: white;
+        border-radius: 15px 15px 0 0;
+    }
+    
+    .modal-header h3 {
+        margin: 0;
+    }
+    
+    .btn-close {
+        background: rgba(255, 255, 255, 0.2);
+        border: none;
+        color: white;
+        font-size: 1.5rem;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        cursor: pointer;
+    }
+    
+    .btn-close:hover {
+        background: rgba(255, 255, 255, 0.3);
+    }
+    
+    .modal-body {
+        padding: 1.5rem;
+    }
+    
+    .form-group {
+        margin-bottom: 1.5rem;
+    }
+    
+    .form-group label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        color: #333;
+    }
+    
+    .form-control {
+        width: 100%;
+        padding: 0.75rem;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        font-size: 1rem;
+    }
+    
+    .form-control:focus {
+        outline: none;
+        border-color: #FF6B35;
+        box-shadow: 0 0 0 3px rgba(255, 107, 53, 0.1);
+    }
+    
+    .form-text {
+        display: block;
+        margin-top: 0.5rem;
+        font-size: 0.875rem;
+        color: #666;
+    }
+    
+    .alert {
+        padding: 1rem;
+        border-radius: 8px;
+        margin-top: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+    
+    .alert-success {
+        background: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+    }
+    
+    .alert-error {
+        background: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+    }
+    
+    .modal-footer {
+        padding: 1rem 1.5rem;
+        border-top: 1px solid #e0e0e0;
+        display: flex;
+        justify-content: flex-end;
+        gap: 1rem;
+    }
+    
+    .btn-secondary {
+        background: #6c757d;
+        color: white;
+    }
+    
+    .btn-secondary:hover {
+        background: #5a6268;
+    }
+
+    /* Logs Modal Styles */
+    .logs-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 1rem;
+    }
+    
+    .logs-table th,
+    .logs-table td {
+        padding: 0.75rem;
+        text-align: left;
+        border-bottom: 1px solid #e0e0e0;
+    }
+    
+    .logs-table th {
+        background: #f8f9fa;
+        font-weight: 600;
+        color: #333;
+    }
+    
+    .logs-table tbody tr:hover {
+        background: #f8f9fa;
+    }
+    
+    .status-badge {
+        padding: 0.3rem 0.7rem;
+        border-radius: 15px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        display: inline-block;
+    }
+    
+    .status-completed {
+        background: #d4edda;
+        color: #155724;
+    }
+    
+    .status-running {
+        background: #cce5ff;
+        color: #004085;
+    }
+    
+    .status-failed {
+        background: #f8d7da;
+        color: #721c24;
+    }
+    
+    .status-cancelled {
+        background: #fff3cd;
+        color: #856404;
+    }
+    
+    .log-metrics {
+        display: flex;
+        gap: 1rem;
+        margin: 1rem 0;
+        flex-wrap: wrap;
+    }
+    
+    .metric-card {
+        flex: 1;
+        min-width: 150px;
+        background: #f8f9fa;
+        padding: 1rem;
+        border-radius: 8px;
+        text-align: center;
+    }
+    
+    .metric-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #FF6B35;
+    }
+    
+    .metric-label {
+        font-size: 0.85rem;
+        color: #666;
+        margin-top: 0.25rem;
+    }
+    
+    .log-details {
+        background: #f8f9fa;
+        padding: 1rem;
+        border-radius: 8px;
+        margin-top: 1rem;
+        max-height: 300px;
+        overflow-y: auto;
+        font-family: 'Courier New', monospace;
+        font-size: 0.85rem;
+    }
+    
+    .no-logs {
+        text-align: center;
+        padding: 3rem;
+        color: #666;
+    }
+    
+    .loading-spinner-small {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #FF6B35;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+    
+    .btn-log-details {
+        padding: 0.3rem 0.6rem;
+        font-size: 0.85rem;
+    }
+</style>
+
+<div class="ingestion-page">
+    <div class="page-header">
+        <div class="header-left">
+            <h1>📅 Ingestion Schedules</h1>
+            <p class="subtitle">Pianifica l'importazione automatica dei documenti: esegui subito, programma con cron o imposta sincronizzazioni continue</p>
+        </div>
+        <div class="header-right">
+            <button class="btn btn-primary" @onclick="ShowCreateModal">
+                <span>➕ New Schedule</span>
+            </button>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="loading-state">
+            <div class="spinner-large"></div>
+            <p>Loading schedules...</p>
+        </div>
+    }
+    else if (!schedules.Any())
+    {
+        <div class="empty-state">
+            <div class="empty-icon">📅</div>
+            <h3>No Schedules Yet</h3>
+            <p>Create your first ingestion schedule to automate document imports</p>
+            <button class="btn btn-primary" @onclick="ShowCreateModal">
+                ➕ Create Schedule
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="schedules-list">
+            @foreach (var schedule in schedules)
+            {
+                <div class="schedule-card @(schedule.IsEnabled ? "enabled" : "disabled")">
+                    <div class="card-header">
+                        <h3>@schedule.Name</h3>
+                        <div class="schedule-status">
+                            @if (schedule.IsEnabled)
+                            {
+                                <span class="badge badge-success">✓ Enabled</span>
+                            }
+                            else
+                            {
+                                <span class="badge badge-secondary">○ Disabled</span>
+                            }
+                        </div>
+                    </div>
+                    
+                    <div class="card-body">
+                        <div class="schedule-info">
+                            <div class="info-row">
+                                <span class="info-label">Type:</span>
+                                <span class="info-value">@schedule.ScheduleType</span>
+                            </div>
+                            @if (schedule.ScheduleType == "Scheduled" && !string.IsNullOrEmpty(schedule.CronExpression))
+                            {
+                                <div class="info-row">
+                                    <span class="info-label">Cron:</span>
+                                    <span class="info-value">@schedule.CronExpression</span>
+                                </div>
+                            }
+                            @if (schedule.NextExecutionAt.HasValue)
+                            {
+                                <div class="info-row">
+                                    <span class="info-label">Next run:</span>
+                                    <span class="info-value">@schedule.NextExecutionAt.Value.ToLocalTime().ToString("g")</span>
+                                </div>
+                            }
+                            @if (schedule.LastExecutedAt.HasValue)
+                            {
+                                <div class="info-row">
+                                    <span class="info-label">Last run:</span>
+                                    <span class="info-value">@schedule.LastExecutedAt.Value.ToLocalTime().ToString("g") (@schedule.LastExecutionDocumentCount docs)</span>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                    
+                    <div class="card-actions">
+                        <button class="btn-action" @onclick="() => ExecuteNow(schedule)" title="Execute Now">
+                            ▶️ Run Now
+                        </button>
+                        <button class="btn-action" @onclick="() => ViewLogs(schedule)" title="View Logs">
+                            📋 Logs
+                        </button>
+                        <button class="btn-action" @onclick="() => EditSchedule(schedule)" title="Edit">
+                            ✏️ Edit
+                        </button>
+                        <button class="btn-action btn-danger" @onclick="() => DeleteSchedule(schedule)" title="Delete">
+                            🗑️ Delete
+                        </button>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@* Create/Edit Modal *@
+@if (showModal)
+{
+    <div class="modal-overlay" @onclick="CloseModal">
+        <div class="modal-content" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>@(isEditMode ? "Edit Schedule" : "New Schedule")</h3>
+                <button class="btn-close" @onclick="CloseModal">×</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Name *</label>
+                    <input type="text" @bind="currentSchedule.Name" class="form-control" placeholder="Daily Document Import" />
+                </div>
+                
+                <div class="form-group">
+                    <label>Connector *</label>
+                    <select @bind="currentSchedule.ConnectorId" class="form-control">
+                        <option value="0">Select connector...</option>
+                        @foreach (var connector in connectors)
+                        {
+                            <option value="@connector.Id">@connector.Name (@connector.ConnectorType)</option>
+                        }
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>Schedule Type *</label>
+                    <select @bind="currentSchedule.ScheduleType" class="form-control">
+                        <option value="Manual">Manual</option>
+                        <option value="Scheduled">Scheduled (Cron)</option>
+                        <option value="Continuous">Continuous</option>
+                    </select>
+                </div>
+                
+                @if (currentSchedule.ScheduleType == "Scheduled")
+                {
+                    <div class="form-group">
+                        <label>Cron Expression *</label>
+                        <input type="text" @bind="currentSchedule.CronExpression" class="form-control" placeholder="0 2 * * * (daily at 2 AM)" />
+                        <small class="form-text">Examples: "0 2 * * *" = daily at 2 AM, "0 */6 * * *" = every 6 hours</small>
+                    </div>
+                }
+                
+                @if (currentSchedule.ScheduleType == "Continuous")
+                {
+                    <div class="form-group">
+                        <label>Interval (Minutes) *</label>
+                        <input type="number" @bind="currentSchedule.IntervalMinutes" class="form-control" placeholder="60" min="1" />
+                        <small class="form-text">How often to run the ingestion (in minutes)</small>
+                    </div>
+                }
+                
+                <div class="form-group">
+                    <label>Default Category</label>
+                    <input type="text" @bind="currentSchedule.DefaultCategory" class="form-control" placeholder="Imported Documents" />
+                    <small class="form-text">Category to assign to imported documents</small>
+                </div>
+                
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" @bind="currentSchedule.EnableAIAnalysis" />
+                        Enable AI Analysis
+                    </label>
+                </div>
+                
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" @bind="currentSchedule.GenerateEmbeddingsImmediately" />
+                        Generate Embeddings Immediately
+                    </label>
+                </div>
+                
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" @bind="currentSchedule.IsEnabled" />
+                        Enabled
+                    </label>
+                </div>
+                
+                @if (!string.IsNullOrEmpty(errorMessage))
+                {
+                    <div class="alert alert-error">
+                        @errorMessage
+                    </div>
+                }
+                
+                @if (!string.IsNullOrEmpty(successMessage))
+                {
+                    <div class="alert alert-success">
+                        @successMessage
+                    </div>
+                }
+            </div>
+            
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseModal">Cancel</button>
+                <button class="btn btn-primary" @onclick="SaveSchedule" disabled="@isSaving">
+                    @if (isSaving)
+                    {
+                        <span>⏳ Saving...</span>
+                    }
+                    else
+                    {
+                        <span>💾 Save</span>
+                    }
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* Logs Modal *@
+@if (showLogsModal)
+{
+    <div class="modal-overlay" @onclick="CloseLogsModal">
+        <div class="modal-content" @onclick:stopPropagation="true" style="max-width: 900px;">
+            <div class="modal-header">
+                <h3>📋 Execution Logs - @currentScheduleName</h3>
+                <button class="btn-close" @onclick="CloseLogsModal">×</button>
+            </div>
+            
+            <div class="modal-body">
+                @if (!string.IsNullOrEmpty(errorMessage))
+                {
+                    <div class="alert alert-error">
+                        @errorMessage
+                    </div>
+                }
+                
+                @if (isLoadingLogs)
+                {
+                    <div style="text-align: center; padding: 2rem;">
+                        <div class="loading-spinner-small"></div>
+                        <p>Loading logs...</p>
+                    </div>
+                }
+                else if (currentLogs.Any())
+                {
+                    <div class="logs-table-container">
+                        <table class="logs-table">
+                            <thead>
+                                <tr>
+                                    <th>Started</th>
+                                    <th>Status</th>
+                                    <th>Duration</th>
+                                    <th>Discovered</th>
+                                    <th>Processed</th>
+                                    <th>Skipped</th>
+                                    <th>Failed</th>
+                                    <th>Details</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var log in currentLogs)
+                                {
+                                    <tr>
+                                        <td>@log.StartedAt.ToLocalTime().ToString("g")</td>
+                                        <td>
+                                            <span class="status-badge @GetStatusClass(log.Status)">
+                                                @log.Status
+                                            </span>
+                                        </td>
+                                        <td>@(log.DurationSeconds.HasValue ? $"{log.DurationSeconds}s" : "-")</td>
+                                        <td>@log.DocumentsDiscovered</td>
+                                        <td>@log.DocumentsProcessed</td>
+                                        <td>@log.DocumentsSkipped</td>
+                                        <td>@log.DocumentsFailed</td>
+                                        <td>
+                                            @if (!string.IsNullOrEmpty(log.DetailedLog) || !string.IsNullOrEmpty(log.ErrorMessage))
+                                            {
+                                                <button class="btn-action btn-log-details" 
+                                                        @onclick="() => ToggleLogDetails(log.Id)">
+                                                    @if (expandedLogId == log.Id)
+                                                    {
+                                                        <span>▼</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span>▶</span>
+                                                    }
+                                                </button>
+                                            }
+                                        </td>
+                                    </tr>
+                                    @if (expandedLogId == log.Id)
+                                    {
+                                        <tr>
+                                            <td colspan="8">
+                                                <div class="log-details">
+                                                    @if (!string.IsNullOrEmpty(log.ErrorMessage))
+                                                    {
+                                                        <div style="color: #dc3545; margin-bottom: 1rem;">
+                                                            <strong>Error:</strong> @log.ErrorMessage
+                                                        </div>
+                                                    }
+                                                    @if (!string.IsNullOrEmpty(log.DetailedLog))
+                                                    {
+                                                        <div>
+                                                            <strong>Detailed Log:</strong>
+                                                            <pre style="margin: 0.5rem 0; white-space: pre-wrap;">@log.DetailedLog</pre>
+                                                        </div>
+                                                    }
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+                else
+                {
+                    <div class="no-logs">
+                        <div style="font-size: 3rem; margin-bottom: 1rem;">📝</div>
+                        <h4>No Logs Available</h4>
+                        <p>This schedule hasn't been executed yet.</p>
+                    </div>
+                }
+            </div>
+            
+            <div class="modal-footer">
+                <button class="btn btn-secondary" @onclick="CloseLogsModal">Close</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private const int DefaultLogCount = 20; // Number of logs to fetch
+    
+    private List<IngestionSchedule> schedules = new();
+    private List<DocumentConnector> connectors = new();
+    private List<IngestionLog> currentLogs = new();
+    private bool isLoading = true;
+    private bool showModal = false;
+    private bool showLogsModal = false;
+    private bool isEditMode = false;
+    private bool isSaving = false;
+    private bool isLoadingLogs = false;
+    private string? errorMessage;
+    private string? successMessage;
+    private string? currentScheduleName;
+    private int? expandedLogId;
+    private IngestionSchedule currentSchedule = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSchedules();
+        await LoadConnectors();
+    }
+
+    private async Task LoadSchedules()
+    {
+        try
+        {
+            isLoading = true;
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+            schedules = await httpClient.GetFromJsonAsync<List<IngestionSchedule>>("Ingestion/schedules") ?? new();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading schedules: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task LoadConnectors()
+    {
+        try
+        {
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+            connectors = await httpClient.GetFromJsonAsync<List<DocumentConnector>>("Connectors") ?? new();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading connectors: {ex.Message}";
+        }
+    }
+
+    private void ShowCreateModal()
+    {
+        currentSchedule = new IngestionSchedule 
+        { 
+            IsEnabled = true,
+            ScheduleType = "Manual",
+            EnableAIAnalysis = true,
+            GenerateEmbeddingsImmediately = false
+        };
+        isEditMode = false;
+        errorMessage = null;
+        successMessage = null;
+        showModal = true;
+    }
+
+    private void EditSchedule(IngestionSchedule schedule)
+    {
+        currentSchedule = new IngestionSchedule
+        {
+            Id = schedule.Id,
+            Name = schedule.Name,
+            ConnectorId = schedule.ConnectorId,
+            ScheduleType = schedule.ScheduleType,
+            CronExpression = schedule.CronExpression,
+            IntervalMinutes = schedule.IntervalMinutes,
+            IsEnabled = schedule.IsEnabled,
+            DefaultCategory = schedule.DefaultCategory,
+            EnableAIAnalysis = schedule.EnableAIAnalysis,
+            GenerateEmbeddingsImmediately = schedule.GenerateEmbeddingsImmediately
+        };
+        isEditMode = true;
+        errorMessage = null;
+        successMessage = null;
+        showModal = true;
+    }
+    
+    private void CloseModal()
+    {
+        showModal = false;
+        errorMessage = null;
+        successMessage = null;
+    }
+
+    private async Task SaveSchedule()
+    {
+        try
+        {
+            errorMessage = null;
+            successMessage = null;
+            isSaving = true;
+            StateHasChanged(); // Force UI update
+            
+            // Validate required fields
+            if (string.IsNullOrWhiteSpace(currentSchedule.Name))
+            {
+                errorMessage = "Name is required";
+                isSaving = false;
+                StateHasChanged();
+                return;
+            }
+            if (currentSchedule.ConnectorId == 0)
+            {
+                errorMessage = "Please select a connector";
+                isSaving = false;
+                StateHasChanged();
+                return;
+            }
+            if (currentSchedule.ScheduleType == "Scheduled" && string.IsNullOrWhiteSpace(currentSchedule.CronExpression))
+            {
+                errorMessage = "Cron expression is required for scheduled type";
+                isSaving = false;
+                StateHasChanged();
+                return;
+            }
+            if (currentSchedule.ScheduleType == "Continuous" && (!currentSchedule.IntervalMinutes.HasValue || currentSchedule.IntervalMinutes <= 0))
+            {
+                errorMessage = "Interval minutes is required for continuous type";
+                isSaving = false;
+                StateHasChanged();
+                return;
+            }
+            
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+            HttpResponseMessage response;
+
+            if (isEditMode)
+            {
+                response = await httpClient.PutAsJsonAsync($"Ingestion/schedules/{currentSchedule.Id}", currentSchedule);
+            }
+            else
+            {
+                response = await httpClient.PostAsJsonAsync("Ingestion/schedules", currentSchedule);
+            }
+            
+            if (response.IsSuccessStatusCode)
+            {
+                successMessage = $"Schedule '{currentSchedule.Name}' saved successfully!";
+                await LoadSchedules();
+                StateHasChanged();
+                await Task.Delay(1500); // Show success message briefly
+                CloseModal();
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                errorMessage = $"Error saving schedule: {response.StatusCode} - {errorContent}";
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error saving schedule: {ex.Message}";
+            StateHasChanged();
+        }
+        finally
+        {
+            isSaving = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ViewLogs(IngestionSchedule schedule)
+    {
+        try
+        {
+            currentScheduleName = schedule.Name;
+            showLogsModal = true;
+            isLoadingLogs = true;
+            currentLogs.Clear();
+            expandedLogId = null;
+            errorMessage = null;
+            StateHasChanged();
+            
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+            var response = await httpClient.GetFromJsonAsync<List<IngestionLog>>($"Ingestion/schedules/{schedule.Id}/logs?count={DefaultLogCount}");
+            
+            if (response != null)
+            {
+                currentLogs = response;
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading logs for schedule {ScheduleId}", schedule.Id);
+            errorMessage = "Failed to load execution logs. Please try again later.";
+        }
+        finally
+        {
+            isLoadingLogs = false;
+            StateHasChanged();
+        }
+    }
+
+    private void CloseLogsModal()
+    {
+        showLogsModal = false;
+        currentLogs.Clear();
+        currentScheduleName = null;
+        expandedLogId = null;
+    }
+
+    private void ToggleLogDetails(int logId)
+    {
+        expandedLogId = expandedLogId == logId ? null : logId;
+    }
+
+    private string GetStatusClass(string status)
+    {
+        return status.ToLower() switch
+        {
+            "completed" => "status-completed",
+            "running" => "status-running",
+            "failed" => "status-failed",
+            "cancelled" => "status-cancelled",
+            _ => ""
+        };
+    }
+
+    private async Task ExecuteNow(IngestionSchedule schedule)
+    {
+        try
+        {
+            errorMessage = null;
+            successMessage = null;
+            
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+            var response = await httpClient.PostAsync($"Ingestion/schedules/{schedule.Id}/execute", null);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                successMessage = $"Ingestion started for '{schedule.Name}'";
+                await LoadSchedules();
+                StateHasChanged();
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                errorMessage = $"Error executing schedule: {response.StatusCode} - {errorContent}";
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error executing schedule: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
+    private async Task DeleteSchedule(IngestionSchedule schedule)
+    {
+        if (await JSRuntime.InvokeAsync<bool>("confirm", $"Are you sure you want to delete '{schedule.Name}'?"))
+        {
+            try
+            {
+                errorMessage = null;
+                successMessage = null;
+                
+                var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+                var response = await httpClient.DeleteAsync($"Ingestion/schedules/{schedule.Id}");
+                
+                if (response.IsSuccessStatusCode)
+                {
+                    successMessage = $"Schedule '{schedule.Name}' deleted successfully";
+                    await LoadSchedules();
+                    StateHasChanged();
+                }
+                else
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    errorMessage = $"Error deleting schedule: {response.StatusCode} - {errorContent}";
+                    StateHasChanged();
+                }
+            }
+            catch (Exception ex)
+            {
+                errorMessage = $"Error deleting schedule: {ex.Message}";
+                StateHasChanged();
+            }
+        }
+    }
+}

@@ -1,0 +1,73 @@
+@using DocN.Data.Models
+
+<div class="step-content">
+    <div class="step-header">
+        <h2>📚 Scegli il Tipo di Assistente</h2>
+        <p class="step-description">
+            Seleziona il template che meglio si adatta alle tue esigenze. Ogni assistente è progettato per un compito specifico.
+            <br><strong>Non preoccuparti!</strong> Potrai personalizzarlo nel prossimo passaggio.
+        </p>
+    </div>
+
+    <div class="templates-grid">
+        @foreach (var template in Templates)
+        {
+            <div class="template-card @(SelectedTemplate?.Id == template.Id ? "selected" : "")"
+                 @onclick="() => OnTemplateSelected.InvokeAsync(template)">
+                <div class="template-icon">@template.Icon</div>
+                <div class="template-content">
+                    <h3>@template.Name</h3>
+                    <p class="template-description">@template.Description</p>
+                    <div class="template-category">
+                        <span class="badge">@template.Category</span>
+                    </div>
+                    @if (!string.IsNullOrEmpty(template.ExampleQuery))
+                    {
+                        <div class="template-example">
+                            <strong>Esempio:</strong> "@template.ExampleQuery"
+                        </div>
+                    }
+                </div>
+                @if (SelectedTemplate?.Id == template.Id)
+                {
+                    <div class="selected-indicator">✓</div>
+                }
+            </div>
+        }
+    </div>
+
+    @if (SelectedTemplate != null)
+    {
+        <div class="selected-template-info">
+            <div class="info-card">
+                <h4>🎯 Hai selezionato: @SelectedTemplate.Name</h4>
+                <p>@SelectedTemplate.ConfigurationGuide</p>
+            </div>
+        </div>
+    }
+
+    <div class="step-actions">
+        <button class="btn btn-secondary" disabled>
+            ← Indietro
+        </button>
+        <button class="btn btn-primary" 
+                @onclick="OnNext" 
+                disabled="@(SelectedTemplate == null)">
+            Avanti →
+        </button>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public List<AgentTemplate> Templates { get; set; } = new();
+
+    [Parameter]
+    public AgentTemplate? SelectedTemplate { get; set; }
+
+    [Parameter]
+    public EventCallback<AgentTemplate> OnTemplateSelected { get; set; }
+
+    [Parameter]
+    public EventCallback OnNext { get; set; }
+}

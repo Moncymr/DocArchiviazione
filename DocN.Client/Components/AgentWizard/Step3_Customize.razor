@@ -1,0 +1,246 @@
+@using DocN.Data.Models
+
+<div class="step-content">
+    <div class="step-header">
+        <h2>🎨 Personalizza il Tuo Agente</h2>
+        <p class="step-description">
+            Configura i parametri dell'agente. I valori predefiniti funzionano bene nella maggior parte dei casi.
+            <br><strong>Suggerimento:</strong> Puoi modificare questi parametri anche in seguito!
+        </p>
+    </div>
+
+    <div class="form-section">
+        <h3>📝 Informazioni Base</h3>
+        
+        <div class="form-group">
+            <label>Nome Agente *</label>
+            <input type="text" @bind="Agent.Name" class="form-control" 
+                   placeholder="es: Assistente HR Aziendale" />
+            <small class="form-text">Scegli un nome descrittivo per riconoscere facilmente l'agente</small>
+        </div>
+
+        <div class="form-group">
+            <label>Descrizione</label>
+            <textarea @bind="Agent.Description" class="form-control" rows="3"
+                      placeholder="Descrivi brevemente a cosa serve questo agente..."></textarea>
+        </div>
+    </div>
+
+    <div class="form-section">
+        <h3>⚙️ Parametri di Ricerca</h3>
+        <p class="section-description">Questi parametri controllano come l'agente cerca nei documenti</p>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label>Numero documenti da recuperare</label>
+                <input type="number" @bind="Agent.MaxDocumentsToRetrieve" class="form-control" 
+                       min="1" max="20" />
+                <small class="form-text">Consigliato: 5-10 documenti</small>
+            </div>
+
+            <div class="form-group">
+                <label>Soglia di similarità (0-1)</label>
+                <input type="number" @bind="Agent.SimilarityThreshold" class="form-control" 
+                       min="0" max="1" step="0.1" />
+                <small class="form-text">Più alto = risultati più precisi. Consigliato: 0.7</small>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label class="checkbox-label">
+                <input type="checkbox" @bind="Agent.UseHybridSearch" />
+                <span>Usa ricerca ibrida (vettoriale + testuale)</span>
+            </label>
+            <small class="form-text">Consigliato: attivo per risultati migliori</small>
+        </div>
+    </div>
+
+    <div class="form-section">
+        <h3>🧠 Parametri di Generazione</h3>
+        <p class="section-description">Controllano come l'agente genera le risposte</p>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label>Temperatura (0-1)</label>
+                <input type="number" @bind="Agent.Temperature" class="form-control" 
+                       min="0" max="1" step="0.1" />
+                <small class="form-text">Bassa = più preciso, Alta = più creativo. Default: 0.7</small>
+            </div>
+
+            <div class="form-group">
+                <label>Token massimi risposta</label>
+                <input type="number" @bind="Agent.MaxTokensForResponse" class="form-control" 
+                       min="500" max="4000" step="100" />
+                <small class="form-text">Lunghezza massima della risposta. Default: 2000</small>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label class="checkbox-label">
+                <input type="checkbox" @bind="Agent.EnableCitation" />
+                <span>Abilita citazioni dei documenti</span>
+            </label>
+            <small class="form-text">L'agente indicherà da quali documenti provengono le informazioni</small>
+        </div>
+
+        <div class="form-group">
+            <label class="checkbox-label">
+                <input type="checkbox" @bind="Agent.EnableConversationHistory" />
+                <span>Abilita memoria conversazione</span>
+            </label>
+            <small class="form-text">L'agente ricorderà il contesto delle domande precedenti</small>
+        </div>
+    </div>
+
+    <div class="form-section advanced-section">
+        <h3>🔧 Opzioni Avanzate (Opzionale)</h3>
+        <button class="btn-toggle" @onclick="ToggleAdvanced">
+            @(showAdvanced ? "Nascondi" : "Mostra") opzioni avanzate
+        </button>
+
+        @if (showAdvanced)
+        {
+            <div class="form-group">
+                <label>Istruzioni personalizzate</label>
+                <textarea @bind="Agent.CustomInstructions" class="form-control" rows="4"
+                          placeholder="Aggiungi istruzioni specifiche per il comportamento dell'agente..."></textarea>
+                <small class="form-text">Es: "Rispondi sempre in modo formale" o "Usa termini tecnici specifici del settore"</small>
+            </div>
+
+            <div class="form-group">
+                <label>Filtro categorie (JSON array)</label>
+                <input type="text" @bind="Agent.CategoryFilter" class="form-control" 
+                       placeholder='["Contratti", "HR"]' />
+                <small class="form-text">Limita la ricerca solo a queste categorie</small>
+            </div>
+
+            <div class="form-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" @bind="Agent.IsPublic" />
+                    <span>Rendi questo agente pubblico (visibile a tutti gli utenti)</span>
+                </label>
+            </div>
+        }
+    </div>
+
+    <div class="step-actions">
+        <button class="btn btn-secondary" @onclick="OnBack">
+            ← Indietro
+        </button>
+        <button class="btn btn-primary" 
+                @onclick="OnNext"
+                disabled="@(string.IsNullOrWhiteSpace(Agent.Name))">
+            Avanti →
+        </button>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public AgentConfiguration Agent { get; set; } = new();
+
+    [Parameter]
+    public EventCallback OnBack { get; set; }
+
+    [Parameter]
+    public EventCallback OnNext { get; set; }
+
+    private bool showAdvanced = false;
+
+    private void ToggleAdvanced()
+    {
+        showAdvanced = !showAdvanced;
+    }
+}
+
+<style>
+    .form-section {
+        margin-bottom: 2rem;
+        padding: 1.5rem;
+        background: #f8f9fa;
+        border-radius: 12px;
+    }
+
+    .form-section h3 {
+        margin-bottom: 0.5rem;
+        color: #2c3e50;
+    }
+
+    .section-description {
+        font-size: 0.9rem;
+        color: #7f8c8d;
+        margin-bottom: 1rem;
+    }
+
+    .form-group {
+        margin-bottom: 1.5rem;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 600;
+        color: #2c3e50;
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 0.75rem;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        font-size: 1rem;
+        transition: border-color 0.3s ease;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: #667eea;
+    }
+
+    .form-text {
+        display: block;
+        margin-top: 0.25rem;
+        font-size: 0.85rem;
+        color: #7f8c8d;
+    }
+
+    .form-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1rem;
+    }
+
+    .checkbox-label {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        cursor: pointer;
+        font-weight: normal;
+    }
+
+    .checkbox-label input[type="checkbox"] {
+        width: 20px;
+        height: 20px;
+        cursor: pointer;
+    }
+
+    .advanced-section {
+        background: #e8f4f8;
+        border: 2px dashed #3498db;
+    }
+
+    .btn-toggle {
+        background: #3498db;
+        color: white;
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        cursor: pointer;
+        margin-bottom: 1rem;
+        transition: all 0.3s ease;
+    }
+
+    .btn-toggle:hover {
+        background: #2980b9;
+    }
+</style>

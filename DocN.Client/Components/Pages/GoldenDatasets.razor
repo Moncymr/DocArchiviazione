@@ -1,0 +1,818 @@
+@page "/monitoring/golden-datasets"
+@using System.Net.Http.Json
+@inject IHttpClientFactory HttpClientFactory
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ILogger<GoldenDatasets> Logger
+@rendermode InteractiveServer
+
+<PageTitle>Golden Datasets - DocN</PageTitle>
+
+<div class="datasets-container">
+    <h2>🎯 Golden Datasets per Test Qualità RAG</h2>
+    <p class="subtitle">Gestisci i dataset di test per valutare e monitorare la qualità del sistema RAG</p>
+
+    @if (isLoading)
+    {
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>Caricamento dataset...</p>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger">
+            <strong>⚠️ Errore</strong>
+            <p>@errorMessage</p>
+        </div>
+    }
+    else
+    {
+        <!-- Action Buttons -->
+        <div class="action-bar">
+            <button class="btn btn-primary" @onclick="ShowCreateDatasetModal">
+                ➕ Nuovo Dataset
+            </button>
+            <button class="btn btn-secondary" @onclick="RefreshDatasets">
+                🔄 Aggiorna
+            </button>
+        </div>
+
+        <!-- Datasets List -->
+        @if (datasets?.Any() == true)
+        {
+            <div class="datasets-grid">
+                @foreach (var dataset in datasets)
+                {
+                    <div class="dataset-card">
+                        <div class="dataset-header">
+                            <h3>@dataset.Name</h3>
+                            <span class="badge @(dataset.IsActive ? "badge-active" : "badge-inactive")">
+                                @(dataset.IsActive ? "Attivo" : "Inattivo")
+                            </span>
+                        </div>
+                        
+                        <p class="dataset-description">@dataset.Description</p>
+                        
+                        <div class="dataset-info">
+                            <div class="info-item">
+                                <span class="info-label">ID Dataset:</span>
+                                <code>@dataset.DatasetId</code>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Versione:</span>
+                                <span>@dataset.Version</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Campioni:</span>
+                                <span>@dataset.SampleCount</span>
+                            </div>
+                            <div class="info-item">
+                                <span class="info-label">Creato:</span>
+                                <span>@dataset.CreatedAt.ToString("dd/MM/yyyy HH:mm")</span>
+                            </div>
+                        </div>
+
+                        <div class="dataset-actions">
+                            <button class="btn btn-sm btn-success" @onclick="() => RunEvaluation(dataset.DatasetId)">
+                                ▶️ Esegui Valutazione
+                            </button>
+                            <button class="btn btn-sm btn-info" @onclick="() => ViewSamples(dataset.DatasetId)">
+                                👁️ Visualizza Campioni
+                            </button>
+                            <button class="btn btn-sm btn-secondary" @onclick="() => AddSample(dataset.DatasetId)">
+                                ➕ Aggiungi Campione
+                            </button>
+                        </div>
+
+                        @if (evaluationStatus.ContainsKey(dataset.DatasetId))
+                        {
+                            <div class="evaluation-status">
+                                @evaluationStatus[dataset.DatasetId]
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="empty-state">
+                <div class="empty-icon">📊</div>
+                <h3>Nessun Dataset Disponibile</h3>
+                <p>Crea il tuo primo golden dataset per iniziare a monitorare la qualità RAG</p>
+                <button class="btn btn-primary" @onclick="ShowCreateDatasetModal">
+                    ➕ Crea Primo Dataset
+                </button>
+            </div>
+        }
+    }
+
+    <!-- Create Dataset Modal -->
+    @if (showCreateModal)
+    {
+        <div class="modal-backdrop" @onclick="HideCreateDatasetModal"></div>
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Crea Nuovo Golden Dataset</h3>
+                    <button class="btn-close" @onclick="HideCreateDatasetModal">×</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>ID Dataset *</label>
+                        <input type="text" class="form-control" @bind="newDataset.DatasetId" 
+                               placeholder="es: docn-core-v1" />
+                        <small>Identificatore univoco (solo lettere, numeri, trattini)</small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Nome *</label>
+                        <input type="text" class="form-control" @bind="newDataset.Name" 
+                               placeholder="es: Test Funzionalità Core" />
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Descrizione</label>
+                        <textarea class="form-control" @bind="newDataset.Description" rows="3"
+                                  placeholder="Descrizione del dataset e del suo scopo"></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Versione *</label>
+                        <input type="text" class="form-control" @bind="newDataset.Version" 
+                               placeholder="es: 1.0" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="HideCreateDatasetModal">Annulla</button>
+                    <button class="btn btn-primary" @onclick="CreateDataset">Crea Dataset</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Add Sample Modal -->
+    @if (showAddSampleModal)
+    {
+        <div class="modal-backdrop" @onclick="HideAddSampleModal"></div>
+        <div class="modal-dialog modal-large">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Aggiungi Campione di Test</h3>
+                    <button class="btn-close" @onclick="HideAddSampleModal">×</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Domanda *</label>
+                        <input type="text" class="form-control" @bind="newSample.Query" 
+                               placeholder="es: Come si carica un documento?" />
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Risposta Corretta (Ground Truth) *</label>
+                        <textarea class="form-control" @bind="newSample.GroundTruth" rows="4"
+                                  placeholder="La risposta corretta attesa dal sistema"></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Categoria</label>
+                        <input type="text" class="form-control" @bind="newSample.Category" 
+                               placeholder="es: upload, search, chat" />
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Livello Difficoltà</label>
+                        <select class="form-control" @bind="newSample.DifficultyLevel">
+                            <option value="easy">Facile</option>
+                            <option value="medium">Medio</option>
+                            <option value="hard">Difficile</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Peso Importanza (1-10)</label>
+                        <input type="number" class="form-control" @bind="newSample.ImportanceWeight" 
+                               min="1" max="10" />
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" @onclick="HideAddSampleModal">Annulla</button>
+                    <button class="btn btn-primary" @onclick="SaveSample">Salva Campione</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- View Samples Modal -->
+    @if (showViewSamplesModal && currentSamples != null)
+    {
+        <div class="modal-backdrop" @onclick="HideViewSamplesModal"></div>
+        <div class="modal-dialog modal-large">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Campioni del Dataset</h3>
+                    <button class="btn-close" @onclick="HideViewSamplesModal">×</button>
+                </div>
+                <div class="modal-body">
+                    @if (currentSamples.Any())
+                    {
+                        <div class="samples-list">
+                            @foreach (var sample in currentSamples)
+                            {
+                                <div class="sample-card">
+                                    <div class="sample-header">
+                                        <strong>@sample.Query</strong>
+                                        <span class="badge">@sample.Category</span>
+                                    </div>
+                                    <div class="sample-content">
+                                        <p><strong>Ground Truth:</strong> @sample.GroundTruth</p>
+                                        <div class="sample-meta">
+                                            <span>Difficoltà: @sample.DifficultyLevel</span>
+                                            <span>Peso: @sample.ImportanceWeight</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <p>Nessun campione presente in questo dataset.</p>
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-primary" @onclick="HideViewSamplesModal">Chiudi</button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private bool isLoading = true;
+    private string? errorMessage;
+    private List<DatasetInfo>? datasets;
+    private Dictionary<string, string> evaluationStatus = new();
+    
+    // Modals
+    private bool showCreateModal = false;
+    private bool showAddSampleModal = false;
+    private bool showViewSamplesModal = false;
+    private string? currentDatasetId;
+    private List<SampleInfo>? currentSamples;
+    
+    // Form data
+    private CreateDatasetRequest newDataset = new();
+    private CreateSampleRequest newSample = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDatasets();
+    }
+
+    private async Task LoadDatasets()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+            datasets = await httpClient.GetFromJsonAsync<List<DatasetInfo>>("api/goldendatasets");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading golden datasets");
+            errorMessage = "Errore nel caricamento dei dataset. Verifica che il server sia in esecuzione.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task RefreshDatasets()
+    {
+        await LoadDatasets();
+    }
+
+    private void ShowCreateDatasetModal()
+    {
+        newDataset = new CreateDatasetRequest { Version = "1.0" };
+        showCreateModal = true;
+    }
+
+    private void HideCreateDatasetModal()
+    {
+        showCreateModal = false;
+    }
+
+    private async Task CreateDataset()
+    {
+        try
+        {
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+            var response = await httpClient.PostAsJsonAsync("api/goldendatasets", newDataset);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                HideCreateDatasetModal();
+                await LoadDatasets();
+            }
+            else
+            {
+                errorMessage = "Errore nella creazione del dataset.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error creating dataset");
+            errorMessage = "Errore nella creazione del dataset: " + ex.Message;
+        }
+    }
+
+    private void AddSample(string datasetId)
+    {
+        currentDatasetId = datasetId;
+        newSample = new CreateSampleRequest 
+        { 
+            DifficultyLevel = "medium",
+            ImportanceWeight = 5
+        };
+        showAddSampleModal = true;
+    }
+
+    private void HideAddSampleModal()
+    {
+        showAddSampleModal = false;
+    }
+
+    private async Task SaveSample()
+    {
+        try
+        {
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+            var response = await httpClient.PostAsJsonAsync(
+                $"api/goldendatasets/{currentDatasetId}/samples", 
+                newSample);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                HideAddSampleModal();
+                await LoadDatasets();
+            }
+            else
+            {
+                errorMessage = "Errore nell'aggiunta del campione.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error adding sample");
+            errorMessage = "Errore nell'aggiunta del campione: " + ex.Message;
+        }
+    }
+
+    private async Task ViewSamples(string datasetId)
+    {
+        try
+        {
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+            currentSamples = await httpClient.GetFromJsonAsync<List<SampleInfo>>(
+                $"api/goldendatasets/{datasetId}/samples");
+            showViewSamplesModal = true;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading samples");
+            errorMessage = "Errore nel caricamento dei campioni: " + ex.Message;
+        }
+    }
+
+    private void HideViewSamplesModal()
+    {
+        showViewSamplesModal = false;
+    }
+
+    private async Task RunEvaluation(string datasetId)
+    {
+        try
+        {
+            evaluationStatus[datasetId] = "⏳ Valutazione in corso...";
+            StateHasChanged();
+
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+            var response = await httpClient.PostAsync(
+                $"api/goldendatasets/{datasetId}/evaluate", 
+                null);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                evaluationStatus[datasetId] = "✅ Valutazione completata! Controlla le metriche in Qualità RAG.";
+            }
+            else
+            {
+                evaluationStatus[datasetId] = "❌ Errore nella valutazione.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error running evaluation");
+            evaluationStatus[datasetId] = "❌ Errore: " + ex.Message;
+        }
+        
+        StateHasChanged();
+    }
+
+    // DTOs
+    private class DatasetInfo
+    {
+        public string DatasetId { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string? Description { get; set; }
+        public string Version { get; set; } = string.Empty;
+        public DateTime CreatedAt { get; set; }
+        public bool IsActive { get; set; }
+        public int SampleCount { get; set; }
+    }
+
+    private class CreateDatasetRequest
+    {
+        public string DatasetId { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string? Description { get; set; }
+        public string Version { get; set; } = string.Empty;
+    }
+
+    private class SampleInfo
+    {
+        public string Query { get; set; } = string.Empty;
+        public string GroundTruth { get; set; } = string.Empty;
+        public string? Category { get; set; }
+        public string DifficultyLevel { get; set; } = string.Empty;
+        public int ImportanceWeight { get; set; }
+    }
+
+    private class CreateSampleRequest
+    {
+        public string Query { get; set; } = string.Empty;
+        public string GroundTruth { get; set; } = string.Empty;
+        public string? Category { get; set; }
+        public string DifficultyLevel { get; set; } = "medium";
+        public int ImportanceWeight { get; set; } = 5;
+    }
+}
+
+<style>
+    .datasets-container {
+        padding: 2rem;
+        max-width: 1400px;
+        margin: 0 auto;
+    }
+
+    .subtitle {
+        color: #666;
+        margin-bottom: 2rem;
+    }
+
+    .action-bar {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+
+    .datasets-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+        gap: 1.5rem;
+    }
+
+    .dataset-card {
+        background: white;
+        border-radius: 12px;
+        padding: 1.5rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        border-left: 4px solid #007bff;
+    }
+
+    .dataset-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        margin-bottom: 1rem;
+    }
+
+    .dataset-header h3 {
+        margin: 0;
+        font-size: 1.2rem;
+        color: #333;
+    }
+
+    .badge {
+        padding: 0.25rem 0.75rem;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+
+    .badge-active {
+        background: #d4edda;
+        color: #155724;
+    }
+
+    .badge-inactive {
+        background: #f8d7da;
+        color: #721c24;
+    }
+
+    .dataset-description {
+        color: #666;
+        margin-bottom: 1rem;
+        font-size: 0.9rem;
+    }
+
+    .dataset-info {
+        background: #f8f9fa;
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+    }
+
+    .info-item {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 0.5rem;
+        font-size: 0.85rem;
+    }
+
+    .info-item:last-child {
+        margin-bottom: 0;
+    }
+
+    .info-label {
+        font-weight: 600;
+        color: #555;
+    }
+
+    code {
+        background: #e9ecef;
+        padding: 0.2rem 0.4rem;
+        border-radius: 3px;
+        font-size: 0.85rem;
+    }
+
+    .dataset-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+
+    .btn-sm {
+        padding: 0.4rem 0.8rem;
+        font-size: 0.85rem;
+    }
+
+    .evaluation-status {
+        margin-top: 1rem;
+        padding: 0.75rem;
+        background: #fff3cd;
+        border-radius: 6px;
+        font-size: 0.85rem;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 3rem;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .empty-icon {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+    }
+
+    .empty-state h3 {
+        color: #333;
+        margin-bottom: 0.5rem;
+    }
+
+    .empty-state p {
+        color: #666;
+        margin-bottom: 1.5rem;
+    }
+
+    /* Modal Styles */
+    .modal-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        z-index: 1000;
+    }
+
+    .modal-dialog {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: white;
+        border-radius: 12px;
+        max-width: 500px;
+        width: 90%;
+        max-height: 90vh;
+        overflow-y: auto;
+        z-index: 1001;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+    }
+
+    .modal-large {
+        max-width: 700px;
+    }
+
+    .modal-content {
+        padding: 0;
+    }
+
+    .modal-header {
+        padding: 1.5rem;
+        border-bottom: 1px solid #dee2e6;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .modal-header h3 {
+        margin: 0;
+    }
+
+    .btn-close {
+        background: none;
+        border: none;
+        font-size: 1.5rem;
+        cursor: pointer;
+        color: #999;
+    }
+
+    .modal-body {
+        padding: 1.5rem;
+    }
+
+    .modal-footer {
+        padding: 1rem 1.5rem;
+        border-top: 1px solid #dee2e6;
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.5rem;
+    }
+
+    .form-group {
+        margin-bottom: 1.5rem;
+    }
+
+    .form-group label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        color: #333;
+    }
+
+    .form-group small {
+        display: block;
+        color: #666;
+        font-size: 0.85rem;
+        margin-top: 0.25rem;
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 0.5rem;
+        border: 1px solid #ced4da;
+        border-radius: 6px;
+        font-size: 0.95rem;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: #007bff;
+        box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+    }
+
+    textarea.form-control {
+        resize: vertical;
+    }
+
+    .samples-list {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .sample-card {
+        background: #f8f9fa;
+        padding: 1rem;
+        border-radius: 8px;
+        border-left: 3px solid #007bff;
+    }
+
+    .sample-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        margin-bottom: 0.5rem;
+    }
+
+    .sample-content p {
+        margin: 0.5rem 0;
+        font-size: 0.9rem;
+    }
+
+    .sample-meta {
+        display: flex;
+        gap: 1rem;
+        font-size: 0.85rem;
+        color: #666;
+        margin-top: 0.5rem;
+    }
+
+    .loading {
+        text-align: center;
+        padding: 3rem;
+    }
+
+    .spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #007bff;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 1rem;
+    }
+
+    @@keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    .btn {
+        padding: 0.5rem 1rem;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.95rem;
+        font-weight: 500;
+        transition: all 0.2s;
+    }
+
+    .btn-primary {
+        background: #007bff;
+        color: white;
+    }
+
+    .btn-primary:hover {
+        background: #0056b3;
+    }
+
+    .btn-secondary {
+        background: #6c757d;
+        color: white;
+    }
+
+    .btn-secondary:hover {
+        background: #545b62;
+    }
+
+    .btn-success {
+        background: #28a745;
+        color: white;
+    }
+
+    .btn-success:hover {
+        background: #218838;
+    }
+
+    .btn-info {
+        background: #17a2b8;
+        color: white;
+    }
+
+    .btn-info:hover {
+        background: #138496;
+    }
+
+    .alert {
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+    }
+
+    .alert-danger {
+        background: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+    }
+</style>

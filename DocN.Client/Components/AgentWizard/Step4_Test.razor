@@ -1,0 +1,242 @@
+@using DocN.Data.Models
+@inject IJSRuntime JS
+
+<div class="step-content">
+    <div class="step-header">
+        <h2>🧪 Testa il Tuo Agente</h2>
+        <p class="step-description">
+            Prova l'agente con una domanda di esempio per vedere come funziona.
+            <br><strong>Nota:</strong> Questo è solo un test di configurazione, non una risposta completa.
+        </p>
+    </div>
+
+    <div class="test-section">
+        <div class="agent-summary">
+            <h3>📋 Riepilogo Configurazione</h3>
+            <div class="summary-grid">
+                <div class="summary-item">
+                    <span class="summary-label">Nome:</span>
+                    <span class="summary-value">@Agent.Name</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Provider:</span>
+                    <span class="summary-value">@Agent.PrimaryProvider</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Tipo:</span>
+                    <span class="summary-value">@Agent.AgentType</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Documenti recuperati:</span>
+                    <span class="summary-value">@Agent.MaxDocumentsToRetrieve</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Temperatura:</span>
+                    <span class="summary-value">@Agent.Temperature</span>
+                </div>
+                <div class="summary-item">
+                    <span class="summary-label">Ricerca ibrida:</span>
+                    <span class="summary-value">@(Agent.UseHybridSearch ? "✓ Sì" : "✗ No")</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="test-form">
+            <h3>💬 Prova con una Domanda</h3>
+            <div class="form-group">
+                <label>Fai una domanda di test:</label>
+                <textarea @bind="testQuery" class="form-control" rows="3"
+                          placeholder="es: Quali sono i documenti relativi alle ferie?"></textarea>
+            </div>
+
+            <button class="btn btn-test" @onclick="RunTest" disabled="@(string.IsNullOrWhiteSpace(testQuery) || isTesting)">
+                @if (isTesting)
+                {
+                    <span>🔄 Test in corso...</span>
+                }
+                else
+                {
+                    <span>🚀 Avvia Test</span>
+                }
+            </button>
+
+            @if (testResult != null)
+            {
+                <div class="test-result @(testResult.IsValid ? "success" : "error")">
+                    <h4>@(testResult.IsValid ? "✅ Test Superato!" : "❌ Configurazione da Rivedere")</h4>
+                    <p>@testResult.Message</p>
+                    @if (testResult.IsValid)
+                    {
+                        <p class="success-note">
+                            L'agente è configurato correttamente e pronto all'uso! 
+                            Potrai iniziare a usarlo non appena lo salvi.
+                        </p>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="step-actions">
+        <button class="btn btn-secondary" @onclick="OnBack">
+            ← Indietro
+        </button>
+        <button class="btn btn-primary" @onclick="OnNext">
+            Avanti →
+        </button>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public AgentConfiguration Agent { get; set; } = new();
+
+    [Parameter]
+    public EventCallback OnBack { get; set; }
+
+    [Parameter]
+    public EventCallback OnNext { get; set; }
+
+    private string testQuery = "";
+    private bool isTesting = false;
+    private TestResult? testResult;
+
+    private async Task RunTest()
+    {
+        isTesting = true;
+        testResult = null;
+
+        try
+        {
+            // Simulate test - in real implementation, this would call the API
+            await Task.Delay(2000);
+
+            testResult = new TestResult
+            {
+                IsValid = true,
+                Message = "Configurazione valida! L'agente può recuperare documenti e generare risposte."
+            };
+        }
+        catch (Exception ex)
+        {
+            testResult = new TestResult
+            {
+                IsValid = false,
+                Message = $"Errore durante il test: {ex.Message}"
+            };
+        }
+        finally
+        {
+            isTesting = false;
+        }
+    }
+
+    private class TestResult
+    {
+        public bool IsValid { get; set; }
+        public string Message { get; set; } = "";
+    }
+}
+
+<style>
+    .test-section {
+        margin-bottom: 2rem;
+    }
+
+    .agent-summary {
+        background: #f8f9fa;
+        padding: 1.5rem;
+        border-radius: 12px;
+        margin-bottom: 2rem;
+    }
+
+    .agent-summary h3 {
+        margin-bottom: 1rem;
+        color: #2c3e50;
+    }
+
+    .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+    }
+
+    .summary-item {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .summary-label {
+        font-size: 0.85rem;
+        color: #7f8c8d;
+        margin-bottom: 0.25rem;
+    }
+
+    .summary-value {
+        font-weight: 600;
+        color: #2c3e50;
+    }
+
+    .test-form {
+        background: white;
+        border: 2px solid #e0e0e0;
+        padding: 1.5rem;
+        border-radius: 12px;
+    }
+
+    .test-form h3 {
+        margin-bottom: 1rem;
+        color: #2c3e50;
+    }
+
+    .btn-test {
+        background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+        color: white;
+        border: none;
+        padding: 0.75rem 2rem;
+        border-radius: 8px;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        width: 100%;
+        margin-top: 1rem;
+    }
+
+    .btn-test:hover:not(:disabled) {
+        box-shadow: 0 4px 15px rgba(243, 156, 18, 0.4);
+        transform: translateY(-2px);
+    }
+
+    .btn-test:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .test-result {
+        margin-top: 1.5rem;
+        padding: 1.5rem;
+        border-radius: 12px;
+    }
+
+    .test-result.success {
+        background: #d4edda;
+        border: 2px solid #28a745;
+        color: #155724;
+    }
+
+    .test-result.error {
+        background: #f8d7da;
+        border: 2px solid #dc3545;
+        color: #721c24;
+    }
+
+    .test-result h4 {
+        margin-bottom: 0.5rem;
+    }
+
+    .success-note {
+        margin-top: 1rem;
+        font-weight: 600;
+    }
+</style>

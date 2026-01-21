@@ -1,0 +1,870 @@
+﻿@page "/"
+@using DocN.Data
+@using DocN.Data.Services
+@using DocN.Data.Constants
+@using Microsoft.EntityFrameworkCore
+@rendermode InteractiveServer
+@inject DocArcContext DbContext
+@inject DocN.Data.Services.IEmbeddingService EmbeddingService
+@inject DocN.Data.Services.IChunkingService ChunkingService
+@inject ILogger<Home> Logger
+@inject NavigationManager Navigation
+
+<PageTitle>DocN - Document Management</PageTitle>
+
+<div class="hero-section">
+    <div class="hero-content">
+        <h1 class="hero-title">
+            <span class="gradient-text">DocN</span>
+        </h1>
+        <p class="hero-subtitle">Gestione Intelligente dei Documenti con Ricerca Semantica</p>
+        <p class="hero-description">
+            Organizza, analizza e trova i tuoi documenti con l'aiuto dell'intelligenza artificiale. 
+            Supporto per Gemini, OpenAI e Azure OpenAI.
+        </p>
+        <div class="cta-buttons">
+            <a href="/documents" class="btn btn-primary btn-large">
+                <span>📁 I Miei Documenti</span>
+            </a>
+            <a href="/upload" class="btn btn-secondary btn-large">
+                <span>📤 Carica Documento</span>
+            </a>
+            <button type="button" @onclick="ShowConfirmationDialog" class="btn btn-accent btn-large" disabled="@isRecreatingEmbeddings">
+                @if (isRecreatingEmbeddings)
+                {
+                    <span>⏳ Rigenerazione in corso...</span>
+                }
+                else
+                {
+                    <span>🔄 Rigenera Tutti gli Embeddings</span>
+                }
+            </button>
+        </div>
+        
+        @if (showConfirmationDialog)
+        {
+            <div class="confirmation-overlay">
+                <div class="confirmation-dialog">
+                    <div class="confirmation-header">
+                        <h3>⚠️ Conferma Rigenerazione</h3>
+                    </div>
+                    <div class="confirmation-body">
+                        <p>Stai per rigenerare tutti gli embeddings per tutti i documenti nel database.</p>
+                        <p><strong>Questa operazione:</strong></p>
+                        <ul>
+                            <li>Rigenerera gli embeddings dei documenti</li>
+                            <li>Eliminerà e ricreerà tutti i chunks</li>
+                            <li>Rigenerà gli embeddings di tutti i chunks</li>
+                            <li>Può richiedere molto tempo (diversi minuti)</li>
+                            <li>Utilizzerà la tua quota API del provider AI configurato</li>
+                        </ul>
+                        <p>Sei sicuro di voler procedere?</p>
+                    </div>
+                    <div class="confirmation-footer">
+                        <button type="button" @onclick="CancelConfirmation" class="btn btn-secondary">
+                            ❌ Annulla
+                        </button>
+                        <button type="button" @onclick="ConfirmRecreateAllEmbeddings" class="btn btn-accent">
+                            ✅ Conferma e Procedi
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
+        
+        @if (isRecreatingEmbeddings)
+        {
+            <div class="progress-container">
+                @if (totalDocuments > 0)
+                {
+                    <div class="progress-text">
+                        🔄 Rigenerando documento @currentDocument di @totalDocuments
+                    </div>
+                    @if (!string.IsNullOrEmpty(currentDocumentName))
+                    {
+                        <div class="progress-document-name">
+                            📄 @currentDocumentName
+                        </div>
+                    }
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" style="width: @progressPercentage%"></div>
+                    </div>
+                    <div class="progress-stats">
+                        ✅ Successi: @processedSuccessCount | ❌ Errori: @processedErrorCount
+                    </div>
+                }
+                else
+                {
+                    <div class="progress-text">
+                        🔄 Ricerca documenti in corso...
+                    </div>
+                }
+            </div>
+        }
+        
+        @if (!string.IsNullOrEmpty(embeddingMessage))
+        {
+            <div class="@($"alert-message {(embeddingSuccess ? "alert-success" : "alert-error")}")">
+                @embeddingMessage
+            </div>
+        }
+    </div>
+    
+    <div class="features-grid">
+        <a href="/upload" class="feature-card clickable">
+            <div class="feature-icon">📤</div>
+            <h3>Upload & Organizza</h3>
+            <p>Carica documenti e ricevi suggerimenti di categoria automatici con spiegazione del ragionamento</p>
+            <div class="feature-highlight">Intelligente</div>
+        </a>
+        
+        <a href="/search" class="feature-card clickable">
+            <div class="feature-icon">🔍</div>
+            <h3>Ricerca Semantica</h3>
+            <p>Trova documenti usando linguaggio naturale grazie agli embeddings vettoriali</p>
+            <div class="feature-highlight">Smart Search</div>
+        </a>
+        
+        <a href="/chat" class="feature-card clickable">
+            <div class="feature-icon">💬</div>
+            <h3>Chat AI</h3>
+            <p>Interagisci con i tuoi documenti usando l'intelligenza artificiale conversazionale</p>
+            <div class="feature-highlight">AI Powered</div>
+        </a>
+        
+        <a href="/dashboard" class="feature-card clickable">
+            <div class="feature-icon">📊</div>
+            <h3>Analytics</h3>
+            <p>Monitora l'utilizzo, visualizza statistiche e ricevi suggerimenti di ottimizzazione</p>
+            <div class="feature-highlight">Insights</div>
+        </a>
+        
+        <a href="/config" class="feature-card clickable">
+            <div class="feature-icon">🤖</div>
+            <h3>Multi-Provider</h3>
+            <p>Supporto per Gemini, OpenAI e Azure OpenAI con fallback automatico</p>
+            <div class="feature-highlight">Flessibile</div>
+        </a>
+        
+        <a href="/login" class="feature-card clickable">
+            <div class="feature-icon">🔒</div>
+            <h3>Sicurezza</h3>
+            <p>Gestione identità ASP.NET Core con controlli di accesso basati su ruoli</p>
+            <div class="feature-highlight">Enterprise</div>
+        </a>
+    </div>
+</div>
+
+@code {
+    private bool isRecreatingEmbeddings = false;
+    private bool showConfirmationDialog = false;
+    private string embeddingMessage = "";
+    private bool embeddingSuccess = false;
+    private int totalDocuments = 0;
+    private int currentDocument = 0;
+    private int processedSuccessCount = 0;
+    private int processedErrorCount = 0;
+    private string currentDocumentName = "";
+    private double progressPercentage => totalDocuments > 0 ? (double)currentDocument / totalDocuments * 100 : 0;
+
+    private void ShowConfirmationDialog()
+    {
+        showConfirmationDialog = true;
+        StateHasChanged();
+    }
+
+    private void CancelConfirmation()
+    {
+        showConfirmationDialog = false;
+        StateHasChanged();
+    }
+
+    private async Task ConfirmRecreateAllEmbeddings()
+    {
+        showConfirmationDialog = false;
+        StateHasChanged();
+        await RecreateAllEmbeddings();
+    }
+
+    private async Task RecreateAllEmbeddings()
+    {
+        isRecreatingEmbeddings = true;
+        embeddingMessage = "";
+        embeddingSuccess = false;
+        totalDocuments = 0;
+        currentDocument = 0;
+        currentDocumentName = "";
+        processedSuccessCount = 0;
+        processedErrorCount = 0;
+        StateHasChanged();
+
+        try
+        {
+            Logger.LogInformation("Starting recreation of all embeddings");
+
+            // Get all documents - use anonymous type to completely avoid Document entity type
+            var documents = await DbContext.Documents
+                .AsNoTracking()
+                .Where(d => !string.IsNullOrEmpty(d.ExtractedText))
+                .Select(d => new
+                {
+                    d.Id,
+                    d.FileName,
+                    d.ExtractedText,
+                    d.ChunkEmbeddingStatus
+                })
+                .ToListAsync();
+
+            totalDocuments = documents.Count;
+            Logger.LogInformation("Found {Count} documents to process", totalDocuments);
+            StateHasChanged(); // Update UI with total count
+
+            int successCount = 0;
+            int errorCount = 0;
+
+            foreach (var docInfo in documents)
+            {
+                currentDocument++;
+                currentDocumentName = docInfo.FileName ?? $"Documento #{docInfo.Id}";
+                
+                try
+                {
+                    // Regenerate the embedding
+                    var embedding = await EmbeddingService.GenerateEmbeddingAsync(docInfo.ExtractedText);
+                    
+                    if (embedding != null)
+                    {
+                        // Use raw SQL to update embeddings to completely avoid EF Core type mapping
+                        // This bypasses the vector type mapping bug entirely
+                        string vectorFieldName;
+                        string otherVectorFieldName;
+                        int dimension;
+                        
+                        if (embedding.Length == 768)
+                        {
+                            vectorFieldName = "EmbeddingVector768";
+                            otherVectorFieldName = "EmbeddingVector1536";
+                            dimension = 768;
+                        }
+                        else if (embedding.Length == 1536)
+                        {
+                            vectorFieldName = "EmbeddingVector1536";
+                            otherVectorFieldName = "EmbeddingVector768";
+                            dimension = 1536;
+                        }
+                        else
+                        {
+                            Logger.LogWarning("Unsupported embedding dimension {Dimension} for document {Id}", 
+                                embedding.Length, docInfo.Id);
+                            errorCount++;
+                            processedErrorCount++;
+                            continue;
+                        }
+                        
+                        // Convert float array to string representation for SQL
+                        // Using StringBuilder for better performance with large arrays
+                        var sb = new System.Text.StringBuilder("[");
+                        for (int i = 0; i < embedding.Length; i++)
+                        {
+                            if (i > 0) sb.Append(',');
+                            sb.Append(embedding[i].ToString("G17", System.Globalization.CultureInfo.InvariantCulture));
+                        }
+                        sb.Append(']');
+                        var vectorString = sb.ToString();
+                        
+                        // Execute raw SQL to update the vector field
+                        // Field names are hardcoded from validated enum above - no SQL injection risk
+                        await DbContext.Database.ExecuteSqlRawAsync(
+                            $"UPDATE Documents SET {vectorFieldName} = CAST(@p0 AS VECTOR({dimension})), {otherVectorFieldName} = NULL, EmbeddingDimension = @p1 WHERE Id = @p2",
+                            vectorString, dimension, docInfo.Id);
+                        
+                        successCount++;
+                        processedSuccessCount++;
+                    }
+
+                    // Delete existing chunks - use ExecuteDelete to avoid loading vector columns
+                    await DbContext.DocumentChunks
+                        .Where(c => c.DocumentId == docInfo.Id)
+                        .ExecuteDeleteAsync();
+
+                    // Create new chunks with embeddings
+                    // Create a minimal Document object for chunking (only needs Id and ExtractedText)
+                    var docForChunking = new Document 
+                    { 
+                        Id = docInfo.Id, 
+                        ExtractedText = docInfo.ExtractedText 
+                    };
+                    var newChunks = ChunkingService.ChunkDocument(docForChunking);
+                    int chunksEmbedded = 0;
+                    foreach (var chunk in newChunks)
+                    {
+                        var chunkEmbedding = await EmbeddingService.GenerateEmbeddingAsync(chunk.ChunkText);
+                        if (chunkEmbedding != null)
+                        {
+                            chunk.ChunkEmbedding = chunkEmbedding;
+                            // ChunkEmbedding setter automatically sets EmbeddingDimension
+                            chunksEmbedded++;
+                        }
+                        DbContext.DocumentChunks.Add(chunk);
+                    }
+
+                    // Update chunk embedding status using ExecuteUpdate
+                    string newStatus;
+                    if (newChunks.Count == 0)
+                    {
+                        newStatus = ChunkEmbeddingStatus.NotRequired;
+                    }
+                    else if (chunksEmbedded == newChunks.Count)
+                    {
+                        newStatus = ChunkEmbeddingStatus.Completed;
+                    }
+                    else if (chunksEmbedded > 0)
+                    {
+                        // Some chunks have embeddings but not all - mark as pending for retry
+                        newStatus = ChunkEmbeddingStatus.Pending;
+                    }
+                    else
+                    {
+                        // No chunks have embeddings
+                        newStatus = ChunkEmbeddingStatus.Pending;
+                    }
+                    
+                    await DbContext.Documents
+                        .Where(d => d.Id == docInfo.Id)
+                        .ExecuteUpdateAsync(setters => setters
+                            .SetProperty(d => d.ChunkEmbeddingStatus, newStatus));
+
+                    await DbContext.SaveChangesAsync();
+                    Logger.LogInformation("Recreated embeddings for document {Id}: {FileName} - {ChunksEmbedded}/{TotalChunks} chunks embedded", 
+                        docInfo.Id, docInfo.FileName, chunksEmbedded, newChunks.Count);
+                }
+                catch (Exception ex)
+                {
+                    errorCount++;
+                    processedErrorCount++;
+                    Logger.LogError(ex, "Error recreating embeddings for document {Id}: {FileName}", 
+                        docInfo.Id, docInfo.FileName);
+                }
+                
+                // Update UI once per document (after all processing is complete)
+                StateHasChanged();
+            }
+
+            // Provide informative feedback based on results
+            if (totalDocuments == 0)
+            {
+                embeddingMessage = "ℹ️ Nessun documento con testo estratto trovato nel database.";
+                embeddingSuccess = false;
+            }
+            else if (successCount == 0 && errorCount > 0)
+            {
+                embeddingMessage = $"❌ Errore: Tutti i {totalDocuments} documenti hanno fallito la rigenerazione. Verifica la configurazione del provider AI.";
+                embeddingSuccess = false;
+            }
+            else if (successCount == 0)
+            {
+                // This can happen if embedding service returns null but doesn't throw exceptions
+                embeddingMessage = $"⚠️ Attenzione: Nessun embedding generato per {totalDocuments} documenti. Verifica la configurazione del provider AI.";
+                embeddingSuccess = false;
+            }
+            else if (errorCount > 0)
+            {
+                embeddingMessage = $"⚠️ Completato con errori: Embeddings e chunks ricreati per {successCount}/{totalDocuments} documenti. Errori: {errorCount}";
+                embeddingSuccess = false;
+            }
+            else
+            {
+                embeddingMessage = $"✅ Successo! Embeddings e chunks ricreati per tutti i {successCount} documenti.";
+                embeddingSuccess = true;
+            }
+            
+            Logger.LogInformation("Completed recreation of embeddings: {SuccessCount} successful, {ErrorCount} errors out of {TotalDocuments} documents", 
+                successCount, errorCount, totalDocuments);
+        }
+        catch (Exception ex)
+        {
+            embeddingMessage = "❌ Errore critico durante la rigenerazione degli embeddings. Controlla i log per maggiori dettagli.";
+            embeddingSuccess = false;
+            Logger.LogError(ex, "Critical error recreating all embeddings: {Message}", ex.Message);
+        }
+        finally
+        {
+            isRecreatingEmbeddings = false;
+            StateHasChanged();
+        }
+    }
+}
+
+<style>
+    .hero-section {
+        padding: 4rem 2rem;
+        max-width: 1400px;
+        margin: 0 auto;
+    }
+    
+    .hero-content {
+        text-align: center;
+        margin-bottom: 4rem;
+    }
+
+    .hero-badge {
+        display: inline-block;
+        padding: 0.5rem 1.5rem;
+        background: rgba(255, 154, 118, 0.1);
+        border: 2px solid rgba(255, 154, 118, 0.3);
+        border-radius: 50px;
+        color: #ff9a76;
+        font-weight: 600;
+        font-size: 0.9rem;
+        margin-bottom: 2rem;
+        animation: fadeInDown 0.6s ease-out;
+    }
+    
+    .hero-title {
+        font-size: 5rem;
+        font-weight: 800;
+        margin: 1rem 0;
+        animation: fadeInUp 0.8s ease-out;
+    }
+    
+    .gradient-text {
+        background: linear-gradient(135deg, #ff9a76 0%, #ffb399 50%, #ffc4a8 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        animation: gradientShift 3s ease infinite;
+        background-size: 200% 200%;
+    }
+
+    @@keyframes gradientShift {
+        0%, 100% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+    }
+    
+    .hero-subtitle {
+        font-size: 1.8rem;
+        color: #333;
+        margin: 1rem 0;
+        font-weight: 600;
+        animation: fadeInUp 1s ease-out;
+    }
+
+    .hero-description {
+        font-size: 1.1rem;
+        color: #666;
+        max-width: 700px;
+        margin: 1.5rem auto;
+        line-height: 1.8;
+        animation: fadeInUp 1.2s ease-out;
+    }
+    
+    .cta-buttons {
+        display: flex;
+        gap: 1.5rem;
+        justify-content: center;
+        margin-top: 3rem;
+        animation: fadeInUp 1.4s ease-out;
+    }
+    
+    .btn {
+        padding: 1rem 2rem;
+        border-radius: 12px;
+        text-decoration: none;
+        font-weight: 700;
+        font-size: 1.1rem;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+
+    .btn-large {
+        padding: 1.25rem 2.5rem;
+    }
+    
+    .btn-primary {
+        background: linear-gradient(135deg, #ff9a76 0%, #ffb399 100%);
+        color: white;
+        border: none;
+    }
+    
+    .btn-primary:hover {
+        transform: translateY(-3px) scale(1.02);
+        box-shadow: 0 8px 25px rgba(255, 154, 118, 0.4);
+    }
+    
+    .btn-secondary {
+        background: white;
+        color: #ff9a76;
+        border: 2px solid #ff9a76;
+    }
+    
+    .btn-secondary:hover {
+        background: #ff9a76;
+        color: white;
+        transform: translateY(-3px) scale(1.02);
+        box-shadow: 0 8px 25px rgba(255, 154, 118, 0.3);
+    }
+    
+    .btn-accent {
+        background: linear-gradient(135deg, #ffb399 0%, #ff9a76 100%);
+        color: white;
+        border: none;
+    }
+    
+    .btn-accent:hover {
+        transform: translateY(-3px) scale(1.02);
+        box-shadow: 0 8px 25px rgba(255, 179, 153, 0.4);
+    }
+    
+    .btn-accent:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+        transform: none;
+    }
+    
+    .progress-container {
+        margin-top: 2rem;
+        padding: 1.5rem 2rem;
+        background: linear-gradient(135deg, rgba(255, 154, 118, 0.05), rgba(255, 179, 153, 0.05));
+        border: 2px solid rgba(255, 154, 118, 0.3);
+        border-radius: 12px;
+        animation: fadeIn 0.5s ease-out;
+    }
+    
+    .progress-text {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #ff9a76;
+        margin-bottom: 0.5rem;
+        text-align: center;
+    }
+    
+    .progress-document-name {
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: #666;
+        margin-bottom: 1rem;
+        text-align: center;
+        font-style: italic;
+    }
+    
+    .progress-bar-container {
+        width: 100%;
+        height: 24px;
+        background: rgba(255, 255, 255, 0.9);
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+        margin-bottom: 1rem;
+    }
+    
+    .progress-bar {
+        height: 100%;
+        background: linear-gradient(90deg, #ff9a76, #ffb399, #ffc4a8);
+        border-radius: 12px;
+        transition: width 0.3s ease-out;
+        background-size: 200% 100%;
+        animation: progressShimmer 2s linear infinite;
+    }
+    
+    @@keyframes progressShimmer {
+        0% { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+    }
+    
+    .progress-stats {
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: #666;
+        text-align: center;
+    }
+    
+    .alert-message {
+        margin-top: 2rem;
+        padding: 1rem 2rem;
+        border-radius: 12px;
+        font-weight: 600;
+        font-size: 1rem;
+        animation: fadeIn 0.5s ease-out;
+    }
+    
+    .alert-success {
+        background: rgba(38, 176, 80, 0.1);
+        border: 2px solid rgba(38, 176, 80, 0.3);
+        color: #26b050;
+    }
+    
+    .alert-error {
+        background: rgba(220, 53, 69, 0.1);
+        border: 2px solid rgba(220, 53, 69, 0.3);
+        color: #dc3545;
+    }
+    
+    .features-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        gap: 2rem;
+        margin: 4rem 0;
+    }
+    
+    .feature-card {
+        position: relative;
+        padding: 2.5rem;
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        border: 1px solid rgba(255, 154, 118, 0.1);
+        animation: fadeIn 0.6s ease-out;
+        animation-fill-mode: both;
+        text-decoration: none;
+        color: inherit;
+        display: block;
+    }
+    
+    .feature-card.clickable {
+        cursor: pointer;
+    }
+    
+    .feature-card.clickable:hover {
+        transform: translateY(-8px) scale(1.02);
+        box-shadow: 0 12px 40px rgba(255, 154, 118, 0.2);
+        border-color: #ff9a76;
+    }
+
+    .feature-card:nth-child(1) { animation-delay: 0.1s; }
+    .feature-card:nth-child(2) { animation-delay: 0.2s; }
+    .feature-card:nth-child(3) { animation-delay: 0.3s; }
+    .feature-card:nth-child(4) { animation-delay: 0.4s; }
+    .feature-card:nth-child(5) { animation-delay: 0.5s; }
+    .feature-card:nth-child(6) { animation-delay: 0.6s; }
+    
+    .feature-card:not(.clickable):hover {
+        transform: translateY(-8px) scale(1.02);
+        box-shadow: 0 12px 40px rgba(255, 154, 118, 0.2);
+        border-color: #ff9a76;
+    }
+
+    .feature-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, #ff9a76, #ffb399, #ffc4a8);
+        border-radius: 20px 20px 0 0;
+        opacity: 0;
+        transition: opacity 0.3s;
+    }
+
+    .feature-card:hover::before {
+        opacity: 1;
+    }
+    
+    .feature-icon {
+        font-size: 3.5rem;
+        margin-bottom: 1.5rem;
+        animation: bounce 2s infinite;
+    }
+
+    @@keyframes bounce {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-10px); }
+    }
+
+    .feature-card:hover .feature-icon {
+        animation: none;
+        transform: scale(1.1) rotate(5deg);
+        transition: transform 0.3s;
+    }
+    
+    .feature-card h3 {
+        font-size: 1.5rem;
+        margin-bottom: 1rem;
+        color: #333;
+        font-weight: 700;
+    }
+    
+    .feature-card p {
+        color: #666;
+        line-height: 1.7;
+        font-size: 1rem;
+    }
+
+    .feature-highlight {
+        display: inline-block;
+        margin-top: 1rem;
+        padding: 0.4rem 1rem;
+        background: linear-gradient(135deg, rgba(255, 154, 118, 0.1), rgba(255, 179, 153, 0.1));
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #ff9a76;
+    }
+
+    .confirmation-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        animation: fadeIn 0.3s ease-out;
+    }
+
+    .confirmation-dialog {
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 10px 50px rgba(0, 0, 0, 0.3);
+        max-width: 600px;
+        width: 90%;
+        max-height: 80vh;
+        overflow-y: auto;
+        animation: slideUp 0.3s ease-out;
+    }
+
+    @@keyframes slideUp {
+        from {
+            opacity: 0;
+            transform: translateY(30px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .confirmation-header {
+        padding: 2rem 2rem 1rem 2rem;
+        border-bottom: 2px solid rgba(255, 154, 118, 0.2);
+    }
+
+    .confirmation-header h3 {
+        margin: 0;
+        color: #ff9a76;
+        font-size: 1.5rem;
+        font-weight: 700;
+    }
+
+    .confirmation-body {
+        padding: 2rem;
+        color: #333;
+    }
+
+    .confirmation-body p {
+        margin: 0 0 1rem 0;
+        line-height: 1.6;
+    }
+
+    .confirmation-body strong {
+        color: #ff9a76;
+        font-weight: 700;
+    }
+
+    .confirmation-body ul {
+        margin: 1rem 0;
+        padding-left: 1.5rem;
+    }
+
+    .confirmation-body li {
+        margin: 0.5rem 0;
+        line-height: 1.6;
+    }
+
+    .confirmation-footer {
+        padding: 1rem 2rem 2rem 2rem;
+        display: flex;
+        gap: 1rem;
+        justify-content: flex-end;
+    }
+
+    .confirmation-footer .btn {
+        padding: 0.75rem 1.5rem;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 1rem;
+        cursor: pointer;
+        border: none;
+        transition: all 0.3s;
+    }
+
+    .confirmation-footer .btn-secondary {
+        background: #e0e0e0;
+        color: #666;
+    }
+
+    .confirmation-footer .btn-secondary:hover {
+        background: #d0d0d0;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    .confirmation-footer .btn-accent {
+        background: linear-gradient(135deg, #ffb399 0%, #ff9a76 100%);
+        color: white;
+    }
+
+    .confirmation-footer .btn-accent:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(255, 179, 153, 0.4);
+    }
+
+    @@keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    @@keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(30px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    @@keyframes fadeInDown {
+        from {
+            opacity: 0;
+            transform: translateY(-20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    @@media (max-width: 768px) {
+        .hero-title {
+            font-size: 3rem;
+        }
+
+        .hero-subtitle {
+            font-size: 1.3rem;
+        }
+
+        .cta-buttons {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .features-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>

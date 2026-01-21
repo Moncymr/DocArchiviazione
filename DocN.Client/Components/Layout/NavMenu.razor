@@ -1,0 +1,166 @@
+<div class="top-row ps-3 navbar navbar-dark">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="">
+            <span class="brand-icon">📚</span>
+            <span class="brand-text">DocN</span>
+        </a>
+    </div>
+</div>
+
+<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
+
+<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
+    <nav class="nav flex-column">
+        <!-- Sezione Principale - Visibile a Tutti (sempre espansa) -->
+        <div class="nav-section">
+            <div class="nav-section-title">Principale</div>
+            
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
+                    <span class="nav-emoji">🏠</span> Home
+                </NavLink>
+            </div>
+
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="documents">
+                    <span class="nav-emoji">📁</span> Documenti
+                </NavLink>
+            </div>
+        </div>
+
+        <!-- Sezioni per Utenti Autenticati -->
+        <AuthorizeView>
+            <Authorized>
+                <!-- Sezione Ricerca e AI (espansa) -->
+                <div class="nav-section">
+                    <div class="nav-section-title">
+                        <span class="collapse-icon">▼</span> Ricerca e AI
+                    </div>
+                    
+                    <div class="nav-section-content expanded">
+                        <div class="nav-item px-3">
+                            <NavLink class="nav-link" href="search">
+                                <span class="nav-emoji">🔍</span> Ricerca Semantica
+                            </NavLink>
+                        </div>
+
+                        <div class="nav-item px-3">
+                            <NavLink class="nav-link" href="chat">
+                                <span class="nav-emoji">💬</span> Chat AI
+                            </NavLink>
+                        </div>
+
+                        <div class="nav-item px-3">
+                            <NavLink class="nav-link" href="messages">
+                                <span class="nav-emoji">📧</span> Messaggi
+                            </NavLink>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sezione Gestione Documenti (espansa) -->
+                <div class="nav-section">
+                    <div class="nav-section-title">
+                        <span class="collapse-icon">▼</span> Gestione Documenti
+                    </div>
+                    
+                    <div class="nav-section-content expanded">
+                        <div class="nav-item px-3">
+                            <NavLink class="nav-link" href="upload">
+                                <span class="nav-emoji">📤</span> Carica Documento
+                            </NavLink>
+                        </div>
+
+                        <div class="nav-item px-3">
+                            <NavLink class="nav-link" href="upload-multiple">
+                                <span class="nav-emoji">📤</span> Carica Multipli
+                            </NavLink>
+                        </div>
+
+                        <div class="nav-item px-3">
+                            <NavLink class="nav-link" href="connectors">
+                                <span class="nav-emoji">🔌</span> Connettori
+                            </NavLink>
+                        </div>
+
+                        <div class="nav-item px-3">
+                            <NavLink class="nav-link" href="ingestion">
+                                <span class="nav-emoji">📅</span> Pianificazione
+                            </NavLink>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sezione Analytics (collassata) -->
+                <div class="nav-section">
+                    <div class="nav-section-title">
+                        <span class="collapse-icon">▼</span> Analytics
+                    </div>
+                    
+                    <div class="nav-section-content expanded">
+                        <div class="nav-item px-3">
+                            <NavLink class="nav-link" href="dashboard">
+                                <span class="nav-emoji">📊</span> Dashboard
+                            </NavLink>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sezione Impostazioni e Configurazione (collassata) -->
+                <div class="nav-section">
+                    <div class="nav-section-title">
+                        <span class="collapse-icon">▼</span> Impostazioni
+                    </div>
+                    
+                    <div class="nav-section-content expanded">
+                        <div class="nav-item px-3">
+                            <NavLink class="nav-link" href="config">
+                                <span class="nav-emoji">⚙️</span> Configurazione AI
+                            </NavLink>
+                        </div>
+
+                        <div class="nav-item px-3">
+                            <NavLink class="nav-link" href="config/diagnostica">
+                                <span class="nav-emoji">🔧</span> Diagnostica AI
+                            </NavLink>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sezione Monitoring (collassata) -->
+                <div class="nav-section">
+                    <div class="nav-section-title">
+                        <span class="collapse-icon">▼</span> Monitoring
+                    </div>
+                    
+                    <div class="nav-section-content expanded">
+                        <div class="nav-item px-3">
+                            <NavLink class="nav-link" href="monitoring/alerts">
+                                <span class="nav-emoji">🚨</span> Sistema Avvisi
+                            </NavLink>
+                        </div>
+
+                        <div class="nav-item px-3">
+                            <NavLink class="nav-link" href="monitoring/rag-quality">
+                                <span class="nav-emoji">✅</span> Qualità RAG
+                            </NavLink>
+                        </div>
+
+                        <div class="nav-item px-3">
+                            <NavLink class="nav-link" href="monitoring/golden-datasets">
+                                <span class="nav-emoji">🎯</span> Golden Datasets
+                            </NavLink>
+                        </div>
+                    </div>
+                </div>
+            </Authorized>
+        </AuthorizeView>
+
+        <div class="nav-footer">
+        </div>
+    </nav>
+</div>
+
+@code {
+    // All sections always expanded - no toggle functionality needed
+}

@@ -1,0 +1,525 @@
+@page "/monitoring/rag-quality"
+@using System.Net.Http.Json
+@inject IHttpClientFactory HttpClientFactory
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ILogger<RAGQuality> Logger
+@rendermode InteractiveServer
+
+<PageTitle>RAG Quality - DocN</PageTitle>
+
+<div class="quality-container">
+    <h2>✅ Qualità RAG & RAGAS Metrics</h2>
+
+    @if (isLoading)
+    {
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>Caricamento metriche qualità...</p>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger">
+            <strong>⚠️ Errore</strong>
+            <p>@errorMessage</p>
+        </div>
+    }
+    else
+    {
+        <!-- Quality Dashboard -->
+        @if (dashboard != null)
+        {
+            <!-- Quality Metrics -->
+            <div class="section">
+                <h3>📊 Metriche Qualità</h3>
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-icon">🎯</div>
+                        <div class="metric-info">
+                            <h4>@dashboard.Quality?.AverageConfidenceScore.ToString("P0")</h4>
+                            <p>Confidence Score Medio</p>
+                            <div class="metric-bar">
+                                <div class="metric-fill" style="width: @(dashboard.Quality?.AverageConfidenceScore * 100)%"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="metric-card">
+                        <div class="metric-icon">📝</div>
+                        <div class="metric-info">
+                            <h4>@dashboard.Quality?.TotalResponses</h4>
+                            <p>Risposte Totali</p>
+                        </div>
+                    </div>
+
+                    <div class="metric-card @(dashboard.Quality?.LowConfidenceResponses > 0 ? "warning" : "")">
+                        <div class="metric-icon">⚠️</div>
+                        <div class="metric-info">
+                            <h4>@dashboard.Quality?.LowConfidenceResponses</h4>
+                            <p>Risposte Bassa Confidenza</p>
+                        </div>
+                    </div>
+
+                    <div class="metric-card @(dashboard.Quality?.HallucinationsDetected > 0 ? "danger" : "")">
+                        <div class="metric-icon">🔴</div>
+                        <div class="metric-info">
+                            <h4>@dashboard.Quality?.HallucinationsDetected</h4>
+                            <p>Allucinazioni Rilevate</p>
+                        </div>
+                    </div>
+
+                    <div class="metric-card success">
+                        <div class="metric-icon">✅</div>
+                        <div class="metric-info">
+                            <h4>@dashboard.Quality?.CitationVerificationRate.ToString("P0")</h4>
+                            <p>Citazioni Verificate</p>
+                            <div class="metric-bar">
+                                <div class="metric-fill success" style="width: @(dashboard.Quality?.CitationVerificationRate * 100)%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RAGAS Metrics -->
+            @if (dashboard.Ragas?.AverageScores != null)
+            {
+                <div class="section">
+                    <h3>🎓 RAGAS Metrics</h3>
+                    <div class="ragas-grid">
+                        <div class="ragas-card">
+                            <div class="ragas-score @GetScoreClass(dashboard.Ragas.AverageScores.FaithfulnessScore)">
+                                @dashboard.Ragas.AverageScores.FaithfulnessScore.ToString("F2")
+                            </div>
+                            <h4>Faithfulness</h4>
+                            <p>Risposta basata sul contesto</p>
+                            <div class="score-bar">
+                                <div class="score-fill" style="width: @(dashboard.Ragas.AverageScores.FaithfulnessScore * 100)%"></div>
+                            </div>
+                        </div>
+
+                        <div class="ragas-card">
+                            <div class="ragas-score @GetScoreClass(dashboard.Ragas.AverageScores.AnswerRelevancyScore)">
+                                @dashboard.Ragas.AverageScores.AnswerRelevancyScore.ToString("F2")
+                            </div>
+                            <h4>Answer Relevancy</h4>
+                            <p>Rilevanza della risposta</p>
+                            <div class="score-bar">
+                                <div class="score-fill" style="width: @(dashboard.Ragas.AverageScores.AnswerRelevancyScore * 100)%"></div>
+                            </div>
+                        </div>
+
+                        <div class="ragas-card">
+                            <div class="ragas-score @GetScoreClass(dashboard.Ragas.AverageScores.ContextPrecisionScore)">
+                                @dashboard.Ragas.AverageScores.ContextPrecisionScore.ToString("F2")
+                            </div>
+                            <h4>Context Precision</h4>
+                            <p>Precisione del contesto</p>
+                            <div class="score-bar">
+                                <div class="score-fill" style="width: @(dashboard.Ragas.AverageScores.ContextPrecisionScore * 100)%"></div>
+                            </div>
+                        </div>
+
+                        <div class="ragas-card">
+                            <div class="ragas-score @GetScoreClass(dashboard.Ragas.AverageScores.ContextRecallScore)">
+                                @dashboard.Ragas.AverageScores.ContextRecallScore.ToString("F2")
+                            </div>
+                            <h4>Context Recall</h4>
+                            <p>Completezza del contesto</p>
+                            <div class="score-bar">
+                                <div class="score-fill" style="width: @(dashboard.Ragas.AverageScores.ContextRecallScore * 100)%"></div>
+                            </div>
+                        </div>
+
+                        <div class="ragas-card overall">
+                            <div class="ragas-score large @GetScoreClass(dashboard.Ragas.AverageScores.OverallRAGASScore)">
+                                @dashboard.Ragas.AverageScores.OverallRAGASScore.ToString("F2")
+                            </div>
+                            <h4>Overall RAGAS Score</h4>
+                            <p>Punteggio complessivo</p>
+                        </div>
+                    </div>
+
+                    <!-- Quality Trend -->
+                    @if (dashboard.Ragas.QualityTrend != 0)
+                    {
+                        <div class="trend-indicator @(dashboard.Ragas.QualityTrend > 0 ? "positive" : "negative")">
+                            @if (dashboard.Ragas.QualityTrend > 0)
+                            {
+                                <span>📈 Trend positivo: +@dashboard.Ragas.QualityTrend.ToString("P1")</span>
+                            }
+                            else
+                            {
+                                <span>📉 Trend negativo: @dashboard.Ragas.QualityTrend.ToString("P1")</span>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+
+            <!-- Quality Alerts -->
+            @if (dashboard.Ragas?.QualityAlerts?.Any() == true)
+            {
+                <div class="section">
+                    <h3>⚠️ Alert Qualità</h3>
+                    <div class="quality-alerts">
+                        @foreach (var alert in dashboard.Ragas.QualityAlerts)
+                        {
+                            <div class="quality-alert">
+                                <div class="alert-badge">@alert.Severity</div>
+                                <div class="alert-content">
+                                    <h4>@alert.MetricName</h4>
+                                    <p>
+                                        Valore attuale: <strong>@alert.CurrentValue.ToString("F2")</strong>
+                                        (Soglia: @alert.Threshold.ToString("F2"))
+                                    </p>
+                                    <small>Rilevato: @alert.DetectedAt.ToString("dd/MM/yyyy HH:mm")</small>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        }
+
+        <!-- Actions -->
+        <div class="actions-section">
+            <button class="btn btn-primary" @onclick="RefreshDashboard">
+                🔄 Aggiorna Dashboard
+            </button>
+            <a href="/docs/RAG_QUALITY_GUIDE.md" class="btn btn-secondary" target="_blank">
+                📖 Guida Completa
+            </a>
+        </div>
+    }
+</div>
+
+@code {
+    private bool isLoading = true;
+    private string? errorMessage;
+    private DashboardData? dashboard;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDashboard();
+    }
+
+    private async Task LoadDashboard()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+            dashboard = await httpClient.GetFromJsonAsync<DashboardData>("api/ragquality/dashboard");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading RAG quality dashboard");
+            errorMessage = "Errore nel caricamento delle metriche. Verifica che il server sia in esecuzione.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task RefreshDashboard()
+    {
+        await LoadDashboard();
+    }
+
+    private string GetScoreClass(double score)
+    {
+        if (score >= 0.80) return "excellent";
+        if (score >= 0.70) return "good";
+        if (score >= 0.60) return "fair";
+        return "poor";
+    }
+
+    // DTOs
+    private class DashboardData
+    {
+        public QualityMetrics? Quality { get; set; }
+        public RAGASMetrics? Ragas { get; set; }
+    }
+
+    private class QualityMetrics
+    {
+        public int TotalResponses { get; set; }
+        public double AverageConfidenceScore { get; set; }
+        public int LowConfidenceResponses { get; set; }
+        public int HallucinationsDetected { get; set; }
+        public double CitationVerificationRate { get; set; }
+    }
+
+    private class RAGASMetrics
+    {
+        public int TotalEvaluations { get; set; }
+        public RAGASScores? AverageScores { get; set; }
+        public double QualityTrend { get; set; }
+        public List<QualityAlert>? QualityAlerts { get; set; }
+    }
+
+    private class RAGASScores
+    {
+        public double FaithfulnessScore { get; set; }
+        public double AnswerRelevancyScore { get; set; }
+        public double ContextPrecisionScore { get; set; }
+        public double ContextRecallScore { get; set; }
+        public double OverallRAGASScore { get; set; }
+    }
+
+    private class QualityAlert
+    {
+        public string MetricName { get; set; } = string.Empty;
+        public double CurrentValue { get; set; }
+        public double Threshold { get; set; }
+        public string Severity { get; set; } = string.Empty;
+        public DateTime DetectedAt { get; set; }
+    }
+}
+
+<style>
+    .quality-container {
+        padding: 2rem;
+        max-width: 1400px;
+        margin: 0 auto;
+    }
+
+    .section {
+        background: white;
+        border-radius: 12px;
+        padding: 2rem;
+        margin: 2rem 0;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .metrics-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1.5rem;
+        margin-top: 1.5rem;
+    }
+
+    .metric-card {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        border-left: 4px solid #007bff;
+    }
+
+    .metric-card.warning {
+        border-left-color: #ffc107;
+        background: #fffef5;
+    }
+
+    .metric-card.danger {
+        border-left-color: #dc3545;
+        background: #fff5f5;
+    }
+
+    .metric-card.success {
+        border-left-color: #28a745;
+        background: #f5fff5;
+    }
+
+    .metric-icon {
+        font-size: 2.5rem;
+    }
+
+    .metric-info {
+        flex: 1;
+    }
+
+    .metric-info h4 {
+        margin: 0;
+        font-size: 1.8rem;
+        color: #333;
+    }
+
+    .metric-info p {
+        margin: 0.25rem 0;
+        color: #666;
+        font-size: 0.9rem;
+    }
+
+    .metric-bar {
+        height: 6px;
+        background: #e0e0e0;
+        border-radius: 3px;
+        overflow: hidden;
+        margin-top: 0.5rem;
+    }
+
+    .metric-fill {
+        height: 100%;
+        background: #007bff;
+        transition: width 0.3s;
+    }
+
+    .metric-fill.success {
+        background: #28a745;
+    }
+
+    .ragas-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1.5rem;
+        margin-top: 1.5rem;
+    }
+
+    .ragas-card {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 1.5rem;
+        text-align: center;
+    }
+
+    .ragas-card.overall {
+        grid-column: span 2;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+    }
+
+    .ragas-score {
+        font-size: 2.5rem;
+        font-weight: bold;
+        margin-bottom: 0.5rem;
+    }
+
+    .ragas-score.large {
+        font-size: 3.5rem;
+    }
+
+    .ragas-score.excellent {
+        color: #28a745;
+    }
+
+    .ragas-score.good {
+        color: #17a2b8;
+    }
+
+    .ragas-score.fair {
+        color: #ffc107;
+    }
+
+    .ragas-score.poor {
+        color: #dc3545;
+    }
+
+    .ragas-card.overall .ragas-score {
+        color: white;
+    }
+
+    .ragas-card h4 {
+        margin: 0.5rem 0;
+        font-size: 1.1rem;
+    }
+
+    .ragas-card p {
+        margin: 0;
+        font-size: 0.85rem;
+        color: #666;
+    }
+
+    .ragas-card.overall p {
+        color: rgba(255,255,255,0.9);
+    }
+
+    .score-bar {
+        height: 8px;
+        background: #e0e0e0;
+        border-radius: 4px;
+        overflow: hidden;
+        margin-top: 1rem;
+    }
+
+    .score-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        transition: width 0.3s;
+    }
+
+    .trend-indicator {
+        margin-top: 1.5rem;
+        padding: 1rem;
+        border-radius: 8px;
+        text-align: center;
+        font-weight: 600;
+    }
+
+    .trend-indicator.positive {
+        background: #d4edda;
+        color: #155724;
+    }
+
+    .trend-indicator.negative {
+        background: #f8d7da;
+        color: #721c24;
+    }
+
+    .quality-alerts {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        margin-top: 1.5rem;
+    }
+
+    .quality-alert {
+        display: flex;
+        gap: 1rem;
+        padding: 1rem;
+        background: #fff3cd;
+        border-left: 4px solid #ffc107;
+        border-radius: 8px;
+    }
+
+    .alert-badge {
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        background: #ffc107;
+        color: #000;
+        font-size: 0.85rem;
+        font-weight: 600;
+        height: fit-content;
+    }
+
+    .alert-content h4 {
+        margin: 0 0 0.5rem;
+    }
+
+    .alert-content p {
+        margin: 0.25rem 0;
+    }
+
+    .actions-section {
+        display: flex;
+        gap: 1rem;
+        margin: 2rem 0;
+    }
+
+    .loading {
+        text-align: center;
+        padding: 3rem;
+    }
+
+    .spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #007bff;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 1rem;
+    }
+
+    @@keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+</style>

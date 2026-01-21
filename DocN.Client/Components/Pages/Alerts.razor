@@ -1,0 +1,523 @@
+@page "/monitoring/alerts"
+@using System.Net.Http.Json
+@inject IHttpClientFactory HttpClientFactory
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ILogger<Alerts> Logger
+@rendermode InteractiveServer
+
+<PageTitle>Alerts - DocN</PageTitle>
+
+<div class="alerts-container">
+    <h2>🚨 Gestione Alert</h2>
+
+    @if (isLoading)
+    {
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>Caricamento alert...</p>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger">
+            <strong>⚠️ Errore</strong>
+            <p>@errorMessage</p>
+        </div>
+    }
+    else
+    {
+        <!-- Statistics Cards -->
+        @if (statistics != null)
+        {
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">📊</div>
+                    <div class="stat-info">
+                        <h3>@statistics.TotalAlerts</h3>
+                        <p>Alert Totali</p>
+                    </div>
+                </div>
+
+                <div class="stat-card alert-active">
+                    <div class="stat-icon">🔴</div>
+                    <div class="stat-info">
+                        <h3>@statistics.ActiveAlerts</h3>
+                        <p>Alert Attivi</p>
+                    </div>
+                </div>
+
+                <div class="stat-card alert-acknowledged">
+                    <div class="stat-icon">👁️</div>
+                    <div class="stat-info">
+                        <h3>@statistics.AcknowledgedAlerts</h3>
+                        <p>Riconosciuti</p>
+                    </div>
+                </div>
+
+                <div class="stat-card alert-resolved">
+                    <div class="stat-icon">✅</div>
+                    <div class="stat-info">
+                        <h3>@statistics.ResolvedAlerts</h3>
+                        <p>Risolti</p>
+                    </div>
+                </div>
+            </div>
+        }
+
+        <!-- Active Alerts -->
+        <div class="alerts-section">
+            <div class="section-header">
+                <h3>🔔 Alert Attivi</h3>
+                <button class="btn btn-secondary" @onclick="RefreshAlerts">
+                    🔄 Aggiorna
+                </button>
+            </div>
+
+            @if (activeAlerts?.Any() == true)
+            {
+                <div class="alerts-list">
+                    @foreach (var alert in activeAlerts)
+                    {
+                        <div class="alert-item severity-@alert.Severity.ToString().ToLower()">
+                            <div class="alert-header">
+                                <div class="alert-title">
+                                    <span class="severity-badge">@GetSeverityIcon(alert.Severity) @alert.Severity</span>
+                                    <h4>@alert.Name</h4>
+                                </div>
+                                <div class="alert-actions">
+                                    @if (alert.Status == "Firing")
+                                    {
+                                        <button class="btn btn-sm btn-primary" @onclick="() => AcknowledgeAlert(alert.Id)">
+                                            👁️ Riconosci
+                                        </button>
+                                    }
+                                    @if (alert.Status != "Resolved")
+                                    {
+                                        <button class="btn btn-sm btn-success" @onclick="() => ResolveAlert(alert.Id)">
+                                            ✅ Risolvi
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                            <div class="alert-body">
+                                <p class="alert-description">@alert.Description</p>
+                                <div class="alert-meta">
+                                    <span>📍 Source: @alert.Source</span>
+                                    <span>⏰ @FormatDate(alert.StartsAt)</span>
+                                    <span>🏷️ Status: @alert.Status</span>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="empty-state">
+                    <div class="empty-icon">✨</div>
+                    <h3>Nessun Alert Attivo</h3>
+                    <p>Tutto funziona correttamente!</p>
+                    <button class="btn btn-info" @onclick="GenerateSampleAlerts" disabled="@isGeneratingSamples">
+                        @if (isGeneratingSamples)
+                        {
+                            <span>Generazione...</span>
+                        }
+                        else
+                        {
+                            <span>📊 Genera Alert di Esempio</span>
+                        }
+                    </button>
+                </div>
+            }
+        </div>
+
+        <!-- Test Alert Section -->
+        <div class="test-section">
+            <h3>🧪 Test & Demo</h3>
+            <p>Testa la funzionalità degli alert o genera esempi per vedere come funzionano</p>
+            <div class="test-buttons">
+                <button class="btn btn-warning" @onclick="SendTestAlert" disabled="@isSendingTest">
+                    @if (isSendingTest)
+                    {
+                        <span>Invio...</span>
+                    }
+                    else
+                    {
+                        <span>📤 Invia Test Alert</span>
+                    }
+                </button>
+                <button class="btn btn-info" @onclick="GenerateSampleAlerts" disabled="@isGeneratingSamples">
+                    @if (isGeneratingSamples)
+                    {
+                        <span>Generazione...</span>
+                    }
+                    else
+                    {
+                        <span>📊 Genera Alert di Esempio (5)</span>
+                    }
+                </button>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private bool isLoading = true;
+    private bool isSendingTest = false;
+    private bool isGeneratingSamples = false;
+    private string? errorMessage;
+    private List<AlertItem>? activeAlerts;
+    private AlertStatistics? statistics;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        isLoading = true;
+        errorMessage = null;
+
+        try
+        {
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+            
+            // Load active alerts
+            activeAlerts = await httpClient.GetFromJsonAsync<List<AlertItem>>("api/alerts/active");
+            
+            // Load statistics
+            statistics = await httpClient.GetFromJsonAsync<AlertStatistics>("api/alerts/statistics");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading alerts");
+            errorMessage = "Errore nel caricamento degli alert. Verifica che il server sia in esecuzione.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task RefreshAlerts()
+    {
+        await LoadData();
+    }
+
+    private async Task AcknowledgeAlert(string alertId)
+    {
+        try
+        {
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+            var response = await httpClient.PostAsJsonAsync($"api/alerts/{alertId}/acknowledge", 
+                new { acknowledgedBy = "User" });
+            
+            if (response.IsSuccessStatusCode)
+            {
+                await LoadData();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error acknowledging alert");
+        }
+    }
+
+    private async Task ResolveAlert(string alertId)
+    {
+        try
+        {
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+            var response = await httpClient.PostAsJsonAsync($"api/alerts/{alertId}/resolve", 
+                new { resolvedBy = "User" });
+            
+            if (response.IsSuccessStatusCode)
+            {
+                await LoadData();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error resolving alert");
+        }
+    }
+
+    private async Task SendTestAlert()
+    {
+        isSendingTest = true;
+        try
+        {
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+            var response = await httpClient.PostAsJsonAsync("api/alerts/test", new
+            {
+                name = "Test Alert dalla UI",
+                description = "Questo è un alert di test inviato dall'interfaccia web",
+                severity = "Info"
+            });
+            
+            if (response.IsSuccessStatusCode)
+            {
+                await Task.Delay(1000);
+                await LoadData();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error sending test alert");
+        }
+        finally
+        {
+            isSendingTest = false;
+        }
+    }
+
+    private async Task GenerateSampleAlerts()
+    {
+        isGeneratingSamples = true;
+        try
+        {
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+            var response = await httpClient.PostAsync("api/alerts/generate-samples", null);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                await Task.Delay(1000);
+                await LoadData();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error generating sample alerts");
+            errorMessage = "Errore nella generazione degli alert di esempio. Verifica che il server sia in esecuzione.";
+        }
+        finally
+        {
+            isGeneratingSamples = false;
+        }
+    }
+
+    private string GetSeverityIcon(string severity) => severity switch
+    {
+        "Critical" => "🔴",
+        "Warning" => "⚠️",
+        "Info" => "ℹ️",
+        _ => "❓"
+    };
+
+    private string FormatDate(DateTime date)
+    {
+        var diff = DateTime.UtcNow - date;
+        if (diff.TotalMinutes < 1) return "Adesso";
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes} minuti fa";
+        if (diff.TotalHours < 24) return $"{(int)diff.TotalHours} ore fa";
+        return date.ToString("dd/MM/yyyy HH:mm");
+    }
+
+    // DTOs
+    private class AlertItem
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public string Severity { get; set; } = string.Empty;
+        public string Source { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
+        public DateTime StartsAt { get; set; }
+    }
+
+    private class AlertStatistics
+    {
+        public int TotalAlerts { get; set; }
+        public int ActiveAlerts { get; set; }
+        public int AcknowledgedAlerts { get; set; }
+        public int ResolvedAlerts { get; set; }
+    }
+}
+
+<style>
+    .alerts-container {
+        padding: 2rem;
+        max-width: 1400px;
+        margin: 0 auto;
+    }
+
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1.5rem;
+        margin: 2rem 0;
+    }
+
+    .stat-card {
+        background: white;
+        border-radius: 12px;
+        padding: 1.5rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        transition: transform 0.2s;
+    }
+
+    .stat-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    .stat-card.alert-active {
+        border-left: 4px solid #dc3545;
+    }
+
+    .stat-card.alert-acknowledged {
+        border-left: 4px solid #ffc107;
+    }
+
+    .stat-card.alert-resolved {
+        border-left: 4px solid #28a745;
+    }
+
+    .stat-icon {
+        font-size: 2.5rem;
+    }
+
+    .stat-info h3 {
+        margin: 0;
+        font-size: 2rem;
+        color: #333;
+    }
+
+    .stat-info p {
+        margin: 0.25rem 0 0;
+        color: #666;
+    }
+
+    .alerts-section {
+        background: white;
+        border-radius: 12px;
+        padding: 2rem;
+        margin: 2rem 0;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+    }
+
+    .alerts-list {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .alert-item {
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 1.5rem;
+        background: #fafafa;
+    }
+
+    .alert-item.severity-critical {
+        border-left: 4px solid #dc3545;
+        background: #fff5f5;
+    }
+
+    .alert-item.severity-warning {
+        border-left: 4px solid #ffc107;
+        background: #fffef5;
+    }
+
+    .alert-item.severity-info {
+        border-left: 4px solid #17a2b8;
+        background: #f5fcff;
+    }
+
+    .alert-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 1rem;
+    }
+
+    .alert-title {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .severity-badge {
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        background: #f0f0f0;
+    }
+
+    .alert-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .alert-description {
+        margin: 0.5rem 0;
+        color: #333;
+    }
+
+    .alert-meta {
+        display: flex;
+        gap: 1.5rem;
+        font-size: 0.9rem;
+        color: #666;
+        margin-top: 1rem;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 3rem;
+        color: #999;
+    }
+
+    .empty-icon {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+    }
+
+    .test-section {
+        background: white;
+        border-radius: 12px;
+        padding: 2rem;
+        margin: 2rem 0;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .test-buttons {
+        display: flex;
+        gap: 1rem;
+        margin-top: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .loading {
+        text-align: center;
+        padding: 3rem;
+    }
+
+    .spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #007bff;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 1rem;
+    }
+
+    @@keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+</style>

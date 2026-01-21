@@ -1,0 +1,773 @@
+@using DocN.Data.Models
+@inject HttpClient Http
+@inject IJSRuntime JSRuntime
+
+@if (IsVisible)
+{
+    <div class="modal-overlay" @onclick="Close"></div>
+    <div class="modal-container" @onclick:stopPropagation="true">
+        <div class="modal-header">
+            <h3>🔐 Gestisci Visibilità e Condivisione</h3>
+            <button class="btn-close-modal" @onclick="Close">✕</button>
+        </div>
+        
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="error-banner">
+                ⚠️ @errorMessage
+                <button class="btn-dismiss-error" @onclick='() => errorMessage = ""'>✕</button>
+            </div>
+        }
+        
+        @if (!string.IsNullOrEmpty(successMessage))
+        {
+            <div class="success-banner">
+                ✓ @successMessage
+                <button class="btn-dismiss-success" @onclick='() => successMessage = ""'>✕</button>
+            </div>
+        }
+        
+        <div class="modal-body">
+            @if (Document != null)
+            {
+                <!-- Visibility Section -->
+                <div class="section">
+                    <h4>👁️ Livello di Visibilità</h4>
+                    <p class="section-description">Chi può vedere questo documento?</p>
+                    
+                    <div class="visibility-options">
+                        <div class="visibility-option @(selectedVisibility == DocumentVisibility.Private ? "active" : "")" 
+                             @onclick='() => SelectVisibility(DocumentVisibility.Private)'>
+                            <div class="option-icon">🔒</div>
+                            <div class="option-content">
+                                <div class="option-title">Privato</div>
+                                <div class="option-description">Solo tu puoi vedere questo documento</div>
+                            </div>
+                            <div class="option-check">@(selectedVisibility == DocumentVisibility.Private ? "✓" : "")</div>
+                        </div>
+                        
+                        <div class="visibility-option @(selectedVisibility == DocumentVisibility.Shared ? "active" : "")" 
+                             @onclick='() => SelectVisibility(DocumentVisibility.Shared)'>
+                            <div class="option-icon">👥</div>
+                            <div class="option-content">
+                                <div class="option-title">Condiviso</div>
+                                <div class="option-description">Condividi con utenti o gruppi specifici</div>
+                            </div>
+                            <div class="option-check">@(selectedVisibility == DocumentVisibility.Shared ? "✓" : "")</div>
+                        </div>
+                        
+                        <div class="visibility-option @(selectedVisibility == DocumentVisibility.Organization ? "active" : "")" 
+                             @onclick='() => SelectVisibility(DocumentVisibility.Organization)'>
+                            <div class="option-icon">🏢</div>
+                            <div class="option-content">
+                                <div class="option-title">Organizzazione</div>
+                                <div class="option-description">Tutti gli utenti della tua organizzazione</div>
+                            </div>
+                            <div class="option-check">@(selectedVisibility == DocumentVisibility.Organization ? "✓" : "")</div>
+                        </div>
+                        
+                        <div class="visibility-option @(selectedVisibility == DocumentVisibility.Public ? "active" : "")" 
+                             @onclick='() => SelectVisibility(DocumentVisibility.Public)'>
+                            <div class="option-icon">🌐</div>
+                            <div class="option-content">
+                                <div class="option-title">Pubblico</div>
+                                <div class="option-description">Chiunque può vedere questo documento</div>
+                            </div>
+                            <div class="option-check">@(selectedVisibility == DocumentVisibility.Public ? "✓" : "")</div>
+                        </div>
+                    </div>
+                </div>
+
+                @if (selectedVisibility == DocumentVisibility.Shared)
+                {
+                    <!-- Share with Users/Groups Section -->
+                    <div class="section">
+                        <h4>👤 Condividi con Utenti o Gruppi</h4>
+                        <p class="section-description">Aggiungi persone o gruppi che possono accedere</p>
+                        
+                        <div class="share-tabs">
+                            <button class="tab-btn @(shareTab == "users" ? "active" : "")" 
+                                    @onclick='() => shareTab = "users"'>
+                                Utenti
+                            </button>
+                            <button class="tab-btn @(shareTab == "groups" ? "active" : "")" 
+                                    @onclick='() => shareTab = "groups"'>
+                                Gruppi
+                            </button>
+                        </div>
+                        
+                        @if (shareTab == "users")
+                        {
+                            <div class="share-input-group">
+                                <input type="text" 
+                                       placeholder="Cerca utente per email o nome..." 
+                                       class="share-input"
+                                       @bind="userSearchQuery"
+                                       @bind:event="oninput" />
+                                <button class="btn-add-share" @onclick="AddUserShare" disabled="@string.IsNullOrEmpty(userSearchQuery)">
+                                    Aggiungi
+                                </button>
+                            </div>
+                            
+                            <!-- Current User Shares -->
+                            @if (currentShares != null && currentShares.UserShares.Any())
+                            {
+                                <div class="current-shares">
+                                    <h5>Utenti con accesso:</h5>
+                                    @foreach (var share in currentShares.UserShares)
+                                    {
+                                        <div class="share-item">
+                                            <div class="share-info">
+                                                <span class="share-icon">👤</span>
+                                                <div>
+                                                    <div class="share-name">@share.UserName</div>
+                                                    <div class="share-email">@share.UserEmail</div>
+                                                </div>
+                                            </div>
+                                            <div class="share-permission">
+                                                <select class="permission-select" value="@share.Permission.ToString()">
+                                                    <option value="Read">Lettura</option>
+                                                    <option value="Write">Scrittura</option>
+                                                    <option value="Delete">Eliminazione</option>
+                                                </select>
+                                                <button class="btn-remove-share" @onclick="() => RemoveUserShare(share.UserId)">
+                                                    🗑️
+                                                </button>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <div class="share-input-group">
+                                <input type="text" 
+                                       placeholder="Cerca gruppo..." 
+                                       class="share-input"
+                                       @bind="groupSearchQuery"
+                                       @bind:event="oninput" />
+                                <button class="btn-add-share" @onclick="AddGroupShare" disabled="@string.IsNullOrEmpty(groupSearchQuery)">
+                                    Aggiungi
+                                </button>
+                            </div>
+                            
+                            <!-- Current Group Shares -->
+                            @if (currentShares != null && currentShares.GroupShares.Any())
+                            {
+                                <div class="current-shares">
+                                    <h5>Gruppi con accesso:</h5>
+                                    @foreach (var share in currentShares.GroupShares)
+                                    {
+                                        <div class="share-item">
+                                            <div class="share-info">
+                                                <span class="share-icon">👥</span>
+                                                <div>
+                                                    <div class="share-name">@share.GroupName</div>
+                                                    <div class="share-email">@share.MemberCount membri</div>
+                                                </div>
+                                            </div>
+                                            <div class="share-permission">
+                                                <select class="permission-select" value="@share.Permission.ToString()">
+                                                    <option value="Read">Lettura</option>
+                                                    <option value="Write">Scrittura</option>
+                                                    <option value="Delete">Eliminazione</option>
+                                                </select>
+                                                <button class="btn-remove-share" @onclick="() => RemoveGroupShare(share.GroupId)">
+                                                    🗑️
+                                                </button>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        }
+                    </div>
+                }
+            }
+        </div>
+        
+        <div class="modal-footer">
+            <button class="btn-secondary" @onclick="Close">Annulla</button>
+            <button class="btn-primary" @onclick="SaveChanges" disabled="@isSaving">
+                @if (isSaving)
+                {
+                    <span>Salvataggio...</span>
+                }
+                else
+                {
+                    <span>Salva Modifiche</span>
+                }
+            </button>
+        </div>
+    </div>
+}
+
+<style>
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 1000;
+        animation: fadeIn 0.2s;
+    }
+
+    .modal-container {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 10px 50px rgba(0, 0, 0, 0.3);
+        z-index: 1001;
+        max-width: 600px;
+        width: 90%;
+        max-height: 90vh;
+        overflow-y: auto;
+        animation: slideIn 0.3s ease-out;
+    }
+
+    @@keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+
+    @@keyframes slideIn {
+        from {
+            transform: translate(-50%, -60%);
+            opacity: 0;
+        }
+        to {
+            transform: translate(-50%, -50%);
+            opacity: 1;
+        }
+    }
+
+    .modal-header {
+        padding: 2rem;
+        border-bottom: 1px solid #e0e0e0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: linear-gradient(135deg, #FF6B35 0%, #F7931E 100%);
+        color: white;
+        border-radius: 20px 20px 0 0;
+    }
+
+    .modal-header h3 {
+        margin: 0;
+        font-size: 1.5rem;
+    }
+
+    .btn-close-modal {
+        background: rgba(255, 255, 255, 0.2);
+        border: none;
+        color: white;
+        font-size: 1.5rem;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        cursor: pointer;
+        transition: all 0.3s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .btn-close-modal:hover {
+        background: rgba(255, 255, 255, 0.3);
+        transform: rotate(90deg);
+    }
+
+    .error-banner, .success-banner {
+        padding: 1rem 1.5rem;
+        margin: 0 2rem;
+        margin-top: 1rem;
+        border-radius: 10px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        animation: slideDown 0.3s ease-out;
+    }
+
+    .error-banner {
+        background: linear-gradient(135deg, #fee 0%, #fdd 100%);
+        border-left: 4px solid #dc3545;
+        color: #721c24;
+    }
+
+    .success-banner {
+        background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+        border-left: 4px solid #28a745;
+        color: #155724;
+    }
+
+    .btn-dismiss-error, .btn-dismiss-success {
+        background: transparent;
+        border: none;
+        font-size: 1.2rem;
+        cursor: pointer;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        transition: all 0.3s;
+    }
+
+    .btn-dismiss-error:hover {
+        background: rgba(220, 53, 69, 0.1);
+    }
+
+    .btn-dismiss-success:hover {
+        background: rgba(40, 167, 69, 0.1);
+    }
+
+    @@keyframes slideDown {
+        from {
+            transform: translateY(-20px);
+            opacity: 0;
+        }
+        to {
+            transform: translateY(0);
+            opacity: 1;
+        }
+    }
+
+    .modal-body {
+        padding: 2rem;
+        max-height: calc(90vh - 200px);
+        overflow-y: auto;
+    }
+
+    .section {
+        margin-bottom: 2rem;
+    }
+
+    .section h4 {
+        margin: 0 0 0.5rem 0;
+        color: #333;
+        font-size: 1.2rem;
+    }
+
+    .section-description {
+        margin: 0 0 1rem 0;
+        color: #666;
+        font-size: 0.9rem;
+    }
+
+    .visibility-options {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .visibility-option {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 1rem;
+        border: 2px solid #e0e0e0;
+        border-radius: 12px;
+        cursor: pointer;
+        transition: all 0.3s;
+        background: white;
+    }
+
+    .visibility-option:hover {
+        border-color: #FF6B35;
+        background: #fff7f4;
+        transform: translateX(5px);
+    }
+
+    .visibility-option.active {
+        border-color: #FF6B35;
+        background: linear-gradient(135deg, #fff7f4 0%, #fffaf8 100%);
+        box-shadow: 0 4px 12px rgba(255, 107, 53, 0.2);
+    }
+
+    .option-icon {
+        font-size: 2rem;
+        flex-shrink: 0;
+    }
+
+    .option-content {
+        flex: 1;
+    }
+
+    .option-title {
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 0.25rem;
+    }
+
+    .option-description {
+        font-size: 0.85rem;
+        color: #666;
+    }
+
+    .option-check {
+        font-size: 1.5rem;
+        color: #FF6B35;
+        font-weight: bold;
+    }
+
+    .share-tabs {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+    }
+
+    .tab-btn {
+        flex: 1;
+        padding: 0.75rem;
+        border: 2px solid #e0e0e0;
+        background: white;
+        border-radius: 10px;
+        cursor: pointer;
+        font-weight: 600;
+        transition: all 0.3s;
+    }
+
+    .tab-btn:hover {
+        border-color: #FF6B35;
+        color: #FF6B35;
+    }
+
+    .tab-btn.active {
+        background: linear-gradient(135deg, #FF6B35 0%, #F7931E 100%);
+        color: white;
+        border-color: transparent;
+        box-shadow: 0 4px 12px rgba(255, 107, 53, 0.3);
+    }
+
+    .share-input-group {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+    }
+
+    .share-input {
+        flex: 1;
+        padding: 0.75rem;
+        border: 2px solid #e0e0e0;
+        border-radius: 10px;
+        font-size: 1rem;
+        transition: all 0.3s;
+    }
+
+    .share-input:focus {
+        outline: none;
+        border-color: #FF6B35;
+        box-shadow: 0 0 0 3px rgba(255, 107, 53, 0.1);
+    }
+
+    .btn-add-share {
+        padding: 0.75rem 1.5rem;
+        background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+        color: white;
+        border: none;
+        border-radius: 10px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s;
+        white-space: nowrap;
+    }
+
+    .btn-add-share:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(72, 187, 120, 0.3);
+    }
+
+    .btn-add-share:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .current-shares {
+        margin-top: 1rem;
+    }
+
+    .current-shares h5 {
+        margin: 0 0 0.75rem 0;
+        font-size: 0.95rem;
+        color: #666;
+        font-weight: 600;
+    }
+
+    .share-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem;
+        background: #f8f9fa;
+        border-radius: 10px;
+        margin-bottom: 0.5rem;
+    }
+
+    .share-info {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex: 1;
+    }
+
+    .share-icon {
+        font-size: 1.5rem;
+    }
+
+    .share-name {
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 0.25rem;
+    }
+
+    .share-email {
+        font-size: 0.85rem;
+        color: #666;
+    }
+
+    .share-permission {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+    }
+
+    .permission-select {
+        padding: 0.5rem;
+        border: 1px solid #e0e0e0;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        cursor: pointer;
+    }
+
+    .btn-remove-share {
+        padding: 0.5rem 0.75rem;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        font-size: 1.2rem;
+        transition: all 0.3s;
+        border-radius: 6px;
+    }
+
+    .btn-remove-share:hover {
+        background: #fee;
+        transform: scale(1.1);
+    }
+
+    .modal-footer {
+        padding: 1.5rem 2rem;
+        border-top: 1px solid #e0e0e0;
+        display: flex;
+        justify-content: flex-end;
+        gap: 1rem;
+        background: #f8f9fa;
+        border-radius: 0 0 20px 20px;
+    }
+
+    .btn-primary, .btn-secondary {
+        padding: 0.75rem 2rem;
+        border: none;
+        border-radius: 10px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s;
+        font-size: 1rem;
+    }
+
+    .btn-primary {
+        background: linear-gradient(135deg, #FF6B35 0%, #F7931E 100%);
+        color: white;
+        box-shadow: 0 4px 12px rgba(255, 107, 53, 0.3);
+    }
+
+    .btn-primary:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(255, 107, 53, 0.4);
+    }
+
+    .btn-primary:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .btn-secondary {
+        background: white;
+        color: #666;
+        border: 2px solid #e0e0e0;
+    }
+
+    .btn-secondary:hover {
+        border-color: #FF6B35;
+        color: #FF6B35;
+        transform: translateY(-2px);
+    }
+</style>
+
+@code {
+    [Parameter]
+    public bool IsVisible { get; set; }
+    
+    [Parameter]
+    public Document? Document { get; set; }
+    
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+    
+    [Parameter]
+    public EventCallback OnSaved { get; set; }
+    
+    private DocumentVisibility selectedVisibility = DocumentVisibility.Private;
+    private string shareTab = "users";
+    private string userSearchQuery = string.Empty;
+    private string groupSearchQuery = string.Empty;
+    private bool isSaving = false;
+    private DocumentShareInfo? currentShares;
+    private string errorMessage = string.Empty;
+    private string successMessage = string.Empty;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Document != null && IsVisible)
+        {
+            selectedVisibility = Document.Visibility;
+            await LoadCurrentShares();
+        }
+    }
+
+    private async Task LoadCurrentShares()
+    {
+        try
+        {
+            if (Document != null)
+            {
+                var response = await Http.GetAsync($"Documents/{Document.Id}/shares");
+                if (response.IsSuccessStatusCode)
+                {
+                    currentShares = await response.Content.ReadFromJsonAsync<DocumentShareInfo>();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Errore durante il caricamento delle condivisioni: {ex.Message}";
+        }
+    }
+
+    private void SelectVisibility(DocumentVisibility visibility)
+    {
+        selectedVisibility = visibility;
+        errorMessage = string.Empty;
+        successMessage = string.Empty;
+    }
+
+    private void AddUserShare()
+    {
+        errorMessage = "Funzionalità in sviluppo: la ricerca utenti sarà disponibile nella prossima versione";
+    }
+
+    private void AddGroupShare()
+    {
+        errorMessage = "Funzionalità in sviluppo: la ricerca gruppi sarà disponibile nella prossima versione";
+    }
+
+    private async Task RemoveUserShare(string userId)
+    {
+        try
+        {
+            errorMessage = string.Empty;
+            if (Document != null)
+            {
+                var response = await Http.DeleteAsync($"Documents/{Document.Id}/shares/user/{userId}");
+                if (response.IsSuccessStatusCode)
+                {
+                    successMessage = "Condivisione rimossa con successo";
+                    await LoadCurrentShares();
+                }
+                else
+                {
+                    errorMessage = "Impossibile rimuovere la condivisione. Verifica i permessi.";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Errore durante la rimozione: {ex.Message}";
+        }
+    }
+
+    private async Task RemoveGroupShare(int groupId)
+    {
+        try
+        {
+            errorMessage = string.Empty;
+            if (Document != null)
+            {
+                var response = await Http.DeleteAsync($"Documents/{Document.Id}/shares/group/{groupId}");
+                if (response.IsSuccessStatusCode)
+                {
+                    successMessage = "Condivisione gruppo rimossa con successo";
+                    await LoadCurrentShares();
+                }
+                else
+                {
+                    errorMessage = "Impossibile rimuovere la condivisione gruppo. Verifica i permessi.";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Errore durante la rimozione: {ex.Message}";
+        }
+    }
+
+    private async Task SaveChanges()
+    {
+        try
+        {
+            isSaving = true;
+            errorMessage = string.Empty;
+            
+            if (Document != null && selectedVisibility != Document.Visibility)
+            {
+                var response = await Http.PatchAsJsonAsync($"Documents/{Document.Id}/visibility", 
+                    new { Visibility = selectedVisibility });
+                
+                if (response.IsSuccessStatusCode)
+                {
+                    Document.Visibility = selectedVisibility;
+                    successMessage = "Visibilità aggiornata con successo";
+                    await Task.Delay(1000); // Show success message briefly
+                    await OnSaved.InvokeAsync();
+                    await Close();
+                }
+                else
+                {
+                    errorMessage = "Impossibile aggiornare la visibilità. Verifica di essere il proprietario del documento.";
+                }
+            }
+            else
+            {
+                await Close();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Errore durante il salvataggio: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task Close()
+    {
+        IsVisible = false;
+        errorMessage = string.Empty;
+        successMessage = string.Empty;
+        await OnClose.InvokeAsync();
+    }
+}

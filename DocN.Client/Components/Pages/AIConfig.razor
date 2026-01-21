@@ -1,0 +1,1108 @@
+@page "/config"
+@using DocN.Data
+@using DocN.Data.Models
+@using System.Net.Http.Json
+@using System.Text.Json
+@inject ApplicationDbContext DbContext
+@inject NavigationManager Navigation
+@inject IHttpClientFactory HttpClientFactory
+@rendermode InteractiveServer
+
+<PageTitle>Configurazione AI - DocN</PageTitle>
+
+<div class="config-container">
+    <div class="config-header">
+        <h2>⚙️ Configurazione AI Multi-Provider</h2>
+        <p class="description">Configura i provider AI (Groq, Ollama, Gemini, OpenAI, Azure OpenAI) per i diversi servizi</p>
+    </div>
+
+    @if (config == null)
+    {
+        <div class="loading">Caricamento configurazione...</div>
+    }
+    else
+    {
+        <EditForm Model="config" OnValidSubmit="SaveConfiguration">
+            <!-- Basic Configuration Section -->
+            <div class="config-card">
+                <h3>📋 Informazioni Base</h3>
+                <div class="form-grid">
+                    <div class="form-group full-width">
+                        <label>Nome Configurazione</label>
+                        <InputText @bind-Value="config.ConfigurationName" class="form-control" placeholder="es: Configurazione Produzione" />
+                    </div>
+                </div>
+            </div>
+
+            <!-- Service Provider Assignment -->
+            <div class="config-card">
+                <h3>🎯 Assegnazione Provider per Servizio</h3>
+                <p class="section-description">Seleziona quale provider utilizzare per ogni servizio</p>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>💬 Chat Provider</label>
+                        <select @bind="selectedChatProvider" class="form-control">
+                            <option value="">-- Provider Predefinito --</option>
+                            <option value="1">Gemini</option>
+                            <option value="2">OpenAI</option>
+                            <option value="3">Azure OpenAI</option>
+                            <option value="4">Ollama (Local)</option>
+                            <option value="5">Groq (Cloud)</option>
+                        </select>
+                        <small>Per conversazioni e analisi categoria</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>🧠 Embeddings Provider</label>
+                        <select @bind="selectedEmbeddingsProvider" class="form-control">
+                            <option value="">-- Provider Predefinito --</option>
+                            <option value="1">Gemini</option>
+                            <option value="2">OpenAI</option>
+                            <option value="3">Azure OpenAI</option>
+                            <option value="4">Ollama (Local)</option>
+                        </select>
+                        <small>Per ricerca semantica (Groq non supportato)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>🏷️ Tag Extraction Provider</label>
+                        <select @bind="selectedTagExtractionProvider" class="form-control">
+                            <option value="">-- Provider Predefinito --</option>
+                            <option value="1">Gemini</option>
+                            <option value="2">OpenAI</option>
+                            <option value="3">Azure OpenAI</option>
+                            <option value="4">Ollama (Local)</option>
+                            <option value="5">Groq (Cloud)</option>
+                        </select>
+                        <small>Per estrazione automatica tag</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>📋 Metadata Extraction Provider</label>
+                        <select @bind="selectedMetadataExtractionProvider" class="form-control">
+                            <option value="">-- Provider Predefinito --</option>
+                            <option value="1">Gemini</option>
+                            <option value="2">OpenAI</option>
+                            <option value="3">Azure OpenAI</option>
+                            <option value="4">Ollama (Local)</option>
+                            <option value="5">Groq (Cloud)</option>
+                        </select>
+                        <small>Per estrazione automatica metadati strutturati</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>🔍 RAG Provider</label>
+                        <select @bind="selectedRAGProvider" class="form-control">
+                            <option value="">-- Provider Predefinito --</option>
+                            <option value="1">Gemini</option>
+                            <option value="2">OpenAI</option>
+                            <option value="3">Azure OpenAI</option>
+                            <option value="4">Ollama (Local)</option>
+                            <option value="5">Groq (Cloud)</option>
+                        </select>
+                        <small>Per chat con documenti</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gemini Configuration -->
+            <div class="config-card provider-card">
+                <div class="provider-header">
+                    <h3>🤖 Gemini Configuration</h3>
+                    <span class="provider-badge gemini">Gemini AI</span>
+                </div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Gemini API Key</label>
+                        <InputText type="password" @bind-Value="config.GeminiApiKey" class="form-control" placeholder="Inserisci API key di Gemini" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>Chat Model</label>
+                        <InputText @bind-Value="config.GeminiChatModel" class="form-control" placeholder="gemini-1.5-flash" />
+                        <small>Modello per chat e analisi</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Embedding Model</label>
+                        <InputText @bind-Value="config.GeminiEmbeddingModel" class="form-control" placeholder="text-embedding-004" />
+                        <small>Modello per embeddings</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- OpenAI Configuration -->
+            <div class="config-card provider-card">
+                <div class="provider-header">
+                    <h3>🔵 OpenAI Configuration</h3>
+                    <span class="provider-badge openai">OpenAI</span>
+                </div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>OpenAI API Key</label>
+                        <InputText type="password" @bind-Value="config.OpenAIApiKey" class="form-control" placeholder="Inserisci API key di OpenAI" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>Chat Model</label>
+                        <InputText @bind-Value="config.OpenAIChatModel" class="form-control" placeholder="gpt-4" />
+                        <small>Modello per chat e analisi</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Embedding Model</label>
+                        <InputText @bind-Value="config.OpenAIEmbeddingModel" class="form-control" placeholder="text-embedding-ada-002" />
+                        <small>Modello per embeddings</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Azure OpenAI Configuration -->
+            <div class="config-card provider-card">
+                <div class="provider-header">
+                    <h3>☁️ Azure OpenAI Configuration</h3>
+                    <span class="provider-badge azure">Azure OpenAI</span>
+                </div>
+                <div class="form-grid">
+                    <div class="form-group full-width">
+                        <label>Azure OpenAI Endpoint</label>
+                        <InputText @bind-Value="config.AzureOpenAIEndpoint" class="form-control" placeholder="https://your-resource.openai.azure.com/" />
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label>Azure OpenAI API Key</label>
+                        <InputText type="password" @bind-Value="config.AzureOpenAIKey" class="form-control" placeholder="Inserisci API key di Azure OpenAI" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>Chat Deployment Name</label>
+                        <InputText @bind-Value="config.ChatDeploymentName" class="form-control" placeholder="gpt-4" />
+                        <small>Nome deployment per chat</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Embedding Deployment Name</label>
+                        <InputText @bind-Value="config.EmbeddingDeploymentName" class="form-control" placeholder="text-embedding-ada-002" />
+                        <small>Nome deployment per embeddings</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Chat Model</label>
+                        <InputText @bind-Value="config.AzureOpenAIChatModel" class="form-control" placeholder="gpt-4" />
+                    </div>
+
+                    <div class="form-group">
+                        <label>Embedding Model</label>
+                        <InputText @bind-Value="config.AzureOpenAIEmbeddingModel" class="form-control" placeholder="text-embedding-ada-002" />
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ollama Configuration -->
+            <div class="config-card provider-card">
+                <div class="provider-header">
+                    <h3>💻 Ollama Configuration</h3>
+                    <span class="provider-badge ollama">Ollama (Local)</span>
+                </div>
+                <div class="form-grid">
+                    <div class="form-group full-width">
+                        <label>Ollama Endpoint</label>
+                        <InputText @bind-Value="config.OllamaEndpoint" class="form-control" placeholder="http://localhost:11434" />
+                        <small>Endpoint del server Ollama locale o remoto</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Chat Model</label>
+                        <InputText @bind-Value="config.OllamaChatModel" class="form-control" placeholder="llama3" />
+                        <small>Modello per chat (es: llama3, mistral, gemma)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Embedding Model</label>
+                        <InputText @bind-Value="config.OllamaEmbeddingModel" class="form-control" placeholder="nomic-embed-text" />
+                        <small>Modello per embeddings (es: nomic-embed-text)</small>
+                    </div>
+                </div>
+                <div class="provider-info">
+                    <small>ℹ️ Ollama deve essere in esecuzione localmente. Guida: <a href="https://github.com/Moncymr/DocN/blob/main/GUIDA_OLLAMA_LOCALE.md" target="_blank">GUIDA_OLLAMA_LOCALE.md</a></small>
+                </div>
+            </div>
+
+            <!-- Groq Configuration -->
+            <div class="config-card provider-card">
+                <div class="provider-header">
+                    <h3>⚡ Groq Configuration</h3>
+                    <span class="provider-badge groq">Groq Cloud</span>
+                </div>
+                <div class="form-grid">
+                    <div class="form-group full-width">
+                        <label>Groq API Key</label>
+                        <InputText type="password" @bind-Value="config.GroqApiKey" class="form-control" placeholder="gsk_..." />
+                        <small>Ottieni la key gratuita da <a href="https://console.groq.com/keys" target="_blank">console.groq.com/keys</a></small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Chat Model</label>
+                        <InputText @bind-Value="config.GroqChatModel" class="form-control" placeholder="llama-3.1-8b-instant" />
+                        <small>Modello per chat (es: llama-3.1-8b-instant, mixtral-8x7b)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Groq Endpoint</label>
+                        <InputText @bind-Value="config.GroqEndpoint" class="form-control" placeholder="https://api.groq.com/openai/v1" />
+                        <small>Endpoint API Groq (solitamente non serve cambiare)</small>
+                    </div>
+                </div>
+                <div class="provider-info warning">
+                    <small>⚠️ Groq non supporta embeddings. Usa Gemini, OpenAI, o Ollama per embeddings.</small>
+                </div>
+            </div>
+            <!-- RAG Configuration -->
+            <div class="config-card">
+                <h3>🔍 Configurazione RAG</h3>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Max Documenti da Recuperare</label>
+                        <InputNumber @bind-Value="config.MaxDocumentsToRetrieve" class="form-control" />
+                        <small>Numero di documenti rilevanti da usare per il contesto</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Soglia Similarità</label>
+                        <InputNumber @bind-Value="config.SimilarityThreshold" class="form-control" step="0.1" />
+                        <small>0.0 - 1.0 (più alto = più simile)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Max Token per Contesto</label>
+                        <InputNumber @bind-Value="config.MaxTokensForContext" class="form-control" />
+                        <small>Massimo token per le risposte generate</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>🎯 MMR Lambda (Diversità Risultati)</label>
+                        <InputNumber @bind-Value="config.MMRLambda" class="form-control" step="0.1" min="0" max="1" />
+                        <small>0.0 - 1.0 | 0.0=Max diversità, 0.7=Bilanciato (consigliato), 1.0=Max rilevanza</small>
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label>System Prompt</label>
+                        <InputTextArea @bind-Value="config.SystemPrompt" class="form-control" rows="4" 
+                            placeholder="Sei un assistente utile che risponde a domande basandoti sui documenti forniti..." />
+                        <small>Istruzioni per l'AI nella generazione delle risposte</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chunking Configuration -->
+            <div class="config-card">
+                <h3>📄 Configurazione Chunking</h3>
+                <p class="section-description">Impostazioni per dividere i documenti in parti (chunks)</p>
+                <div class="form-grid">
+                    <div class="form-group full-width">
+                        <label class="checkbox-label">
+                            <InputCheckbox @bind-Value="config.EnableChunking" />
+                            <span>Abilita suddivisione documenti in chunks</span>
+                        </label>
+                        <small>Migliora l'accuratezza della ricerca semantica dividendo i documenti lunghi</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Dimensione Chunk</label>
+                        <InputNumber @bind-Value="config.ChunkSize" class="form-control" />
+                        <small>Numero di caratteri per chunk</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Overlap Chunk</label>
+                        <InputNumber @bind-Value="config.ChunkOverlap" class="form-control" />
+                        <small>Sovrapposizione tra chunks adiacenti</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Embedding Settings -->
+            <div class="config-card">
+                <h3>🧠 Impostazioni Embedding</h3>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Dimensioni Embedding</label>
+                        <InputNumber @bind-Value="config.EmbeddingDimensions" class="form-control" />
+                        <small>Tipicamente 1536 per Ada-002, 768 per Gemini</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Advanced Settings -->
+            <div class="config-card">
+                <h3>⚙️ Impostazioni Avanzate</h3>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <InputCheckbox @bind-Value="config.EnableFallback" />
+                        <span>Abilita fallback automatico ad altri provider</span>
+                    </label>
+                    <small>Se un provider fallisce, prova automaticamente con gli altri configurati</small>
+                </div>
+
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <InputCheckbox @bind-Value="config.IsActive" />
+                        <span>Imposta come configurazione attiva</span>
+                    </label>
+                    <small>Solo una configurazione può essere attiva alla volta</small>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary btn-large">
+                    💾 Salva Configurazione
+                </button>
+                <button type="button" class="btn btn-secondary" @onclick="TestConnection" disabled="@isTesting">
+                    @if (isTesting)
+                    {
+                        <span>⏳ Test in corso...</span>
+                    }
+                    else
+                    {
+                        <span>🔌 Testa Connessione</span>
+                    }
+                </button>
+            </div>
+
+            @if (!string.IsNullOrEmpty(message))
+            {
+                <div class="alert @(isError ? "alert-error" : "alert-success")">
+                    @message
+                </div>
+            }
+
+            @if (testResult != null)
+            {
+                <div class="test-results">
+                    <h3>📊 Risultati Test Configurazione</h3>
+                    
+                    <div class="test-summary @(testResult.Success ? "success" : "error")">
+                        <strong>@testResult.Message</strong>
+                    </div>
+
+                    @foreach (var provider in testResult.ProviderResults)
+                    {
+                        <div class="provider-result @(provider.IsValid ? "valid" : "invalid")">
+                            <div class="provider-result-header">
+                                <h4>@provider.ProviderName</h4>
+                                <span class="badge @(provider.IsValid ? "badge-success" : "badge-error")">
+                                    @provider.Message
+                                </span>
+                            </div>
+                            
+                            @if (provider.Services.Any())
+                            {
+                                <div class="services-list">
+                                    <h5>Servizi Configurati:</h5>
+                                    @foreach (var service in provider.Services)
+                                    {
+                                        <div class="service-item">
+                                            <span class="service-name">@service.ServiceName</span>
+                                            <span class="service-model">Modello: @service.Model</span>
+                                            <span class="service-status">@service.Status</span>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </EditForm>
+
+        <!-- Info Section -->
+        <div class="info-section">
+            <h3>ℹ️ Come Funziona</h3>
+            <div class="info-cards">
+                <div class="info-card">
+                    <h4>🔤 Embeddings</h4>
+                    <p>Converte il testo dei documenti in vettori numerici per la ricerca semantica. Documenti con contenuto simile avranno embeddings simili.</p>
+                </div>
+                <div class="info-card">
+                    <h4>🤖 RAG (Retrieval Augmented Generation)</h4>
+                    <p>Recupera documenti rilevanti basandosi su una query, poi usa l'AI per generare risposte accurate basate sul contenuto dei tuoi documenti.</p>
+                </div>
+                <div class="info-card">
+                    <h4>🏷️ Suggerimento Categoria</h4>
+                    <p>L'AI analizza il contenuto del documento e suggerisce categorie appropriate con motivazione dettagliata che spiega la classificazione.</p>
+                </div>
+                <div class="info-card">
+                    <h4>📄 Chunking</h4>
+                    <p>Divide documenti lunghi in parti più piccole per migliorare la precisione della ricerca semantica e del RAG.</p>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .config-container {
+        padding: 1.5rem;
+        max-width: 1200px;
+        margin: 0 auto;
+        background: #f5f7fa;
+        min-height: 100vh;
+    }
+
+    .config-header {
+        background: white;
+        padding: 2rem;
+        border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        margin-bottom: 2rem;
+    }
+
+    .config-header h2 {
+        font-size: 2rem;
+        margin: 0 0 0.5rem 0;
+        color: #2d3748;
+        font-weight: 700;
+    }
+
+    .description {
+        color: #666;
+        margin: 0;
+        font-size: 1rem;
+    }
+
+    .config-card {
+        background: white;
+        padding: 2rem;
+        border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        margin-bottom: 1.5rem;
+        border: 1px solid #e2e8f0;
+        transition: all 0.3s ease;
+    }
+
+    .config-card:hover {
+        border-color: #ff9a76;
+        box-shadow: 0 4px 12px rgba(255, 154, 118, 0.15);
+    }
+
+    .config-card h3 {
+        margin: 0 0 1.5rem 0;
+        font-size: 1.4rem;
+        color: #2d3748;
+        font-weight: 700;
+    }
+
+    .section-description {
+        color: #666;
+        margin: -0.5rem 0 1.5rem 0;
+        font-size: 0.95rem;
+    }
+
+    .provider-card {
+        border-left: 4px solid #ff9a76;
+    }
+
+    .provider-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+    }
+
+    .provider-header h3 {
+        margin: 0;
+    }
+
+    .provider-badge {
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: white;
+    }
+
+    .provider-badge.gemini {
+        background: linear-gradient(135deg, #4285F4 0%, #34A853 100%);
+    }
+
+    .provider-badge.openai {
+        background: linear-gradient(135deg, #10a37f 0%, #1a7f64 100%);
+    }
+
+    .provider-badge.azure {
+        background: linear-gradient(135deg, #0078d4 0%, #005a9e 100%);
+    }
+
+    .provider-badge.ollama {
+        background: linear-gradient(135deg, #6b46c1 0%, #553c9a 100%);
+    }
+
+    .provider-badge.groq {
+        background: linear-gradient(135deg, #f56565 0%, #c53030 100%);
+    }
+
+    .provider-info {
+        margin-top: 1rem;
+        padding: 0.75rem 1rem;
+        background: #edf2f7;
+        border-left: 3px solid #4299e1;
+        border-radius: 4px;
+    }
+
+    .provider-info.warning {
+        background: #fef5e7;
+        border-left-color: #f39c12;
+    }
+
+    .provider-info a {
+        color: #3182ce;
+        text-decoration: underline;
+    }
+
+    .provider-info a:hover {
+        color: #2c5282;
+    }
+
+    .form-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 1.5rem;
+    }
+
+    .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .form-group.full-width {
+        grid-column: 1 / -1;
+    }
+
+    .form-group label {
+        font-weight: 600;
+        color: #333;
+        font-size: 0.95rem;
+    }
+
+    .form-group small {
+        color: #666;
+        font-size: 0.85rem;
+    }
+
+    .form-control {
+        padding: 0.75rem;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        font-size: 1rem;
+        transition: all 0.3s ease;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: #ff9a76;
+        box-shadow: 0 0 0 3px rgba(255, 154, 118, 0.1);
+    }
+
+    .checkbox-label {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        cursor: pointer;
+        padding: 0.5rem 0;
+    }
+
+    .checkbox-label input[type="checkbox"] {
+        width: 20px;
+        height: 20px;
+        cursor: pointer;
+        accent-color: #ff9a76;
+    }
+
+    .checkbox-label span {
+        font-weight: 600;
+        color: #333;
+    }
+
+    .form-actions {
+        display: flex;
+        gap: 1rem;
+        margin-top: 2rem;
+        justify-content: flex-end;
+    }
+
+    .btn {
+        padding: 0.875rem 2rem;
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .btn-primary {
+        background: linear-gradient(135deg, #ff9a76 0%, #ffb399 100%);
+        color: white;
+        border: 2px solid transparent;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+        background: linear-gradient(135deg, #ffb399 0%, #ffc4a8 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(255, 154, 118, 0.4);
+    }
+
+    .btn-large {
+        padding: 1rem 2.5rem;
+        font-size: 1.1rem;
+    }
+
+    .btn-secondary {
+        background: #e2e8f0;
+        color: #4a5568;
+        border: 2px solid #cbd5e0;
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+        background: #cbd5e0;
+        border-color: #a0aec0;
+        transform: translateY(-2px);
+    }
+
+    .alert {
+        padding: 1.25rem;
+        border-radius: 8px;
+        margin-top: 1rem;
+        font-size: 1rem;
+        line-height: 1.6;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        animation: slideIn 0.3s ease-out;
+    }
+
+    @@keyframes slideIn {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .alert-success {
+        background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+        color: #155724;
+        border: 2px solid #28a745;
+        border-left: 5px solid #28a745;
+    }
+
+    .alert-error {
+        background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+        color: #721c24;
+        border: 2px solid #dc3545;
+        border-left: 5px solid #dc3545;
+        font-weight: 500;
+    }
+
+    .info-section {
+        background: linear-gradient(135deg, rgba(255, 154, 118, 0.05), rgba(255, 179, 153, 0.05));
+        padding: 2rem;
+        border-radius: 12px;
+        margin-top: 2rem;
+    }
+
+    .info-section h3 {
+        margin: 0 0 1.5rem 0;
+        color: #2d3748;
+        font-weight: 700;
+        font-size: 1.4rem;
+    }
+
+    .info-cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 1.5rem;
+    }
+
+    .info-card {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 154, 118, 0.1);
+        transition: all 0.3s ease;
+    }
+
+    .info-card:hover {
+        border-color: #ff9a76;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(255, 154, 118, 0.15);
+    }
+
+    .info-card h4 {
+        margin: 0 0 0.5rem 0;
+        color: #ff9a76;
+        font-weight: 700;
+    }
+
+    .info-card p {
+        margin: 0;
+        color: #666;
+        line-height: 1.6;
+    }
+
+    .loading {
+        text-align: center;
+        padding: 3rem;
+        color: #666;
+        font-size: 1.1rem;
+    }
+
+    @@media (max-width: 768px) {
+        .config-container {
+            padding: 1rem;
+        }
+
+        .config-header h2 {
+            font-size: 1.5rem;
+        }
+
+        .form-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .form-actions {
+            flex-direction: column;
+        }
+
+        .info-cards {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    /* Test Results Styles */
+    .test-results {
+        margin-top: 2rem;
+        padding: 2rem;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        border: 1px solid #e2e8f0;
+    }
+
+    .test-results h3 {
+        margin: 0 0 1.5rem 0;
+        color: #2d3748;
+        font-weight: 700;
+        font-size: 1.4rem;
+    }
+
+    .test-summary {
+        padding: 1rem 1.5rem;
+        border-radius: 8px;
+        margin-bottom: 1.5rem;
+        font-size: 1rem;
+        font-weight: 600;
+    }
+
+    .test-summary.success {
+        background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+        color: #155724;
+        border: 2px solid #28a745;
+    }
+
+    .test-summary.error {
+        background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+        color: #721c24;
+        border: 2px solid #dc3545;
+    }
+
+    .provider-result {
+        margin-bottom: 1.5rem;
+        padding: 1.5rem;
+        border-radius: 8px;
+        border: 2px solid #e2e8f0;
+        transition: all 0.3s ease;
+    }
+
+    .provider-result.valid {
+        border-left: 4px solid #28a745;
+        background: rgba(40, 167, 69, 0.02);
+    }
+
+    .provider-result.invalid {
+        border-left: 4px solid #dc3545;
+        background: rgba(220, 53, 69, 0.02);
+    }
+
+    .provider-result-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+
+    .provider-result-header h4 {
+        margin: 0;
+        font-size: 1.2rem;
+        color: #2d3748;
+    }
+
+    .badge {
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        font-size: 0.875rem;
+        font-weight: 600;
+    }
+
+    .badge-success {
+        background: #28a745;
+        color: white;
+    }
+
+    .badge-error {
+        background: #dc3545;
+        color: white;
+    }
+
+    .services-list {
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid #e2e8f0;
+    }
+
+    .services-list h5 {
+        margin: 0 0 1rem 0;
+        font-size: 1rem;
+        color: #4a5568;
+        font-weight: 600;
+    }
+
+    .service-item {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 0.75rem 1rem;
+        background: #f7fafc;
+        border-radius: 6px;
+        margin-bottom: 0.5rem;
+    }
+
+    .service-name {
+        font-weight: 600;
+        color: #2d3748;
+        min-width: 140px;
+    }
+
+    .service-model {
+        color: #666;
+        font-size: 0.9rem;
+        flex: 1;
+    }
+
+    .service-status {
+        font-weight: 500;
+        color: #28a745;
+    }
+</style>
+
+@code {
+    private AIConfiguration? config;
+    private string message = string.Empty;
+    private bool isError = false;
+    private bool isTesting = false;
+    private ConfigurationTestResult? testResult = null;
+
+    // Provider selection bindings for dropdowns
+    private string selectedChatProvider = "";
+    private string selectedEmbeddingsProvider = "";
+    private string selectedTagExtractionProvider = "";
+    private string selectedMetadataExtractionProvider = "";
+    private string selectedRAGProvider = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Try to load existing active configuration
+        config = await Task.Run(() => DbContext.AIConfigurations.FirstOrDefault(c => c.IsActive));
+        
+        // If none exists, create a new one with defaults
+        if (config == null)
+        {
+            config = new AIConfiguration
+            {
+                ConfigurationName = "Configurazione Predefinita",
+                ProviderType = AIProviderType.Gemini,
+                MaxDocumentsToRetrieve = 5,
+                SimilarityThreshold = 0.7,
+                MaxTokensForContext = 4000,
+                MMRLambda = 0.7, // Default: bilanciato tra rilevanza e diversità
+                EmbeddingDimensions = 768, // Default for Gemini
+                EmbeddingModel = "text-embedding-004",
+                SystemPrompt = "Sei un assistente utile che risponde a domande basandoti sui documenti forniti. Cita sempre i documenti fonte quando fornisci informazioni.",
+                IsActive = true,
+                EnableChunking = true,
+                ChunkSize = 1000,
+                ChunkOverlap = 200,
+                EnableFallback = true,
+                // Default models
+                GeminiChatModel = "gemini-2.5-flash",
+                GeminiEmbeddingModel = "text-embedding-004",                
+                OpenAIChatModel = "gpt-4",
+                OpenAIEmbeddingModel = "text-embedding-ada-002",
+                AzureOpenAIChatModel = "gpt-4",
+                AzureOpenAIEmbeddingModel = "text-embedding-ada-002",
+                // Ollama defaults
+                OllamaEndpoint = "http://localhost:11434",
+                OllamaChatModel = "llama3",
+                OllamaEmbeddingModel = "nomic-embed-text",
+                // Groq defaults
+                GroqEndpoint = "https://api.groq.com/openai/v1",
+                GroqChatModel = "llama-3.1-8b-instant"
+            };
+        }
+
+        // Initialize provider selections from config
+        selectedChatProvider = config.ChatProvider?.ToString("D") ?? "";
+        selectedEmbeddingsProvider = config.EmbeddingsProvider?.ToString("D") ?? "";
+        selectedTagExtractionProvider = config.TagExtractionProvider?.ToString("D") ?? "";
+        selectedMetadataExtractionProvider = config.MetadataExtractionProvider?.ToString("D") ?? "";
+        selectedRAGProvider = config.RAGProvider?.ToString("D") ?? "";
+    }
+
+    private async Task SaveConfiguration()
+    {
+        try
+        {
+            // Validate required fields
+            if (string.IsNullOrWhiteSpace(config!.ConfigurationName))
+            {
+                message = "❌ Il nome della configurazione è obbligatorio";
+                isError = true;
+                return;
+            }
+            
+            // Trim and validate length
+            config.ConfigurationName = config.ConfigurationName.Trim();
+            if (config.ConfigurationName.Length > 100)
+            {
+                message = "❌ Il nome della configurazione non può superare 100 caratteri";
+                isError = true;
+                return;
+            }
+            
+            // Update provider assignments from dropdowns
+            config.ChatProvider = string.IsNullOrEmpty(selectedChatProvider) ? null : (AIProviderType)int.Parse(selectedChatProvider);
+            config.EmbeddingsProvider = string.IsNullOrEmpty(selectedEmbeddingsProvider) ? null : (AIProviderType)int.Parse(selectedEmbeddingsProvider);
+            config.TagExtractionProvider = string.IsNullOrEmpty(selectedTagExtractionProvider) ? null : (AIProviderType)int.Parse(selectedTagExtractionProvider);
+            config.MetadataExtractionProvider = string.IsNullOrEmpty(selectedMetadataExtractionProvider) ? null : (AIProviderType)int.Parse(selectedMetadataExtractionProvider);
+            config.RAGProvider = string.IsNullOrEmpty(selectedRAGProvider) ? null : (AIProviderType)int.Parse(selectedRAGProvider);
+
+            // If setting this as active, deactivate all others
+            if (config.IsActive)
+            {
+                var otherConfigs = DbContext.AIConfigurations.Where(c => c.Id != config.Id);
+                foreach (var other in otherConfigs)
+                {
+                    other.IsActive = false;
+                }
+            }
+
+            if (config.Id == 0)
+            {
+                config.CreatedAt = DateTime.UtcNow;
+                DbContext.AIConfigurations.Add(config);
+            }
+            else
+            {
+                config.UpdatedAt = DateTime.UtcNow;
+                DbContext.AIConfigurations.Update(config);
+            }
+
+            await DbContext.SaveChangesAsync();
+            
+            message = "✅ Configurazione salvata con successo!";
+            isError = false;
+        }
+        catch (Exception ex)
+        {
+            // Capture inner exceptions for better error reporting
+            var fullErrorMessage = ex.Message;
+            var innerEx = ex.InnerException;
+            var depth = 1;
+            while (innerEx != null && depth <= 3)
+            {
+                fullErrorMessage += $"\n--- Inner Exception {depth} ---\n{innerEx.Message}";
+                innerEx = innerEx.InnerException;
+                depth++;
+            }
+            
+            message = $"❌ Errore nel salvataggio della configurazione: {fullErrorMessage}";
+            isError = true;
+            
+            // Log to console for debugging
+            Console.WriteLine($"AIConfiguration Save Error: {fullErrorMessage}");
+            if (ex.StackTrace != null)
+            {
+                Console.WriteLine($"Stack Trace: {ex.StackTrace}");
+            }
+        }
+    }
+
+    private async Task TestConnection()
+    {
+        try
+        {
+            isTesting = true;
+            testResult = null;
+            message = "⏳ Test in corso, attendere...";
+            isError = false;
+            StateHasChanged();
+
+            // First save the current configuration
+            await SaveConfiguration();
+
+            // Call the test endpoint using HttpClientFactory
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+            var response = await httpClient.PostAsync("api/config/test", null);
+
+            if (response.IsSuccessStatusCode)
+            {
+                testResult = await response.Content.ReadFromJsonAsync<ConfigurationTestResult>();
+                
+                if (testResult != null)
+                {
+                    message = testResult.Message;
+                    isError = !testResult.Success;
+                }
+                else
+                {
+                    message = "❌ Errore: risposta non valida dal server";
+                    isError = true;
+                }
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                message = $"❌ Errore nel test: {response.StatusCode} - {errorContent}";
+                isError = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            message = $"❌ Errore durante il test: {ex.Message}";
+            isError = true;
+        }
+        finally
+        {
+            isTesting = false;
+            StateHasChanged();
+        }
+    }
+}

@@ -1,0 +1,778 @@
+@page "/diagnostica"
+@using DocN.Data
+@using DocN.Data.Models
+@using System.Net.Http.Json
+@inject IHttpClientFactory HttpClientFactory
+@inject NavigationManager Navigation
+@rendermode InteractiveServer
+
+<PageTitle>Diagnostica Configurazione - DocN</PageTitle>
+
+<div class="diagnostica-container">
+    <div class="diagnostica-header">
+        <h2>🔧 Diagnostica Configurazione AI</h2>
+        <p class="description">Visualizza e gestisci le configurazioni AI del sistema</p>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+            <p>Caricamento diagnostica...</p>
+        </div>
+    }
+    else if (diagnosticResult != null)
+    {
+        <!-- Summary Card -->
+        <div class="summary-card">
+            <div class="summary-item">
+                <span class="summary-icon">📊</span>
+                <div>
+                    <div class="summary-label">Totale Configurazioni</div>
+                    <div class="summary-value">@diagnosticResult.TotalConfigurations</div>
+                </div>
+            </div>
+            <div class="summary-item">
+                <span class="summary-icon">✅</span>
+                <div>
+                    <div class="summary-label">Configurazione Attiva</div>
+                    <div class="summary-value">@(diagnosticResult.ActiveConfiguration?.ConfigurationName ?? "Nessuna")</div>
+                </div>
+            </div>
+            <div class="summary-item">
+                <span class="summary-icon">⏰</span>
+                <div>
+                    <div class="summary-label">Ultimo Aggiornamento</div>
+                    <div class="summary-value">@diagnosticResult.Timestamp.ToString("dd/MM/yyyy HH:mm:ss")</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="action-buttons">
+            <button class="btn btn-primary" @onclick="RefreshDiagnostics" disabled="@isLoading">
+                🔄 Aggiorna Diagnostica
+            </button>
+            <button class="btn btn-warning" @onclick="ResetConfiguration" disabled="@isResetting">
+                @if (isResetting)
+                {
+                    <span>⏳ Reset in corso...</span>
+                }
+                else
+                {
+                    <span>🔄 Reset a Default</span>
+                }
+            </button>
+            <button class="btn btn-secondary" @onclick="GoToConfig">
+                ⚙️ Modifica Configurazione
+            </button>
+        </div>
+
+        @if (!string.IsNullOrEmpty(actionMessage))
+        {
+            <div class="alert @(actionError ? "alert-error" : "alert-success")">
+                @actionMessage
+            </div>
+        }
+
+        <!-- Configurations List -->
+        <div class="configurations-section">
+            <h3>📋 Configurazioni Disponibili</h3>
+            
+            @if (diagnosticResult.Configurations.Any())
+            {
+                <div class="configurations-grid">
+                    @foreach (var config in diagnosticResult.Configurations)
+                    {
+                        <div class="config-card @(config.IsActive ? "active" : "")">
+                            <div class="config-header">
+                                <h4>@config.Name</h4>
+                                @if (config.IsActive)
+                                {
+                                    <span class="badge badge-active">Attiva</span>
+                                }
+                                else
+                                {
+                                    <button class="btn-small btn-activate" @onclick="() => SetAsDefault(config.Id)">
+                                        Imposta come Default
+                                    </button>
+                                }
+                            </div>
+
+                            <div class="config-details">
+                                <div class="detail-row">
+                                    <span class="detail-label">ID:</span>
+                                    <span class="detail-value">@config.Id</span>
+                                </div>
+                                <div class="detail-row">
+                                    <span class="detail-label">Creata:</span>
+                                    <span class="detail-value">@config.CreatedAt.ToString("dd/MM/yyyy HH:mm")</span>
+                                </div>
+                                @if (config.UpdatedAt.HasValue)
+                                {
+                                    <div class="detail-row">
+                                        <span class="detail-label">Aggiornata:</span>
+                                        <span class="detail-value">@config.UpdatedAt.Value.ToString("dd/MM/yyyy HH:mm")</span>
+                                    </div>
+                                }
+                            </div>
+
+                            <div class="providers-section">
+                                <h5>Provider Configurati:</h5>
+                                @if (config.ProvidersConfigured.Any())
+                                {
+                                    <div class="providers-list">
+                                        @foreach (var provider in config.ProvidersConfigured)
+                                        {
+                                            <span class="provider-badge">@provider</span>
+                                        }
+                                    </div>
+                                }
+                                else
+                                {
+                                    <p class="no-providers">⚠️ Nessun provider configurato</p>
+                                }
+                            </div>
+
+                            <div class="services-section">
+                                <h5>Assegnazione Servizi:</h5>
+                                <div class="services-grid">
+                                    <div class="service-item">
+                                        <span class="service-icon">💬</span>
+                                        <span class="service-name">Chat:</span>
+                                        <span class="service-value">@config.ChatProvider</span>
+                                    </div>
+                                    <div class="service-item">
+                                        <span class="service-icon">🧠</span>
+                                        <span class="service-name">Embeddings:</span>
+                                        <span class="service-value">@config.EmbeddingsProvider</span>
+                                    </div>
+                                    <div class="service-item">
+                                        <span class="service-icon">🏷️</span>
+                                        <span class="service-name">Tag Extract:</span>
+                                        <span class="service-value">@config.TagExtractionProvider</span>
+                                    </div>
+                                    <div class="service-item">
+                                        <span class="service-icon">🔍</span>
+                                        <span class="service-name">RAG:</span>
+                                        <span class="service-value">@config.RAGProvider</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="no-configs">
+                    <p>⚠️ Nessuna configurazione trovata</p>
+                    <button class="btn btn-primary" @onclick="ResetConfiguration">
+                        Crea Configurazione Default
+                    </button>
+                </div>
+            }
+        </div>
+
+        <!-- API Info -->
+        <div class="api-info">
+            <h3>📡 Endpoint API Utilizzato</h3>
+            <div class="endpoint-card">
+                <code>GET /api/config/diagnostica</code>
+                <p>Questo endpoint fornisce informazioni diagnostiche dettagliate sulle configurazioni AI disponibili nel sistema.</p>
+            </div>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="error-container">
+            <div class="error-icon">❌</div>
+            <h3>Errore durante il caricamento della diagnostica</h3>
+            <p>@errorMessage</p>
+            <button class="btn btn-primary" @onclick="RefreshDiagnostics">
+                🔄 Riprova
+            </button>
+        </div>
+    }
+</div>
+
+<style>
+    .diagnostica-container {
+        padding: 1.5rem;
+        max-width: 1400px;
+        margin: 0 auto;
+        background: #f5f7fa;
+        min-height: 100vh;
+    }
+
+    .diagnostica-header {
+        background: white;
+        padding: 2rem;
+        border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        margin-bottom: 2rem;
+    }
+
+    .diagnostica-header h2 {
+        font-size: 2rem;
+        margin: 0 0 0.5rem 0;
+        color: #2d3748;
+        font-weight: 700;
+    }
+
+    .description {
+        color: #666;
+        margin: 0;
+        font-size: 1rem;
+    }
+
+    .loading-spinner {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 4rem;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+
+    .spinner {
+        width: 50px;
+        height: 50px;
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #ff6b35;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-bottom: 1rem;
+    }
+
+    @@keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    .summary-card {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+
+    .summary-item {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        border: 2px solid transparent;
+        transition: all 0.3s ease;
+    }
+
+    .summary-item:hover {
+        border-color: #ff9a76;
+        box-shadow: 0 4px 12px rgba(255, 154, 118, 0.15);
+    }
+
+    .summary-icon {
+        font-size: 2.5rem;
+    }
+
+    .summary-label {
+        font-size: 0.875rem;
+        color: #666;
+        margin-bottom: 0.25rem;
+    }
+
+    .summary-value {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: #2d3748;
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 2rem;
+        flex-wrap: wrap;
+    }
+
+    .btn {
+        padding: 0.875rem 2rem;
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .btn-primary {
+        background: linear-gradient(135deg, #ff9a76 0%, #ffb399 100%);
+        color: white;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+        background: linear-gradient(135deg, #ffb399 0%, #ffc4a8 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(255, 154, 118, 0.4);
+    }
+
+    .btn-warning {
+        background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%);
+        color: white;
+    }
+
+    .btn-warning:hover:not(:disabled) {
+        background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(255, 193, 7, 0.4);
+    }
+
+    .btn-secondary {
+        background: #e2e8f0;
+        color: #4a5568;
+        border: 2px solid #cbd5e0;
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+        background: #cbd5e0;
+        border-color: #a0aec0;
+        transform: translateY(-2px);
+    }
+
+    .alert {
+        padding: 1.25rem;
+        border-radius: 8px;
+        margin-bottom: 2rem;
+        font-size: 1rem;
+        line-height: 1.6;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        animation: slideIn 0.3s ease-out;
+    }
+
+    @@keyframes slideIn {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .alert-success {
+        background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+        color: #155724;
+        border: 2px solid #28a745;
+        border-left: 5px solid #28a745;
+    }
+
+    .alert-error {
+        background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+        color: #721c24;
+        border: 2px solid #dc3545;
+        border-left: 5px solid #dc3545;
+    }
+
+    .configurations-section {
+        background: white;
+        padding: 2rem;
+        border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        margin-bottom: 2rem;
+    }
+
+    .configurations-section h3 {
+        margin: 0 0 1.5rem 0;
+        color: #2d3748;
+        font-weight: 700;
+        font-size: 1.4rem;
+    }
+
+    .configurations-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+        gap: 1.5rem;
+    }
+
+    .config-card {
+        background: #f7fafc;
+        padding: 1.5rem;
+        border-radius: 12px;
+        border: 2px solid #e2e8f0;
+        transition: all 0.3s ease;
+    }
+
+    .config-card:hover {
+        border-color: #cbd5e0;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    .config-card.active {
+        border-color: #28a745;
+        background: #f0fff4;
+    }
+
+    .config-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+        padding-bottom: 1rem;
+        border-bottom: 2px solid #e2e8f0;
+    }
+
+    .config-header h4 {
+        margin: 0;
+        font-size: 1.25rem;
+        color: #2d3748;
+        font-weight: 700;
+    }
+
+    .badge {
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        font-size: 0.875rem;
+        font-weight: 600;
+    }
+
+    .badge-active {
+        background: #28a745;
+        color: white;
+    }
+
+    .btn-small {
+        padding: 0.5rem 1rem;
+        font-size: 0.875rem;
+        border-radius: 6px;
+        border: none;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+
+    .btn-activate {
+        background: #007bff;
+        color: white;
+    }
+
+    .btn-activate:hover {
+        background: #0056b3;
+        transform: translateY(-1px);
+    }
+
+    .config-details {
+        margin-bottom: 1rem;
+    }
+
+    .detail-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid #e2e8f0;
+    }
+
+    .detail-label {
+        font-weight: 600;
+        color: #4a5568;
+    }
+
+    .detail-value {
+        color: #2d3748;
+    }
+
+    .providers-section,
+    .services-section {
+        margin-top: 1rem;
+    }
+
+    .providers-section h5,
+    .services-section h5 {
+        margin: 0 0 0.75rem 0;
+        font-size: 1rem;
+        color: #4a5568;
+        font-weight: 600;
+    }
+
+    .providers-list {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .provider-badge {
+        padding: 0.375rem 0.75rem;
+        background: #ff6b35;
+        color: white;
+        border-radius: 6px;
+        font-size: 0.875rem;
+        font-weight: 500;
+    }
+
+    .no-providers {
+        color: #f59e0b;
+        font-size: 0.875rem;
+        margin: 0;
+    }
+
+    .services-grid {
+        display: grid;
+        gap: 0.5rem;
+    }
+
+    .service-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem;
+        background: white;
+        border-radius: 6px;
+        font-size: 0.875rem;
+    }
+
+    .service-icon {
+        font-size: 1.25rem;
+    }
+
+    .service-name {
+        font-weight: 600;
+        color: #4a5568;
+        min-width: 100px;
+    }
+
+    .service-value {
+        color: #2d3748;
+        font-weight: 500;
+    }
+
+    .no-configs {
+        text-align: center;
+        padding: 3rem;
+        color: #666;
+    }
+
+    .no-configs p {
+        font-size: 1.25rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .api-info {
+        background: white;
+        padding: 2rem;
+        border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+
+    .api-info h3 {
+        margin: 0 0 1rem 0;
+        color: #2d3748;
+        font-weight: 700;
+        font-size: 1.4rem;
+    }
+
+    .endpoint-card {
+        background: #f7fafc;
+        padding: 1.5rem;
+        border-radius: 8px;
+        border-left: 4px solid #ff6b35;
+    }
+
+    .endpoint-card code {
+        display: block;
+        background: #2d3748;
+        color: #48bb78;
+        padding: 0.75rem 1rem;
+        border-radius: 6px;
+        font-family: 'Courier New', monospace;
+        margin-bottom: 1rem;
+        font-size: 1rem;
+    }
+
+    .endpoint-card p {
+        margin: 0;
+        color: #4a5568;
+        line-height: 1.6;
+    }
+
+    .error-container {
+        background: white;
+        padding: 3rem;
+        border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        text-align: center;
+    }
+
+    .error-icon {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+    }
+
+    .error-container h3 {
+        color: #dc3545;
+        margin-bottom: 1rem;
+    }
+
+    .error-container p {
+        color: #666;
+        margin-bottom: 2rem;
+    }
+
+    @@media (max-width: 768px) {
+        .diagnostica-container {
+            padding: 1rem;
+        }
+
+        .configurations-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .action-buttons {
+            flex-direction: column;
+        }
+
+        .btn {
+            width: 100%;
+        }
+    }
+</style>
+
+@code {
+    private DiagnosticResult? diagnosticResult = null;
+    private string errorMessage = string.Empty;
+    private string actionMessage = string.Empty;
+    private bool actionError = false;
+    private bool isLoading = true;
+    private bool isResetting = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDiagnostics();
+    }
+
+    private async Task LoadDiagnostics()
+    {
+        try
+        {
+            isLoading = true;
+            errorMessage = string.Empty;
+            StateHasChanged();
+
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+            var response = await httpClient.GetAsync("api/config/diagnostica");
+
+            if (response.IsSuccessStatusCode)
+            {
+                diagnosticResult = await response.Content.ReadFromJsonAsync<DiagnosticResult>();
+            }
+            else
+            {
+                errorMessage = $"Errore nel caricamento della diagnostica: {response.StatusCode}";
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Errore durante il caricamento: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RefreshDiagnostics()
+    {
+        actionMessage = string.Empty;
+        await LoadDiagnostics();
+    }
+
+    private async Task ResetConfiguration()
+    {
+        try
+        {
+            isResetting = true;
+            actionMessage = string.Empty;
+            StateHasChanged();
+
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+            var response = await httpClient.PostAsync("api/config/reset", null);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<ResetResult>();
+                actionMessage = result?.Message ?? "✅ Reset completato";
+                actionError = false;
+                
+                // Refresh diagnostics after reset
+                await LoadDiagnostics();
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                actionMessage = $"❌ Errore durante il reset: {errorContent}";
+                actionError = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            actionMessage = $"❌ Errore: {ex.Message}";
+            actionError = true;
+        }
+        finally
+        {
+            isResetting = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SetAsDefault(int configId)
+    {
+        try
+        {
+            actionMessage = string.Empty;
+            StateHasChanged();
+
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+            var response = await httpClient.PostAsync($"api/config/set-default/{configId}", null);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<SetDefaultResult>();
+                actionMessage = result?.Message ?? "✅ Configurazione impostata come default";
+                actionError = false;
+                
+                // Refresh diagnostics after setting default
+                await LoadDiagnostics();
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                actionMessage = $"❌ Errore: {errorContent}";
+                actionError = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            actionMessage = $"❌ Errore: {ex.Message}";
+            actionError = true;
+        }
+        finally
+        {
+            StateHasChanged();
+        }
+    }
+
+    private void GoToConfig()
+    {
+        Navigation.NavigateTo("/config");
+    }
+}

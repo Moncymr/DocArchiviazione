@@ -1,0 +1,319 @@
+@using DocN.Data.Models
+@inject IJSRuntime JS
+
+<div class="step-content">
+    <div class="step-header">
+        <h2>🔌 Configura il Provider AI</h2>
+        <p class="step-description">
+            Scegli quale servizio AI utilizzare. Ogni provider ha caratteristiche diverse.
+            <br><strong>Serve aiuto?</strong> Ti mostriamo come ottenere le credenziali gratuitamente!
+        </p>
+    </div>
+
+    <div class="provider-selection">
+        <h3>Seleziona Provider</h3>
+        <div class="provider-options">
+            <div class="provider-option @(Agent.PrimaryProvider == AIProviderType.Gemini ? "selected" : "")"
+                 @onclick="() => SelectProvider(AIProviderType.Gemini)">
+                <div class="provider-icon">🤖</div>
+                <h4>Google Gemini</h4>
+                <p>Veloce, economico, ottimo per uso generale</p>
+                <span class="badge badge-recommended">⭐ Consigliato</span>
+            </div>
+
+            <div class="provider-option @(Agent.PrimaryProvider == AIProviderType.OpenAI ? "selected" : "")"
+                 @onclick="() => SelectProvider(AIProviderType.OpenAI)">
+                <div class="provider-icon">🧠</div>
+                <h4>OpenAI</h4>
+                <p>Potente, versatile, ottimo per compiti complessi</p>
+            </div>
+
+            <div class="provider-option @(Agent.PrimaryProvider == AIProviderType.AzureOpenAI ? "selected" : "")"
+                 @onclick="() => SelectProvider(AIProviderType.AzureOpenAI)">
+                <div class="provider-icon">☁️</div>
+                <h4>Azure OpenAI</h4>
+                <p>Enterprise, sicuro, per ambienti aziendali</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- API Key Configuration Section -->
+    <div class="api-key-section">
+        <h3>🔑 Configurazione API Key</h3>
+        
+        @if (Agent.PrimaryProvider == AIProviderType.Gemini)
+        {
+            <div class="help-card">
+                <h4>📖 Come ottenere l'API Key di Gemini (GRATIS!)</h4>
+                <ol>
+                    <li>Vai su <a href="https://makersuite.google.com/app/apikey" target="_blank" class="external-link">Google AI Studio</a></li>
+                    <li>Accedi con il tuo account Google</li>
+                    <li>Clicca su "Get API Key"</li>
+                    <li>Clicca su "Create API key in new project"</li>
+                    <li>Copia la tua API key e incollala qui sotto</li>
+                </ol>
+                <p class="info-note">
+                    ℹ️ Gemini offre un piano gratuito generoso - ideale per iniziare!
+                </p>
+            </div>
+
+            <div class="form-group">
+                <label>Gemini API Key *</label>
+                <input type="password" @bind="geminiApiKey" class="form-control" 
+                       placeholder="Incolla qui la tua Gemini API Key" />
+            </div>
+        }
+        else if (Agent.PrimaryProvider == AIProviderType.OpenAI)
+        {
+            <div class="help-card">
+                <h4>📖 Come ottenere l'API Key di OpenAI</h4>
+                <ol>
+                    <li>Vai su <a href="https://platform.openai.com/api-keys" target="_blank" class="external-link">OpenAI Platform</a></li>
+                    <li>Crea un account o effettua il login</li>
+                    <li>Vai su "API keys" nel menu a sinistra</li>
+                    <li>Clicca su "+ Create new secret key"</li>
+                    <li>Copia la tua API key (appare una sola volta!)</li>
+                    <li>Incollala qui sotto</li>
+                </ol>
+                <p class="info-note">
+                    ℹ️ OpenAI offre $5 di credito gratuito per i nuovi account
+                </p>
+            </div>
+
+            <div class="form-group">
+                <label>OpenAI API Key *</label>
+                <input type="password" @bind="openaiApiKey" class="form-control" 
+                       placeholder="sk-..." />
+            </div>
+        }
+        else if (Agent.PrimaryProvider == AIProviderType.AzureOpenAI)
+        {
+            <div class="help-card">
+                <h4>📖 Come configurare Azure OpenAI</h4>
+                <p>Per utilizzare Azure OpenAI, serve un abbonamento Azure attivo:</p>
+                <ol>
+                    <li>Vai al <a href="https://portal.azure.com" target="_blank" class="external-link">Portale Azure</a></li>
+                    <li>Crea una risorsa "Azure OpenAI"</li>
+                    <li>Vai su "Keys and Endpoint"</li>
+                    <li>Copia l'endpoint e una delle chiavi</li>
+                </ol>
+                <p class="warning-note">
+                    ⚠️ Azure OpenAI richiede approvazione e un abbonamento Azure
+                </p>
+            </div>
+
+            <div class="form-group">
+                <label>Azure Endpoint *</label>
+                <input type="text" @bind="azureEndpoint" class="form-control" 
+                       placeholder="https://your-resource.openai.azure.com/" />
+            </div>
+
+            <div class="form-group">
+                <label>Azure API Key *</label>
+                <input type="password" @bind="azureApiKey" class="form-control" 
+                       placeholder="Incolla la tua Azure OpenAI Key" />
+            </div>
+        }
+    </div>
+
+    <div class="step-actions">
+        <button class="btn btn-secondary" @onclick="OnBack">
+            ← Indietro
+        </button>
+        <button class="btn btn-primary" 
+                @onclick="SaveAndNext" 
+                disabled="@(!IsConfigValid())">
+            Avanti →
+        </button>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public AgentConfiguration Agent { get; set; } = new();
+
+    [Parameter]
+    public EventCallback OnBack { get; set; }
+
+    [Parameter]
+    public EventCallback OnNext { get; set; }
+
+    private string geminiApiKey = "";
+    private string openaiApiKey = "";
+    private string azureEndpoint = "";
+    private string azureApiKey = "";
+
+    private void SelectProvider(AIProviderType provider)
+    {
+        Agent.PrimaryProvider = provider;
+    }
+
+    private bool IsConfigValid()
+    {
+        return Agent.PrimaryProvider switch
+        {
+            AIProviderType.Gemini => !string.IsNullOrWhiteSpace(geminiApiKey),
+            AIProviderType.OpenAI => !string.IsNullOrWhiteSpace(openaiApiKey),
+            AIProviderType.AzureOpenAI => !string.IsNullOrWhiteSpace(azureEndpoint) && !string.IsNullOrWhiteSpace(azureApiKey),
+            _ => false
+        };
+    }
+
+    private async Task SaveAndNext()
+    {
+        // SECURITY NOTE: In production, API keys should be encrypted before storing
+        // Consider implementing:
+        // 1. Encryption at rest using Azure Key Vault or similar
+        // 2. Encryption in transit (already covered by HTTPS)
+        // 3. Key rotation policies
+        // 4. Audit logging for key access
+        // 
+        // Current implementation stores keys as entered for MVP purposes.
+        // TODO: Implement proper key encryption before production deployment
+        
+        await OnNext.InvokeAsync();
+    }
+}
+
+<style>
+    .provider-selection {
+        margin-bottom: 2rem;
+    }
+
+    .provider-selection h3 {
+        margin-bottom: 1rem;
+        color: #2c3e50;
+    }
+
+    .provider-options {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 1rem;
+    }
+
+    .provider-option {
+        border: 2px solid #e0e0e0;
+        border-radius: 12px;
+        padding: 1.5rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        text-align: center;
+    }
+
+    .provider-option:hover {
+        border-color: #667eea;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.2);
+    }
+
+    .provider-option.selected {
+        border-color: #667eea;
+        background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+    }
+
+    .provider-icon {
+        font-size: 3rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .provider-option h4 {
+        margin-bottom: 0.5rem;
+        color: #2c3e50;
+    }
+
+    .provider-option p {
+        font-size: 0.9rem;
+        color: #7f8c8d;
+        margin-bottom: 0.5rem;
+    }
+
+    .badge-recommended {
+        background: #f39c12;
+        color: white;
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.85rem;
+    }
+
+    .api-key-section {
+        margin-bottom: 2rem;
+    }
+
+    .api-key-section h3 {
+        margin-bottom: 1rem;
+        color: #2c3e50;
+    }
+
+    .help-card {
+        background: #f8f9fa;
+        border-left: 4px solid #3498db;
+        padding: 1.5rem;
+        border-radius: 8px;
+        margin-bottom: 1.5rem;
+    }
+
+    .help-card h4 {
+        margin-bottom: 1rem;
+        color: #2c3e50;
+    }
+
+    .help-card ol {
+        margin-left: 1.5rem;
+        margin-bottom: 1rem;
+    }
+
+    .help-card li {
+        margin-bottom: 0.5rem;
+        color: #555;
+    }
+
+    .external-link {
+        color: #3498db;
+        text-decoration: none;
+        font-weight: 600;
+    }
+
+    .external-link:hover {
+        text-decoration: underline;
+    }
+
+    .info-note {
+        background: #d4edda;
+        color: #155724;
+        padding: 0.75rem;
+        border-radius: 6px;
+        margin-top: 1rem;
+    }
+
+    .warning-note {
+        background: #fff3cd;
+        color: #856404;
+        padding: 0.75rem;
+        border-radius: 6px;
+        margin-top: 1rem;
+    }
+
+    .form-group {
+        margin-bottom: 1.5rem;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 600;
+        color: #2c3e50;
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 0.75rem;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        font-size: 1rem;
+        transition: border-color 0.3s ease;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: #667eea;
+    }
+</style>
