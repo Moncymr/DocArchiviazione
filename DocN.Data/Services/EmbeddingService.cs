@@ -1,8 +1,7 @@
-using Azure.AI.OpenAI;
 using Azure;
+using Azure.AI.OpenAI;
 using DocN.Data.Models;
 using DocN.Data.Utilities;
-using OpenAI.Chat;
 using OpenAI.Embeddings;
 
 namespace DocN.Data.Services;
@@ -18,7 +17,7 @@ public interface IEmbeddingService
     /// <param name="text">Testo da convertire in embedding</param>
     /// <returns>Array float rappresentante embedding, null se provider non disponibile</returns>
     Task<float[]?> GenerateEmbeddingAsync(string text);
-    
+
     /// <summary>
     /// Ricerca documenti simili basandosi su embedding vettoriale query.
     /// </summary>
@@ -58,7 +57,7 @@ public class EmbeddingService : IEmbeddingService
     private void EnsureInitialized()
     {
         if (_initialized) return;
-        
+
         try
         {
             var config = _context.AIConfigurations.FirstOrDefault(c => c.IsActive);
@@ -92,7 +91,7 @@ public class EmbeddingService : IEmbeddingService
     public async Task<float[]?> GenerateEmbeddingAsync(string text)
     {
         EnsureInitialized();
-        
+
         if (_client == null)
             return null;
 
@@ -108,16 +107,16 @@ public class EmbeddingService : IEmbeddingService
         {
             var response = await _client.GenerateEmbeddingAsync(text);
             var embedding = response.Value.ToFloats().ToArray();
-            
+
             // Cache the result if caching is available
             if (_cacheService != null && embedding != null)
             {
                 await _cacheService.SetCachedEmbeddingAsync(text, embedding);
             }
-            
+
             return embedding;
         }
-        catch
+        catch (Exception ex)
         {
             return null;
         }
@@ -136,7 +135,7 @@ public class EmbeddingService : IEmbeddingService
             .Where(d => (d.EmbeddingVector768 != null && d.EmbeddingVector768.Length > 0) ||
                         (d.EmbeddingVector1536 != null && d.EmbeddingVector1536.Length > 0))
             .ToList());
-        
+
         var scoredDocuments = documents
             .Where(d => d.EmbeddingVector != null) // Use the property getter
             .Select(d => new
