@@ -133,7 +133,7 @@ if (string.IsNullOrEmpty(connectionString))
 {
     if (builder.Environment.IsDevelopment())
     {
-        connectionString = "Server=NTSPJ-060-02\\SQL2025;Database=DocNDb;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True;Encrypt=True";
+        connectionString = "Server=NTSPJ-MRM2\\SQL2025;Database=DocNDb;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True;Encrypt=True";
     }
     else
     {
@@ -310,10 +310,10 @@ using (var scope = app.Services.CreateScope())
             "3. Database user has appropriate permissions\n" +
             "4. If this is first startup, ensure the database has been initialized\n" +
             "5. If Client and Server start simultaneously, one may fail to seed - this is normal and can be ignored");
-        
+
         // Log additional diagnostic information
         logger.LogWarning("Application will attempt to start despite seeding failure. Database may have been seeded by another instance. Some features may not work correctly.");
-        
+
         // Allow the application to continue even if seeding fails
         // This prevents immediate crash and allows users to see error messages in the UI
         // Critical database issues will be caught when users try to access features
