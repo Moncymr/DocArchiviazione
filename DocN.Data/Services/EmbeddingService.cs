@@ -2,6 +2,7 @@ using Azure.AI.OpenAI;
 using Azure;
 using DocN.Data.Models;
 using DocN.Data.Utilities;
+using Microsoft.EntityFrameworkCore;
 using OpenAI.Chat;
 using OpenAI.Embeddings;
 
