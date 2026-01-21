@@ -105,11 +105,13 @@ public class QueryIntentClassifier : IQueryIntentClassifier
     /// Heuristic to detect queries that are likely asking for counts
     /// Examples: "PDFs?", "documents in system", "total files"
     /// </summary>
-    private bool IsLikelyCountQuestion(string query)
+    private static bool IsLikelyCountQuestion(string query)
     {
         // Pattern: "word + ?" could be asking for count
         // Examples: "pdfs?", "documenti?"
-        if (Regex.IsMatch(query, @"^\w+\s*\??\s*$", RegexOptions.IgnoreCase))
+        // Using RegexOptions.Compiled for better performance on repeated calls
+        var singleWordQuestionPattern = new Regex(@"^\w+\s*\??\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        if (singleWordQuestionPattern.IsMatch(query))
         {
             return true;
         }

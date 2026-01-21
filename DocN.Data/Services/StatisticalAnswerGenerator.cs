@@ -36,9 +36,7 @@ public class StatisticalAnswerGenerator : IStatisticalAnswerGenerator
         {
             if (ContainsAny(normalizedQuery, "pdf", "pdfs"))
             {
-                var pdfCount = statistics.DocumentsByType.ContainsKey("application/pdf") 
-                    ? statistics.DocumentsByType["application/pdf"] 
-                    : 0;
+                var pdfCount = statistics.DocumentsByType.GetValueOrDefault("application/pdf", 0);
                 
                 answer.Append(isItalian 
                     ? $"Nel sistema ci sono **{pdfCount} documenti PDF**" 

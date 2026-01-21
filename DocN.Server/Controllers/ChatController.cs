@@ -80,7 +80,7 @@ public class ChatController : ControllerBase
                     request.Message, 
                     statistics);
                 
-                var responseTime = (DateTime.UtcNow - startTime).TotalMilliseconds;
+                var responseTime = (long)(DateTime.UtcNow - startTime).TotalMilliseconds;
                 
                 _logger.LogInformation(
                     "Statistical query answered in {ResponseTime}ms without vector search",
