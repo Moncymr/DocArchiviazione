@@ -15,7 +15,7 @@
 | Categoria | Numero Metodi | Parametri Tipici |
 |-----------|---------------|------------------|
 | 📄 Document Service | 6 | 3-4 parametri |
-| 🔌 Connector Handlers | 12 | 3 parametri |
+| 🔌 Connector Handlers | 12 (2×6 handler) | 3 parametri |
 | 🤖 AI/RAG Services | 4 | 4-5 parametri |
 | 🛠️ Utility/Helper | 6 | 3-6 parametri |
 | **TOTALE** | **28** | **3-6 parametri** |

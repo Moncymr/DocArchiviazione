@@ -10,8 +10,8 @@
 **Domanda:** Ci sono funzioni che hanno più di due parametri in input?  
 **Question:** Are there functions that have more than two parameters as input?
 
-**Risposta:** **Sì**, nel codebase sono presenti **oltre 25 metodi pubblici verificati** con 3 o più parametri.  
-**Answer:** **Yes**, there are **over 25 verified public methods** in the codebase with 3 or more parameters.
+**Risposta:** **Sì**, nel codebase sono presenti **28 metodi pubblici verificati** con 3 o più parametri.  
+**Answer:** **Yes**, there are **28 verified public methods** in the codebase with 3 or more parameters.
 
 ---
 
@@ -32,9 +32,9 @@
 
 ---
 
-### 2. Connector Handler Methods (18 metodi)
+### 2. Connector Handler Methods (12 metodi - solo con 3+ parametri)
 
-Metodi ripetuti in 6 handler diversi (GoogleDrive, FTP, LocalFolder, SFTP, SharePoint, OneDrive):
+Metodi con 3+ parametri ripetuti in 6 handler diversi (GoogleDrive, FTP, LocalFolder, SFTP, SharePoint, OneDrive):
 
 #### Files:
 - `DocN.Data/Services/Connectors/GoogleDriveConnectorHandler.cs`
@@ -46,11 +46,12 @@ Metodi ripetuti in 6 handler diversi (GoogleDrive, FTP, LocalFolder, SFTP, Share
 
 | Metodo | Parametri | Note |
 |--------|-----------|------|
-| `TestConnectionAsync` | **2 parametri**: `string configuration, string? encryptedCredentials` | Test connessione |
 | `ListFilesAsync` | **3 parametri**: `string configuration, string? encryptedCredentials, string? path = null` | Elenco file |
 | `DownloadFileAsync` | **3 parametri**: `string configuration, string? encryptedCredentials, string filePath` | Download file |
 
-**Totale:** 3 metodi × 6 handler = 18 implementazioni
+**Totale:** 2 metodi × 6 handler = 12 implementazioni
+
+**Nota:** `TestConnectionAsync` ha solo 2 parametri quindi non è incluso in questa analisi.
 
 ---
 
@@ -89,7 +90,7 @@ Metodi ripetuti in 6 handler diversi (GoogleDrive, FTP, LocalFolder, SFTP, Share
 | Categoria | Numero Metodi | Range Parametri |
 |-----------|---------------|-----------------|
 | Document Service | 6 | 3-4 parametri |
-| Connector Handlers | 12 (6×2) | 3 parametri |
+| Connector Handlers | 12 (2 metodi×6 handler) | 3 parametri |
 | AI/RAG Services | 4 | 4-5 parametri |
 | Utility/Helper (LogService) | 6 | 3-6 parametri |
 | **TOTALE** | **28** | **3-6 parametri** |
