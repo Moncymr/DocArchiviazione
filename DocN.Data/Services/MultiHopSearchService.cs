@@ -16,18 +16,16 @@ namespace DocN.Data.Services;
 public class MultiHopSearchService : IMultiHopSearchService
 {
     private readonly IHybridSearchService _searchService;
-    private readonly Kernel _kernel;
-    private readonly IChatCompletionService _chatService;
+    private readonly IKernelProvider _kernelProvider;
     private readonly ILogger<MultiHopSearchService> _logger;
 
     public MultiHopSearchService(
         IHybridSearchService searchService,
-        Kernel kernel,
+        IKernelProvider kernelProvider,
         ILogger<MultiHopSearchService> logger)
     {
         _searchService = searchService;
-        _kernel = kernel;
-        _chatService = kernel.GetRequiredService<IChatCompletionService>();
+        _kernelProvider = kernelProvider;
         _logger = logger;
     }
 
@@ -130,6 +128,9 @@ public class MultiHopSearchService : IMultiHopSearchService
     {
         try
         {
+            var kernel = await _kernelProvider.GetKernelAsync();
+            var chatService = kernel.GetRequiredService<IChatCompletionService>();
+            
             var prompt = $@"Analizza questa query complessa e decomponila in {maxSubQueries} sotto-query più semplici per una ricerca multi-step.
 Ogni sotto-query dovrebbe focalizzarsi su un aspetto specifico della query originale.
 
@@ -156,7 +157,7 @@ Rispondi SOLO con il JSON, senza testo aggiuntivo.";
                 Temperature = 0.3
             };
 
-            var result = await _chatService.GetChatMessageContentAsync(chatHistory, settings, _kernel);
+            var result = await chatService.GetChatMessageContentAsync(chatHistory, settings, kernel);
             var jsonResponse = result.Content?.Trim() ?? "[]";
 
             // Try to parse JSON
