@@ -111,4 +111,42 @@ public class DocumentChunk
     /// End position of this chunk in the original document text
     /// </summary>
     public int EndPosition { get; set; }
+
+    // Rich metadata for improved retrieval
+    
+    /// <summary>
+    /// Title or heading associated with this chunk (e.g., section header)
+    /// </summary>
+    public string? Title { get; set; }
+    
+    /// <summary>
+    /// Section hierarchy path (e.g., "Chapter 1 > Section 1.1 > Subsection 1.1.1")
+    /// </summary>
+    public string? SectionPath { get; set; }
+    
+    /// <summary>
+    /// Type of chunk based on content structure (Paragraph, Header, ListItem, Table, Code, etc.)
+    /// </summary>
+    public string? ChunkType { get; set; }
+    
+    /// <summary>
+    /// Extracted keywords from the chunk for enhanced search
+    /// Stored as JSON array
+    /// </summary>
+    public string? KeywordsJson { get; set; }
+    
+    /// <summary>
+    /// Semantic importance score (0.0-1.0) based on position, length, keyword density, etc.
+    /// </summary>
+    public double? ImportanceScore { get; set; }
+    
+    /// <summary>
+    /// Language of the chunk (if different from document language)
+    /// </summary>
+    public string? Language { get; set; }
+    
+    /// <summary>
+    /// Additional structured metadata as JSON (domain-specific fields)
+    /// </summary>
+    public string? MetadataJson { get; set; }
 }
