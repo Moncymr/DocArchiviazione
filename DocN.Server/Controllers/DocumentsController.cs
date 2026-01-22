@@ -643,6 +643,95 @@ public class DocumentsController : ControllerBase
     }
 
     /// <summary>
+    /// Elimina tutti i documenti dell'utente corrente
+    /// </summary>
+    /// <returns>Numero di documenti eliminati</returns>
+    /// <response code="200">Documenti eliminati con successo</response>
+    /// <response code="403">Autenticazione richiesta</response>
+    /// <response code="500">Errore interno del server</response>
+    [HttpDelete("all")]
+    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> DeleteAllDocuments()
+    {
+        try
+        {
+            // SECURITY CHECK: User must be authenticated
+            var currentUserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            
+            if (string.IsNullOrEmpty(currentUserId))
+            {
+                _logger.LogWarning("Anonymous user attempted to delete all documents");
+                return StatusCode(403, "Authentication required to delete documents");
+            }
+
+            // Get all documents owned by the current user
+            var userDocuments = await _context.Documents
+                .Where(d => d.OwnerId == currentUserId)
+                .ToListAsync();
+
+            if (!userDocuments.Any())
+            {
+                _logger.LogInformation("User {UserId} attempted to delete all documents but has none", currentUserId);
+                return Ok(new { deletedCount = 0, message = "No documents to delete" });
+            }
+
+            var documentIds = userDocuments.Select(d => d.Id).ToList();
+            var deletedCount = userDocuments.Count;
+
+            // Delete associated chunks for all documents
+            var chunks = await _context.DocumentChunks
+                .Where(c => documentIds.Contains(c.DocumentId))
+                .ToListAsync();
+            
+            if (chunks.Any())
+            {
+                _context.DocumentChunks.RemoveRange(chunks);
+            }
+
+            // Delete associated similar documents relationships
+            var similarDocuments = await _context.SimilarDocuments
+                .Where(sd => documentIds.Contains(sd.SourceDocumentId) || documentIds.Contains(sd.SimilarDocumentId))
+                .ToListAsync();
+            
+            if (similarDocuments.Any())
+            {
+                _context.SimilarDocuments.RemoveRange(similarDocuments);
+            }
+
+            // Delete all user documents
+            _context.Documents.RemoveRange(userDocuments);
+            await _context.SaveChangesAsync();
+
+            // Try to delete physical files
+            foreach (var document in userDocuments)
+            {
+                if (!string.IsNullOrEmpty(document.FilePath) && System.IO.File.Exists(document.FilePath))
+                {
+                    try
+                    {
+                        System.IO.File.Delete(document.FilePath);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Could not delete physical file for document {Id}: {FilePath}", 
+                            document.Id, document.FilePath);
+                    }
+                }
+            }
+
+            _logger.LogInformation("User {UserId} deleted all {Count} documents", currentUserId, deletedCount);
+            return Ok(new { deletedCount, message = $"Successfully deleted {deletedCount} document(s)" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error deleting all documents");
+            return StatusCode(500, "An error occurred while deleting all documents");
+        }
+    }
+
+    /// <summary>
     /// Ottiene tutte le categorie uniche dei documenti
     /// </summary>
     /// <returns>Lista delle categorie disponibili</returns>

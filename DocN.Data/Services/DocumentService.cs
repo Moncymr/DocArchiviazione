@@ -179,6 +179,13 @@ public interface IDocumentService
     /// <param name="userId">ID dell'utente richiedente (deve essere il proprietario)</param>
     /// <returns>True se eliminazione riuscita, false altrimenti</returns>
     Task<bool> DeleteDocumentAsync(int documentId, string userId);
+    
+    /// <summary>
+    /// Elimina tutti i documenti dell'utente.
+    /// </summary>
+    /// <param name="userId">ID dell'utente richiedente</param>
+    /// <returns>Numero di documenti eliminati</returns>
+    Task<int> DeleteAllDocumentsAsync(string userId);
 }
 
 /// <summary>
@@ -1191,6 +1198,81 @@ public class DocumentService : IDocumentService
         {
             _logger?.LogError(ex, "Error deleting document {DocumentId}", documentId);
             return false;
+        }
+    }
+
+    public async Task<int> DeleteAllDocumentsAsync(string userId)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(userId))
+            {
+                _logger?.LogWarning("Anonymous user attempted to delete all documents");
+                return 0;
+            }
+
+            // Get all documents owned by the current user
+            var userDocuments = await _context.Documents
+                .Where(d => d.OwnerId == userId)
+                .ToListAsync();
+
+            if (!userDocuments.Any())
+            {
+                _logger?.LogInformation("User {UserId} attempted to delete all documents but has none", userId);
+                return 0;
+            }
+
+            var documentIds = userDocuments.Select(d => d.Id).ToList();
+            var deletedCount = userDocuments.Count;
+
+            // Delete associated chunks for all documents
+            var chunks = await _context.DocumentChunks
+                .Where(c => documentIds.Contains(c.DocumentId))
+                .ToListAsync();
+            
+            if (chunks.Any())
+            {
+                _context.DocumentChunks.RemoveRange(chunks);
+            }
+
+            // Delete associated similar documents relationships
+            var similarDocuments = await _context.SimilarDocuments
+                .Where(sd => documentIds.Contains(sd.SourceDocumentId) || documentIds.Contains(sd.SimilarDocumentId))
+                .ToListAsync();
+            
+            if (similarDocuments.Any())
+            {
+                _context.SimilarDocuments.RemoveRange(similarDocuments);
+            }
+
+            // Delete all user documents
+            _context.Documents.RemoveRange(userDocuments);
+            await _context.SaveChangesAsync();
+
+            // Try to delete physical files
+            foreach (var document in userDocuments)
+            {
+                if (!string.IsNullOrEmpty(document.FilePath) && File.Exists(document.FilePath))
+                {
+                    try
+                    {
+                        File.Delete(document.FilePath);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.LogWarning(ex, "Could not delete physical file for document {DocumentId}: {FilePath}", 
+                            document.Id, document.FilePath);
+                    }
+                }
+            }
+
+            _logger?.LogInformation("User {UserId} deleted all {Count} documents", userId, deletedCount);
+            return deletedCount;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error deleting all documents for user {UserId}", userId);
+            return 0;
         }
     }
 }

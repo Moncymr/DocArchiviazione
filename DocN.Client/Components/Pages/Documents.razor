@@ -51,6 +51,10 @@
             <button class="btn-upload" @onclick="GoToUpload">
                 <span>➕ Carica</span>
             </button>
+            
+            <button class="btn-delete-all" @onclick="DeleteAllDocuments">
+                <span>🗑️ Cancella Tutti</span>
+            </button>
         </div>
     </div>
 
@@ -598,6 +602,25 @@
     .btn-upload:hover {
         transform: translateY(-2px);
         box-shadow: 0 6px 20px rgba(255, 107, 53, 0.4);
+    }
+
+    .btn-delete-all {
+        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        color: white;
+        border: none;
+        padding: 0.75rem 1.5rem;
+        border-radius: 25px;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s;
+        box-shadow: 0 4px 15px rgba(220, 53, 69, 0.3);
+    }
+
+    .btn-delete-all:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(220, 53, 69, 0.4);
+        background: linear-gradient(135deg, #c82333 0%, #bd2130 100%);
     }
 
     /* FILTERS BAR */
@@ -1809,6 +1832,46 @@
             // TODO: Implement delete
             await LoadDocuments();
             CloseDetailsPanel();
+        }
+    }
+
+    private async Task DeleteAllDocuments()
+    {
+        // Confirm deletion
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", 
+            $"Sei sicuro di voler eliminare TUTTI i {totalDocuments} documenti? Questa azione non può essere annullata!");
+        if (confirmed)
+        {
+            try
+            {
+                isLoading = true;
+                StateHasChanged();
+                
+                var deletedCount = await DocumentService.DeleteAllDocumentsAsync(currentUserId);
+                
+                if (deletedCount > 0)
+                {
+                    await JSRuntime.InvokeVoidAsync("alert", $"Eliminati con successo {deletedCount} documenti.");
+                }
+                else
+                {
+                    await JSRuntime.InvokeVoidAsync("alert", "Nessun documento da eliminare.");
+                }
+                
+                // Reset pagination and reload
+                currentPage = 1;
+                await LoadDocuments();
+                CloseDetailsPanel();
+            }
+            catch (Exception ex)
+            {
+                await JSRuntime.InvokeVoidAsync("alert", $"Errore durante l'eliminazione dei documenti: {ex.Message}");
+            }
+            finally
+            {
+                isLoading = false;
+                StateHasChanged();
+            }
         }
     }
 
