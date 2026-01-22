@@ -1,5 +1,3 @@
-using DocN.Data.Models;
-
 namespace DocN.Core.Interfaces;
 
 /// <summary>
@@ -41,15 +39,6 @@ public interface ISemanticChunkingService
         int position,
         int totalChunks,
         Dictionary<string, double>? keywordWeights = null);
-    
-    /// <summary>
-    /// Create DocumentChunk entities with rich metadata
-    /// </summary>
-    Task<List<DocumentChunk>> CreateEnhancedDocumentChunksAsync(
-        Document document,
-        ChunkingStrategy strategy = ChunkingStrategy.Semantic,
-        ChunkingOptions? options = null,
-        CancellationToken cancellationToken = default);
 }
 
 /// <summary>

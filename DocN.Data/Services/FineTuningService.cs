@@ -39,8 +39,17 @@ public class FineTuningService : IFineTuningService
 
         var documents = await _context.Documents
             .Where(d => documentIds.Contains(d.Id))
-            .Include(d => d.DocumentChunks)
             .ToListAsync(cancellationToken);
+        
+        // Load chunks separately to avoid navigation property issues
+        var docIds = documents.Select(d => d.Id).ToList();
+        var allChunks = await _context.DocumentChunks
+            .Where(c => docIds.Contains(c.DocumentId))
+            .ToListAsync(cancellationToken);
+        
+        var chunksByDocId = allChunks
+            .GroupBy(c => c.DocumentId)
+            .ToDictionary(g => g.Key, g => g.ToList());
 
         var trainingExamples = new List<TrainingExample>();
         var random = new Random();
@@ -61,7 +70,7 @@ public class FineTuningService : IFineTuningService
                 var doc1 = categoryDocs[i];
                 
                 // Use chunks if available, otherwise use full text
-                var text1 = GetRepresentativeText(doc1);
+                var text1 = GetRepresentativeText(doc1, chunksByDocId);
                 if (string.IsNullOrWhiteSpace(text1))
                     continue;
 
@@ -69,7 +78,7 @@ public class FineTuningService : IFineTuningService
                 for (int j = i + 1; j < Math.Min(i + 5, categoryDocs.Count); j++)
                 {
                     var doc2 = categoryDocs[j];
-                    var text2 = GetRepresentativeText(doc2);
+                    var text2 = GetRepresentativeText(doc2, chunksByDocId);
                     
                     if (string.IsNullOrWhiteSpace(text2))
                         continue;
@@ -95,7 +104,7 @@ public class FineTuningService : IFineTuningService
                         if (negDocs.Any())
                         {
                             var negDoc = negDocs[random.Next(negDocs.Count)];
-                            example.NegativeExample = GetRepresentativeText(negDoc);
+                            example.NegativeExample = GetRepresentativeText(negDoc, chunksByDocId);
                         }
                     }
 
@@ -289,12 +298,12 @@ public class FineTuningService : IFineTuningService
 
     // Private helper methods
 
-    private string GetRepresentativeText(Document document)
+    private string GetRepresentativeText(Document document, Dictionary<int, List<DocumentChunk>>? chunksByDocId = null)
     {
         // Use first chunk if available and not too long
-        if (document.DocumentChunks?.Any() == true)
+        if (chunksByDocId != null && chunksByDocId.TryGetValue(document.Id, out var chunks) && chunks.Any())
         {
-            var firstChunk = document.DocumentChunks
+            var firstChunk = chunks
                 .OrderBy(c => c.ChunkIndex)
                 .FirstOrDefault();
             

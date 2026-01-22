@@ -43,6 +43,16 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<GoldenDataset> GoldenDatasets { get; set; } = null!;
     public DbSet<GoldenDatasetSample> GoldenDatasetSamples { get; set; } = null!;
     public DbSet<GoldenDatasetEvaluationRecord> GoldenDatasetEvaluationRecords { get; set; } = null!;
+    
+    // Fine-tuning models and training data
+    public DbSet<EmbeddingTrainingExample> EmbeddingTrainingExamples { get; set; } = null!;
+    public DbSet<FineTuningJob> FineTuningJobs { get; set; } = null!;
+    public DbSet<FineTunedModel> FineTunedModels { get; set; } = null!;
+    
+    // Retrieval metrics and evaluation
+    public DbSet<RetrievalEvaluationQuery> RetrievalEvaluationQueries { get; set; } = null!;
+    public DbSet<RetrievalEvaluationResult> RetrievalEvaluationResults { get; set; } = null!;
+    public DbSet<QueryEvaluationDetail> QueryEvaluationDetails { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

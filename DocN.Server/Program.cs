@@ -435,6 +435,11 @@ builder.Services.AddScoped<IRAGQualityService, RAGQualityService>();
 builder.Services.AddScoped<IRAGASMetricsService, RAGASMetricsService>();
 builder.Services.AddScoped<IGoldenDatasetService, GoldenDatasetService>();
 
+// Register new services for semantic chunking, fine-tuning, and retrieval metrics
+builder.Services.AddScoped<ISemanticChunkingService, SemanticChunkingService>();
+builder.Services.AddScoped<IFineTuningService, FineTuningService>();
+builder.Services.AddScoped<IRetrievalMetricsService, RetrievalMetricsService>();
+
 // Register Connector and Ingestion Services
 builder.Services.AddScoped<IConnectorService, ConnectorService>();
 builder.Services.AddScoped<IIngestionService, IngestionService>();
