@@ -1,5 +1,7 @@
 using DocN.Data.Models;
+using DocN.Core.Interfaces;
 using System.Text;
+using System.Text.Json;
 
 namespace DocN.Data.Services;
 
@@ -195,6 +197,56 @@ public class ChunkingService : IChunkingService
             
             // Update position for next chunk (accounting for overlap)
             currentPosition = endPosition - overlap;
+        }
+
+        return documentChunks;
+    }
+    
+    /// <summary>
+    /// Create DocumentChunk entities with semantic boundaries and rich metadata
+    /// </summary>
+    public List<DocumentChunk> ChunkDocumentSemantic(
+        Document document, 
+        ISemanticChunkingService? semanticChunker = null,
+        int maxChunkSize = 1000)
+    {
+        if (semanticChunker == null)
+        {
+            // Fallback to standard chunking if semantic chunker not available
+            return ChunkDocument(document, maxChunkSize, maxChunkSize / 5);
+        }
+        
+        // Use semantic chunking with structure awareness
+        var semanticChunks = semanticChunker.ChunkByStructure(document.ExtractedText, maxChunkSize);
+        var documentChunks = new List<DocumentChunk>();
+        
+        for (int i = 0; i < semanticChunks.Count; i++)
+        {
+            var semanticChunk = semanticChunks[i];
+            
+            documentChunks.Add(new DocumentChunk
+            {
+                DocumentId = document.Id,
+                ChunkIndex = i,
+                ChunkText = semanticChunk.Text,
+                TokenCount = EstimateTokenCount(semanticChunk.Text),
+                StartPosition = semanticChunk.StartPosition,
+                EndPosition = semanticChunk.EndPosition,
+                CreatedAt = DateTime.UtcNow,
+                // Rich metadata
+                SectionTitle = semanticChunk.Metadata.Title,
+                SectionPath = semanticChunk.Metadata.SectionPath,
+                KeywordsJson = semanticChunk.Metadata.Keywords.Count > 0 
+                    ? JsonSerializer.Serialize(semanticChunk.Metadata.Keywords) 
+                    : null,
+                DocumentType = semanticChunk.Metadata.DocumentType,
+                HeaderLevel = semanticChunk.Metadata.HeaderLevel,
+                ChunkType = semanticChunk.ChunkType,
+                IsListItem = semanticChunk.Metadata.IsListItem,
+                CustomMetadataJson = semanticChunk.Metadata.CustomMetadata.Count > 0
+                    ? JsonSerializer.Serialize(semanticChunk.Metadata.CustomMetadata)
+                    : null
+            });
         }
 
         return documentChunks;

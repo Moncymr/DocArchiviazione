@@ -111,4 +111,46 @@ public class DocumentChunk
     /// End position of this chunk in the original document text
     /// </summary>
     public int EndPosition { get; set; }
+    
+    // Rich metadata for improved retrieval
+    
+    /// <summary>
+    /// Title of the section this chunk belongs to
+    /// </summary>
+    public string? SectionTitle { get; set; }
+    
+    /// <summary>
+    /// Section hierarchy path (e.g., "1.2.3" or "Introduction > Background")
+    /// </summary>
+    public string? SectionPath { get; set; }
+    
+    /// <summary>
+    /// Auto-extracted keywords for this chunk (stored as JSON array)
+    /// </summary>
+    public string? KeywordsJson { get; set; }
+    
+    /// <summary>
+    /// Document type hint (e.g., "technical", "legal", "report")
+    /// </summary>
+    public string? DocumentType { get; set; }
+    
+    /// <summary>
+    /// Header level if this chunk starts with a header (0 = no header, 1-6 = H1-H6)
+    /// </summary>
+    public int HeaderLevel { get; set; }
+    
+    /// <summary>
+    /// Semantic type of chunk (paragraph, section, list, sentence, etc.)
+    /// </summary>
+    public string ChunkType { get; set; } = "paragraph";
+    
+    /// <summary>
+    /// Is this chunk part of a list?
+    /// </summary>
+    public bool IsListItem { get; set; }
+    
+    /// <summary>
+    /// Additional custom metadata (stored as JSON)
+    /// </summary>
+    public string? CustomMetadataJson { get; set; }
 }
