@@ -1222,7 +1222,6 @@ public class DocumentService : IDocumentService
                 return 0;
             }
 
-            int deletedCount = 0;
             var documentIds = userDocuments.Select(d => d.Id).ToList();
 
             // Delete associated chunks for all documents
@@ -1248,6 +1247,8 @@ public class DocumentService : IDocumentService
             // Delete the documents
             _context.Documents.RemoveRange(userDocuments);
             await _context.SaveChangesAsync();
+            
+            int deletedCount = userDocuments.Count;
 
             // Try to delete physical files
             foreach (var document in userDocuments)
@@ -1257,19 +1258,13 @@ public class DocumentService : IDocumentService
                     try
                     {
                         File.Delete(document.FilePath);
-                        deletedCount++;
                     }
                     catch (Exception ex)
                     {
                         _logger?.LogWarning(ex, "Could not delete physical file for document {DocumentId}: {FilePath}", 
                             document.Id, document.FilePath);
                         // Continue even if file deletion fails - document is already removed from DB
-                        deletedCount++; // Still count as deleted since DB entry is removed
                     }
-                }
-                else
-                {
-                    deletedCount++; // Count as deleted even if no physical file
                 }
             }
 
