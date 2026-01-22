@@ -1157,24 +1157,16 @@ public class DocumentService : IDocumentService
             }
 
             // Delete associated chunks first
-            var chunks = await _context.DocumentChunks
+            // Use ExecuteDeleteAsync to avoid loading entities (prevents schema mismatch issues)
+            await _context.DocumentChunks
                 .Where(c => c.DocumentId == documentId)
-                .ToListAsync();
-            
-            if (chunks.Any())
-            {
-                _context.DocumentChunks.RemoveRange(chunks);
-            }
+                .ExecuteDeleteAsync();
 
             // Delete associated similar documents relationships
-            var similarDocuments = await _context.SimilarDocuments
+            // Use ExecuteDeleteAsync to avoid loading entities
+            await _context.SimilarDocuments
                 .Where(sd => sd.SourceDocumentId == documentId || sd.SimilarDocumentId == documentId)
-                .ToListAsync();
-            
-            if (similarDocuments.Any())
-            {
-                _context.SimilarDocuments.RemoveRange(similarDocuments);
-            }
+                .ExecuteDeleteAsync();
 
             // Delete the document
             _context.Documents.Remove(document);
@@ -1232,24 +1224,16 @@ public class DocumentService : IDocumentService
             var documentIds = userDocuments.Select(d => d.Id).ToList();
 
             // Delete associated chunks for all documents
-            var chunks = await _context.DocumentChunks
+            // Use ExecuteDeleteAsync to avoid loading entities (prevents schema mismatch issues)
+            await _context.DocumentChunks
                 .Where(c => documentIds.Contains(c.DocumentId))
-                .ToListAsync();
-            
-            if (chunks.Any())
-            {
-                _context.DocumentChunks.RemoveRange(chunks);
-            }
+                .ExecuteDeleteAsync();
 
             // Delete associated similar documents relationships
-            var similarDocuments = await _context.SimilarDocuments
+            // Use ExecuteDeleteAsync to avoid loading entities
+            await _context.SimilarDocuments
                 .Where(sd => documentIds.Contains(sd.SourceDocumentId) || documentIds.Contains(sd.SimilarDocumentId))
-                .ToListAsync();
-            
-            if (similarDocuments.Any())
-            {
-                _context.SimilarDocuments.RemoveRange(similarDocuments);
-            }
+                .ExecuteDeleteAsync();
 
             // Delete the documents
             _context.Documents.RemoveRange(userDocuments);
