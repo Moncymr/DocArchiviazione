@@ -512,7 +512,7 @@ public class HybridSearchService : IHybridSearchService
         var results = new List<SearchResult>();
         
         // If BM25 is enabled and service is available, use it for better scoring
-        if (options.UseBM25 && _bm25Service != null)
+        if (options.UseBM25 && _bm25Service != null && documents.Any())
         {
             // Update BM25 statistics if needed
             var docTexts = documents.ToDictionary(d => d.Id, d => d.ExtractedText ?? "");
@@ -539,69 +539,19 @@ public class HybridSearchService : IHybridSearchService
                     }
                 }
             }
+            
+            // If BM25 found no results, fall back to simple keyword matching
+            // This can happen with rare terms or numeric strings
+            if (!results.Any())
+            {
+                _logger?.LogDebug("BM25 returned no results for query '{Query}', falling back to keyword matching", TruncateQuery(query));
+                results = PerformKeywordMatching(documents, keywords);
+            }
         }
         else
         {
             // Use simple keyword matching
-            foreach (var doc in documents)
-            {
-                // Count matches using case-insensitive comparison
-                // Track unique keyword matches to avoid double-counting
-                var matchedKeywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                double totalScore = 0;
-                
-                foreach (var keyword in keywords)
-                {
-                    bool keywordMatched = false;
-                    double keywordScore = 0;
-                    
-                    // Check in FileName (highest weight: 1.0)
-                    if (doc.FileName != null && doc.FileName.Contains(keyword, StringComparison.OrdinalIgnoreCase))
-                    {
-                        keywordMatched = true;
-                        keywordScore = Math.Max(keywordScore, 1.0);
-                    }
-                    
-                    // Check in ExtractedText (medium weight: 0.8)
-                    if (doc.ExtractedText != null && doc.ExtractedText.Contains(keyword, StringComparison.OrdinalIgnoreCase))
-                    {
-                        keywordMatched = true;
-                        keywordScore = Math.Max(keywordScore, 0.8);
-                    }
-                    
-                    // Check in ActualCategory (lowest weight: 0.5)
-                    if (doc.ActualCategory != null && doc.ActualCategory.Contains(keyword, StringComparison.OrdinalIgnoreCase))
-                    {
-                        keywordMatched = true;
-                        keywordScore = Math.Max(keywordScore, 0.5);
-                    }
-                    
-                    if (keywordMatched)
-                    {
-                        matchedKeywords.Add(keyword);
-                        totalScore += keywordScore;
-                    }
-                }
-                
-                if (matchedKeywords.Count > 0)
-                {
-                    // Calculate score:
-                    // - Base score is the sum of weighted field scores (totalScore)
-                    // - Normalized by total number of query keywords to get average match weight
-                    // - Multiplied by keyword coverage ratio (matched keywords / total keywords)
-                    // This rewards documents that match more keywords and match in higher-priority fields
-                    var score = (totalScore / (double)keywords.Count) * ((double)matchedKeywords.Count / keywords.Count);
-                    
-                    results.Add(new SearchResult
-                    {
-                        Document = doc,
-                        VectorScore = 0,
-                        TextScore = score,
-                        BM25Score = 0,
-                        CombinedScore = score
-                    });
-                }
-            }
+            results = PerformKeywordMatching(documents, keywords);
         }
 
         // Sort by score and add ranks
@@ -612,6 +562,76 @@ public class HybridSearchService : IHybridSearchService
         }
 
         return results.Take(options.TopK * 2).ToList(); // Return 2x TopK for fusion
+    }
+    
+    /// <summary>
+    /// Perform keyword-based matching on documents
+    /// </summary>
+    private List<SearchResult> PerformKeywordMatching(List<Document> documents, List<string> keywords)
+    {
+        var results = new List<SearchResult>();
+        
+        foreach (var doc in documents)
+        {
+            // Count matches using case-insensitive comparison
+            // Track unique keyword matches to avoid double-counting
+            var matchedKeywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            double totalScore = 0;
+            
+            foreach (var keyword in keywords)
+            {
+                bool keywordMatched = false;
+                double keywordScore = 0;
+                
+                // Check in FileName (highest weight: 1.0)
+                if (doc.FileName != null && doc.FileName.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+                {
+                    keywordMatched = true;
+                    keywordScore = Math.Max(keywordScore, 1.0);
+                }
+                
+                // Check in ExtractedText (medium weight: 0.8)
+                if (doc.ExtractedText != null && doc.ExtractedText.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+                {
+                    keywordMatched = true;
+                    keywordScore = Math.Max(keywordScore, 0.8);
+                }
+                
+                // Check in ActualCategory (lowest weight: 0.5)
+                if (doc.ActualCategory != null && doc.ActualCategory.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+                {
+                    keywordMatched = true;
+                    keywordScore = Math.Max(keywordScore, 0.5);
+                }
+                
+                if (keywordMatched)
+                {
+                    matchedKeywords.Add(keyword);
+                    totalScore += keywordScore;
+                }
+            }
+            
+            if (matchedKeywords.Count > 0)
+            {
+                // Calculate score:
+                // - Base score is the sum of weighted field scores (totalScore)
+                // - Normalized by total number of query keywords to get average match weight
+                // - Multiplied by keyword coverage ratio (matched keywords / total keywords)
+                // This rewards documents that match more keywords and match in higher-priority fields
+                var score = (totalScore / (double)keywords.Count) * ((double)matchedKeywords.Count / keywords.Count);
+                
+                results.Add(new SearchResult
+                {
+                    Document = doc,
+                    VectorScore = 0,
+                    TextScore = score,
+                    BM25Score = 0,
+                    CombinedScore = score
+                });
+            }
+        }
+        
+        return results;
     }
 
     /// <summary>
