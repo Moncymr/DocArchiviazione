@@ -313,22 +313,34 @@ public class RetrievalMetricsService : IRetrievalMetricsService
 
     private HashSet<int> ParseRelevantDocIds(GoldenDatasetSampleDto sample)
     {
-        // Try to extract relevant doc IDs from metadata or ground truth
-        // This is a placeholder - implement based on your dataset structure
+        // Extract relevant doc IDs from sample
         var relevantIds = new HashSet<int>();
 
-        // Example: parse from metadata JSON if available
-        // For now, return empty set (to be implemented based on your dataset format)
+        // RelevantDocumentIds is already a List<int> in the DTO
+        if (sample.RelevantDocumentIds != null && sample.RelevantDocumentIds.Count > 0)
+        {
+            foreach (var docId in sample.RelevantDocumentIds)
+            {
+                relevantIds.Add(docId);
+            }
+        }
 
         return relevantIds;
     }
 
     private async Task<List<int>> SimulateRetrievalAsync(string query, CancellationToken cancellationToken)
     {
-        // Placeholder: In production, call your actual retrieval service
-        // For now, return some document IDs
+        // TODO: Replace with actual RAG service call
+        // This is a placeholder that uses basic text search
+        // In production, this should call _ragService.SearchAsync(query)
+        
+        _logger.LogWarning(
+            "SimulateRetrievalAsync is using basic text search. " +
+            "Replace with actual RAG service for accurate metrics.");
+        
         var documents = await _context.Documents
             .Where(d => d.ExtractedText.Contains(query))
+            .OrderByDescending(d => d.Id) // Simple ordering, not similarity
             .Take(10)
             .Select(d => d.Id)
             .ToListAsync(cancellationToken);

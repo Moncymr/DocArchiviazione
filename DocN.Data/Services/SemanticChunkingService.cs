@@ -17,6 +17,10 @@ public class SemanticChunkingService : ISemanticChunkingService
 {
     private readonly ILogger<SemanticChunkingService> _logger;
     
+    // Precompiled regex patterns for performance
+    private static readonly Regex MarkdownHeaderRegex = new Regex(@"^(#{1,6})\s+(.+)$", RegexOptions.Compiled);
+    private static readonly Regex NumberedSectionRegex = new Regex(@"^(\d+\.(?:\d+\.)*)\s+(.+)$", RegexOptions.Compiled);
+    
     // Common stop words for keyword extraction
     private static readonly HashSet<string> _stopWords = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -334,8 +338,8 @@ public class SemanticChunkingService : ISemanticChunkingService
         if (string.IsNullOrWhiteSpace(line))
             return (false, "", 0);
         
-        // Markdown headers
-        var markdownMatch = Regex.Match(line, @"^(#{1,6})\s+(.+)$");
+        // Markdown headers (using precompiled regex)
+        var markdownMatch = MarkdownHeaderRegex.Match(line);
         if (markdownMatch.Success)
         {
             var level = markdownMatch.Groups[1].Value.Length;
@@ -343,8 +347,8 @@ public class SemanticChunkingService : ISemanticChunkingService
             return (true, title, level);
         }
         
-        // Numbered sections (1., 1.1., etc.)
-        var numberedMatch = Regex.Match(line, @"^(\d+\.(?:\d+\.)*)\s+(.+)$");
+        // Numbered sections (using precompiled regex)
+        var numberedMatch = NumberedSectionRegex.Match(line);
         if (numberedMatch.Success)
         {
             var numberParts = numberedMatch.Groups[1].Value.Split('.');

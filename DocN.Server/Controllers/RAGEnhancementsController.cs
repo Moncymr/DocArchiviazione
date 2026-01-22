@@ -361,7 +361,9 @@ public class RetrievalABTestRequest
 public class TrainingDataRequest
 {
     public List<int> DocumentIds { get; set; } = new();
-    public string OutputPath { get; set; } = "/tmp/training_data.jsonl";
+    
+    // Use platform-agnostic path with validation
+    public string OutputPath { get; set; } = Path.Combine(Path.GetTempPath(), "training_data.jsonl");
 }
 
 public class ContrastivePairsRequest
