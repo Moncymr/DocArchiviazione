@@ -222,15 +222,28 @@ public class BatchEmbeddingProcessor : BackgroundService
             _logger.LogInformation("Document status distribution: {Stats}", 
                 string.Join(", ", statusStats.Select(s => $"{s.Status}={s.Count}")));
             
-            // Count documents with Pending status but no ExtractedText
-            var pendingWithoutText = await context.Documents
-                .CountAsync(d => d.ChunkEmbeddingStatus == ChunkEmbeddingStatus.Pending && 
-                                string.IsNullOrEmpty(d.ExtractedText), cancellationToken);
+            // Find documents with Pending status but no ExtractedText and mark them as NotRequired
+            var documentsWithoutText = await context.Documents
+                .Where(d => d.ChunkEmbeddingStatus == ChunkEmbeddingStatus.Pending && 
+                           string.IsNullOrEmpty(d.ExtractedText))
+                .Take(50) // Process up to 50 at a time
+                .ToListAsync(cancellationToken);
             
-            if (pendingWithoutText > 0)
+            if (documentsWithoutText.Any())
             {
-                _logger.LogWarning("{Count} documents have Pending status but no ExtractedText (will be skipped)", 
-                    pendingWithoutText);
+                _logger.LogWarning("Found {Count} documents with Pending status but no ExtractedText. Marking them as NotRequired.", 
+                    documentsWithoutText.Count);
+                
+                foreach (var doc in documentsWithoutText)
+                {
+                    doc.ChunkEmbeddingStatus = ChunkEmbeddingStatus.NotRequired;
+                    _logger.LogInformation("Document {Id}: {FileName} marked as NotRequired (no ExtractedText available)", 
+                        doc.Id, doc.FileName);
+                }
+                
+                await context.SaveChangesAsync(cancellationToken);
+                _logger.LogInformation("Marked {Count} documents as NotRequired due to missing ExtractedText", 
+                    documentsWithoutText.Count);
             }
             
             // Find documents that need chunks created
