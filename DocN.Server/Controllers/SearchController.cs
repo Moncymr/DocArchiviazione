@@ -55,7 +55,16 @@ public class SearchController : ControllerBase
                 MinSimilarity = request.MinSimilarity ?? 0.3,
                 CategoryFilter = request.CategoryFilter,
                 OwnerId = request.UserId,
-                VisibilityFilter = request.VisibilityFilter
+                VisibilityFilter = request.VisibilityFilter,
+                DateFrom = request.DateFrom,
+                DateTo = request.DateTo,
+                DocumentType = request.DocumentType,
+                Author = request.Author,
+                VectorWeight = request.VectorWeight ?? 0.5,
+                TextWeight = request.TextWeight ?? 0.5,
+                UseBM25 = request.UseBM25 ?? true,
+                UseSemanticCache = request.UseSemanticCache ?? true,
+                EnableQueryExpansion = request.EnableQueryExpansion ?? false
             };
 
             var results = await _searchService.SearchAsync(request.Query, options);
@@ -240,6 +249,51 @@ public class SearchRequest
     /// Filtro per livello di visibilità
     /// </summary>
     public DocumentVisibility? VisibilityFilter { get; set; }
+    
+    /// <summary>
+    /// Filtro per data iniziale
+    /// </summary>
+    public DateTime? DateFrom { get; set; }
+    
+    /// <summary>
+    /// Filtro per data finale
+    /// </summary>
+    public DateTime? DateTo { get; set; }
+    
+    /// <summary>
+    /// Filtro per tipo di documento
+    /// </summary>
+    public string? DocumentType { get; set; }
+    
+    /// <summary>
+    /// Filtro per autore
+    /// </summary>
+    public string? Author { get; set; }
+    
+    /// <summary>
+    /// Peso per ricerca vettoriale (0-1, default: 0.5)
+    /// </summary>
+    public double? VectorWeight { get; set; }
+    
+    /// <summary>
+    /// Peso per ricerca testuale (0-1, default: 0.5)
+    /// </summary>
+    public double? TextWeight { get; set; }
+    
+    /// <summary>
+    /// Abilita BM25 per scoring testuale
+    /// </summary>
+    public bool? UseBM25 { get; set; }
+    
+    /// <summary>
+    /// Abilita cache semantica
+    /// </summary>
+    public bool? UseSemanticCache { get; set; }
+    
+    /// <summary>
+    /// Abilita espansione query con sinonimi
+    /// </summary>
+    public bool? EnableQueryExpansion { get; set; }
 }
 
 /// <summary>

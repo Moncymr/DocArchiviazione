@@ -420,6 +420,11 @@ builder.Services.AddScoped<IHybridSearchService, HybridSearchService>();
 builder.Services.AddScoped<IBatchProcessingService, BatchProcessingService>();
 builder.Services.AddScoped<ILogService, LogService>();
 
+// Register hybrid search enhancement services
+builder.Services.AddScoped<IBM25Service, BM25Service>();
+builder.Services.AddScoped<ISemanticCacheService, SemanticCacheService>();
+builder.Services.AddScoped<IMultiHopSearchService, MultiHopSearchService>();
+
 // Register Distributed Cache Service (works with both Redis and in-memory cache)
 builder.Services.AddSingleton<IDistributedCacheService, DistributedCacheService>();
 
