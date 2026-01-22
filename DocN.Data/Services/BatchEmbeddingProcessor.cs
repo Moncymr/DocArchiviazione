@@ -250,19 +250,54 @@ public class BatchEmbeddingProcessor : BackgroundService
             }
             
             // Find documents that need chunks created
-            // Include both Pending documents AND Processing documents that have no chunks
-            // (Processing documents without chunks are likely stuck from a previous failed attempt)
-            var pendingDocuments = await context.Documents
+            // Strategy: Get Pending documents OR Processing documents that have no chunks
+            // Split into two separate queries for better performance and avoid EF Core translation issues
+            
+            // First, get Pending documents with ExtractedText (highest priority)
+            var pendingDocs = await context.Documents
                 .Where(d => !string.IsNullOrEmpty(d.ExtractedText) && 
-                           (d.ChunkEmbeddingStatus == ChunkEmbeddingStatus.Pending ||
-                            (d.ChunkEmbeddingStatus == ChunkEmbeddingStatus.Processing &&
-                             !context.DocumentChunks.Any(c => c.DocumentId == d.Id))))
-                .Take(10) // Process 10 at a time to avoid overload
+                           d.ChunkEmbeddingStatus == ChunkEmbeddingStatus.Pending)
+                .Take(10)
                 .ToListAsync(cancellationToken);
+            
+            var pendingDocuments = new List<Document>(pendingDocs);
+            
+            // If we have less than 10 Pending docs, also check Processing docs without chunks
+            if (pendingDocuments.Count < 10)
+            {
+                // Limit Processing docs query to avoid loading too many into memory
+                var processingDocsWithoutChunks = await context.Documents
+                    .Where(d => !string.IsNullOrEmpty(d.ExtractedText) && 
+                               d.ChunkEmbeddingStatus == ChunkEmbeddingStatus.Processing)
+                    .Take(50) // Limit to prevent memory issues
+                    .ToListAsync(cancellationToken);
+                
+                // Filter client-side to find those without chunks
+                var processingDocIds = processingDocsWithoutChunks.Select(d => d.Id).ToList();
+                
+                if (processingDocIds.Any())
+                {
+                    var docIdsWithChunks = await context.DocumentChunks
+                        .Where(c => processingDocIds.Contains(c.DocumentId))
+                        .Select(c => c.DocumentId)
+                        .Distinct()
+                        .ToListAsync(cancellationToken);
+                    
+                    var processingDocsNeedingChunks = processingDocsWithoutChunks
+                        .Where(d => !docIdsWithChunks.Contains(d.Id))
+                        .Take(10 - pendingDocuments.Count) // Fill up to 10 total
+                        .ToList();
+                    
+                    pendingDocuments.AddRange(processingDocsNeedingChunks);
+                }
+            }
 
             if (!pendingDocuments.Any())
             {
-                _logger.LogDebug("No documents found that need chunks created (this is normal if all docs are Processing with chunks or Completed)");
+                if (_config.EnableDetailedLogging)
+                {
+                    _logger.LogDebug("No documents found that need chunks created (this is normal if all docs are Processing with chunks or Completed)");
+                }
                 return;
             }
 
@@ -272,6 +307,13 @@ public class BatchEmbeddingProcessor : BackgroundService
             
             _logger.LogInformation("Processing {Count} documents for chunk creation and embeddings ({PendingCount} Pending, {ProcessingCount} Processing without chunks)", 
                 pendingDocuments.Count, pendingCount, processingCount);
+            
+            // Log document IDs for diagnostics
+            if (_config.EnableDetailedLogging)
+            {
+                _logger.LogDebug("Document IDs to process: {DocumentIds}", 
+                    string.Join(", ", pendingDocuments.Select(d => d.Id)));
+            }
 
             foreach (var document in pendingDocuments)
             {
@@ -280,6 +322,9 @@ public class BatchEmbeddingProcessor : BackgroundService
 
                 try
                 {
+                    _logger.LogInformation("Starting processing for document {Id}: {FileName} (Status: {Status}, ExtractedTextLength: {TextLength})", 
+                        document.Id, document.FileName, document.ChunkEmbeddingStatus, document.ExtractedText?.Length ?? 0);
+                    
                     // Log if this is a retry of a stuck Processing document
                     if (document.ChunkEmbeddingStatus == ChunkEmbeddingStatus.Processing)
                     {
