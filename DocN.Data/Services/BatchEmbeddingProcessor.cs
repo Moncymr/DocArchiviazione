@@ -265,25 +265,31 @@ public class BatchEmbeddingProcessor : BackgroundService
             // If we have less than 10 Pending docs, also check Processing docs without chunks
             if (pendingDocuments.Count < 10)
             {
+                // Limit Processing docs query to avoid loading too many into memory
                 var processingDocsWithoutChunks = await context.Documents
                     .Where(d => !string.IsNullOrEmpty(d.ExtractedText) && 
                                d.ChunkEmbeddingStatus == ChunkEmbeddingStatus.Processing)
-                    .ToListAsync(cancellationToken); // Get all Processing docs
+                    .Take(50) // Limit to prevent memory issues
+                    .ToListAsync(cancellationToken);
                 
                 // Filter client-side to find those without chunks
                 var processingDocIds = processingDocsWithoutChunks.Select(d => d.Id).ToList();
-                var docIdsWithChunks = await context.DocumentChunks
-                    .Where(c => processingDocIds.Contains(c.DocumentId))
-                    .Select(c => c.DocumentId)
-                    .Distinct()
-                    .ToListAsync(cancellationToken);
                 
-                var processingDocsNeedingChunks = processingDocsWithoutChunks
-                    .Where(d => !docIdsWithChunks.Contains(d.Id))
-                    .Take(10 - pendingDocuments.Count) // Fill up to 10 total
-                    .ToList();
-                
-                pendingDocuments.AddRange(processingDocsNeedingChunks);
+                if (processingDocIds.Any())
+                {
+                    var docIdsWithChunks = await context.DocumentChunks
+                        .Where(c => processingDocIds.Contains(c.DocumentId))
+                        .Select(c => c.DocumentId)
+                        .Distinct()
+                        .ToListAsync(cancellationToken);
+                    
+                    var processingDocsNeedingChunks = processingDocsWithoutChunks
+                        .Where(d => !docIdsWithChunks.Contains(d.Id))
+                        .Take(10 - pendingDocuments.Count) // Fill up to 10 total
+                        .ToList();
+                    
+                    pendingDocuments.AddRange(processingDocsNeedingChunks);
+                }
             }
 
             if (!pendingDocuments.Any())
