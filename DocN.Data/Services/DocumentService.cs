@@ -186,6 +186,13 @@ public interface IDocumentService
     /// <param name="userId">ID dell'utente proprietario</param>
     /// <returns>Numero di documenti eliminati con successo</returns>
     Task<int> DeleteAllUserDocumentsAsync(string userId);
+    
+    /// <summary>
+    /// Conta il numero di documenti di proprietà dell'utente.
+    /// </summary>
+    /// <param name="userId">ID dell'utente</param>
+    /// <returns>Numero di documenti di cui l'utente è proprietario</returns>
+    Task<int> GetOwnedDocumentCountAsync(string userId);
 }
 
 /// <summary>
@@ -1276,5 +1283,15 @@ public class DocumentService : IDocumentService
             _logger?.LogError(ex, "Error deleting all documents for user {UserId}", userId);
             return 0;
         }
+    }
+    
+    public async Task<int> GetOwnedDocumentCountAsync(string userId)
+    {
+        if (string.IsNullOrEmpty(userId))
+        {
+            return 0;
+        }
+        
+        return await _context.Documents.CountAsync(d => d.OwnerId == userId);
     }
 }

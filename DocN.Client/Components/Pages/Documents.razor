@@ -52,9 +52,9 @@
                 <span>➕ Carica</span>
             </button>
             
-            @if (totalDocuments > 0)
+            @if (ownedDocuments > 0)
             {
-                <button class="btn-delete-all" @onclick="DeleteAllDocuments" title="Elimina tutti i documenti">
+                <button class="btn-delete-all" @onclick="DeleteAllDocuments" title="Elimina tutti i tuoi documenti">
                     <span>🗑️ Cancella Tutti</span>
                 </button>
             }
@@ -1527,6 +1527,7 @@
     private int currentPage = 1;
     private int totalPages = 1;
     private int totalDocuments = 0;
+    private int ownedDocuments = 0;
     private int pageSize = 20;
     private string currentUserId = string.Empty;
     
@@ -1601,6 +1602,7 @@
             // This respects the pageSize setting (default 20)
             documents = await DocumentService.GetUserDocumentsAsync(currentUserId, currentPage, pageSize);
             totalDocuments = await DocumentService.GetTotalDocumentCountAsync(currentUserId);
+            ownedDocuments = await DocumentService.GetOwnedDocumentCountAsync(currentUserId);
             
             // Calculate total pages for pagination
             totalPages = (int)Math.Ceiling((double)totalDocuments / pageSize);
@@ -1661,10 +1663,12 @@
                             // Load documents using the scoped service with proper pagination
                             var docs = await scopedDocumentService.GetUserDocumentsAsync(currentUserId, currentPage, pageSize);
                             var total = await scopedDocumentService.GetTotalDocumentCountAsync(currentUserId);
+                            var owned = await scopedDocumentService.GetOwnedDocumentCountAsync(currentUserId);
                             
                             // Update component state
                             documents = docs;
                             totalDocuments = total;
+                            ownedDocuments = owned;
                             totalPages = (int)Math.Ceiling((double)totalDocuments / pageSize);
                             
                             // Extract unique categories
@@ -1856,15 +1860,15 @@
     
     private async Task DeleteAllDocuments()
     {
-        if (totalDocuments == 0)
+        if (ownedDocuments == 0)
         {
-            await JSRuntime.InvokeVoidAsync("alert", "Non ci sono documenti da eliminare.");
+            await JSRuntime.InvokeVoidAsync("alert", "Non hai documenti di tua proprietà da eliminare.");
             return;
         }
         
-        // Confirm bulk deletion
+        // Confirm bulk deletion - make it clear we're only deleting owned documents
         var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", 
-            $"Sei sicuro di voler eliminare TUTTI i {totalDocuments} documenti? Questa azione non può essere annullata!");
+            $"Sei sicuro di voler eliminare TUTTI i {ownedDocuments} documenti di tua proprietà? Questa azione non può essere annullata!");
         
         if (confirmed)
         {
@@ -1882,7 +1886,7 @@
                 }
                 else
                 {
-                    await JSRuntime.InvokeVoidAsync("alert", "Nessun documento è stato eliminato.");
+                    await JSRuntime.InvokeVoidAsync("alert", "Nessun documento è stato eliminato. Assicurati di essere il proprietario dei documenti.");
                 }
             }
             catch (Exception ex)
