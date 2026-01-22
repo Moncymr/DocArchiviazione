@@ -505,8 +505,22 @@ public class HybridSearchService : IHybridSearchService
         {
             documentsQuery = documentsQuery.Where(d => d.OwnerId == options.Author);
         }
+        
+        // IMPORTANT: For efficiency, filter documents at database level
+        // Check if any keyword appears in FileName, ExtractedText, or ActualCategory
+        // This prevents loading all documents into memory
+        if (keywords.Any())
+        {
+            documentsQuery = documentsQuery.Where(d => 
+                keywords.Any(k => 
+                    (d.FileName != null && d.FileName.Contains(k)) ||
+                    (d.ExtractedText != null && d.ExtractedText.Contains(k)) ||
+                    (d.ActualCategory != null && d.ActualCategory.Contains(k))
+                )
+            );
+        }
 
-        // Load documents with necessary fields
+        // Load filtered documents with necessary fields
         var documents = await documentsQuery.ToListAsync();
 
         var results = new List<SearchResult>();
