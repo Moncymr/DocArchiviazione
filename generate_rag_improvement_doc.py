@@ -7,11 +7,13 @@ from docx import Document
 from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from datetime import datetime
+import locale
 
 def add_heading_with_style(doc, text, level=1):
     """Add a heading with custom styling"""
     heading = doc.add_heading(text, level=level)
-    heading.runs[0].font.color.rgb = RGBColor(0, 51, 102)
+    if heading.runs:
+        heading.runs[0].font.color.rgb = RGBColor(0, 51, 102)
     return heading
 
 def add_phase(doc, phase_number, title, description, activities):
@@ -41,6 +43,20 @@ def add_metrics_section(doc, metrics):
     
     doc.add_paragraph()
 
+def format_italian_date(dt, format_type='full'):
+    """Format date in Italian"""
+    months_it = {
+        1: 'Gennaio', 2: 'Febbraio', 3: 'Marzo', 4: 'Aprile',
+        5: 'Maggio', 6: 'Giugno', 7: 'Luglio', 8: 'Agosto',
+        9: 'Settembre', 10: 'Ottobre', 11: 'Novembre', 12: 'Dicembre'
+    }
+    
+    if format_type == 'month_year':
+        return f"{months_it[dt.month]} {dt.year}"
+    elif format_type == 'full':
+        return f"{dt.day:02d}/{dt.month:02d}/{dt.year} alle {dt.hour:02d}:{dt.minute:02d}"
+    return dt.strftime('%d/%m/%Y')
+
 def create_rag_improvement_document():
     """Create the main document"""
     doc = Document()
@@ -52,7 +68,7 @@ def create_rag_improvement_document():
     # Subtitle with date
     subtitle = doc.add_paragraph()
     subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = subtitle.add_run(f'Sistema DocN - {datetime.now().strftime("%B %Y")}')
+    run = subtitle.add_run(f'Sistema DocN - {format_italian_date(datetime.now(), "month_year")}')
     run.italic = True
     run.font.size = Pt(12)
     
@@ -253,7 +269,18 @@ def create_rag_improvement_document():
     # Implementation Timeline
     add_heading_with_style(doc, '📅 Timeline di Implementazione Suggerita', level=1)
     
-    timeline_table = doc.add_table(rows=8, cols=3)
+    # Data
+    phases_data = [
+        ('Fase 1: Ottimizzazione Embeddings', '2-3 settimane', 'Alta'),
+        ('Fase 2: Ricerca Ibrida', '3-4 settimane', 'Alta'),
+        ('Fase 3: Reranking Avanzato', '2-3 settimane', 'Media'),
+        ('Fase 4: Generazione Avanzata', '3-4 settimane', 'Alta'),
+        ('Fase 5: Monitoraggio e QA', '2-3 settimane', 'Alta'),
+        ('Fase 6: Prestazioni e Scalabilità', '2-3 settimane', 'Media'),
+        ('Fase 7: Personalizzazione', '4-5 settimane', 'Bassa'),
+    ]
+    
+    timeline_table = doc.add_table(rows=len(phases_data) + 1, cols=3)
     timeline_table.style = 'Light Grid Accent 1'
     
     # Header
@@ -267,17 +294,6 @@ def create_rag_improvement_document():
         for paragraph in cell.paragraphs:
             for run in paragraph.runs:
                 run.font.bold = True
-    
-    # Data
-    phases_data = [
-        ('Fase 1: Ottimizzazione Embeddings', '2-3 settimane', 'Alta'),
-        ('Fase 2: Ricerca Ibrida', '3-4 settimane', 'Alta'),
-        ('Fase 3: Reranking Avanzato', '2-3 settimane', 'Media'),
-        ('Fase 4: Generazione Avanzata', '3-4 settimane', 'Alta'),
-        ('Fase 5: Monitoraggio e QA', '2-3 settimane', 'Alta'),
-        ('Fase 6: Prestazioni e Scalabilità', '2-3 settimane', 'Media'),
-        ('Fase 7: Personalizzazione', '4-5 settimane', 'Bassa'),
-    ]
     
     for i, (phase, duration, priority) in enumerate(phases_data, 1):
         row_cells = timeline_table.rows[i].cells
@@ -370,7 +386,7 @@ def create_rag_improvement_document():
     footer_para = doc.add_paragraph()
     footer_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
     footer_run = footer_para.add_run(
-        f"Documento generato il {datetime.now().strftime('%d/%m/%Y alle %H:%M')}\n"
+        f"Documento generato il {format_italian_date(datetime.now(), 'full')}\n"
         "Sistema DocN - Archiviazione Documentale con RAG"
     )
     footer_run.italic = True
