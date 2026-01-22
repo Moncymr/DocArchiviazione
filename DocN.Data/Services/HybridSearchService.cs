@@ -1,6 +1,8 @@
 using DocN.Data.Models;
 using DocN.Data.Utilities;
+using DocN.Core.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace DocN.Data.Services;
 
