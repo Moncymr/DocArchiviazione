@@ -51,6 +51,13 @@
             <button class="btn-upload" @onclick="GoToUpload">
                 <span>➕ Carica</span>
             </button>
+            
+            @if (totalDocuments > 0)
+            {
+                <button class="btn-delete-all" @onclick="DeleteAllDocuments" title="Elimina tutti i documenti">
+                    <span>🗑️ Cancella Tutti</span>
+                </button>
+            }
         </div>
     </div>
 
@@ -598,6 +605,26 @@
     .btn-upload:hover {
         transform: translateY(-2px);
         box-shadow: 0 6px 20px rgba(255, 107, 53, 0.4);
+    }
+
+    /* DELETE ALL BUTTON */
+    .btn-delete-all {
+        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        color: white;
+        border: none;
+        padding: 0.75rem 1.5rem;
+        border-radius: 25px;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s;
+        box-shadow: 0 4px 15px rgba(220, 53, 69, 0.3);
+    }
+
+    .btn-delete-all:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(220, 53, 69, 0.4);
+        background: linear-gradient(135deg, #c82333 0%, #bd2130 100%);
     }
 
     /* FILTERS BAR */
@@ -1806,9 +1833,68 @@
         var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", $"Sei sicuro di voler eliminare '{doc.FileName}'?");
         if (confirmed)
         {
-            // TODO: Implement delete
-            await LoadDocuments();
-            CloseDetailsPanel();
+            try
+            {
+                var success = await DocumentService.DeleteDocumentAsync(doc.Id, currentUserId);
+                if (success)
+                {
+                    await LoadDocuments();
+                    CloseDetailsPanel();
+                }
+                else
+                {
+                    await JSRuntime.InvokeVoidAsync("alert", "Errore durante l'eliminazione del documento.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error deleting document: {ex.Message}");
+                await JSRuntime.InvokeVoidAsync("alert", "Errore durante l'eliminazione del documento.");
+            }
+        }
+    }
+    
+    private async Task DeleteAllDocuments()
+    {
+        if (totalDocuments == 0)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Non ci sono documenti da eliminare.");
+            return;
+        }
+        
+        // Confirm bulk deletion
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", 
+            $"Sei sicuro di voler eliminare TUTTI i {totalDocuments} documenti? Questa azione non può essere annullata!");
+        
+        if (confirmed)
+        {
+            try
+            {
+                isLoading = true;
+                StateHasChanged();
+                
+                var deletedCount = await DocumentService.DeleteAllUserDocumentsAsync(currentUserId);
+                
+                if (deletedCount > 0)
+                {
+                    await JSRuntime.InvokeVoidAsync("alert", $"Eliminati con successo {deletedCount} documenti.");
+                    await LoadDocuments();
+                }
+                else
+                {
+                    await JSRuntime.InvokeVoidAsync("alert", "Nessun documento è stato eliminato.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error deleting all documents: {ex.Message}");
+                await JSRuntime.InvokeVoidAsync("alert", "Errore durante l'eliminazione dei documenti.");
+            }
+            finally
+            {
+                isLoading = false;
+                StateHasChanged();
+            }
         }
     }
 
