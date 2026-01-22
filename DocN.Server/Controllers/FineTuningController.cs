@@ -49,6 +49,9 @@ public class FineTuningController : ControllerBase
 
     /// <summary>
     /// Create a fine-tuning job
+    /// Note: This endpoint creates a fine-tuning job record but provider-specific
+    /// fine-tuning implementation (OpenAI, Cohere, etc.) is not yet complete.
+    /// The job will be created with "Pending" status and requires manual completion.
     /// </summary>
     [HttpPost("create-job")]
     public async Task<ActionResult<FineTuningJobResult>> CreateFineTuningJob(

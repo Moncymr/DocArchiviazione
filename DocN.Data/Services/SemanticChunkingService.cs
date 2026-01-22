@@ -171,6 +171,13 @@ public class SemanticChunkingService : ISemanticChunkingService
     {
         options ??= new ChunkingOptions();
         
+        // Validate document has extractable text
+        if (string.IsNullOrWhiteSpace(document.ExtractedText))
+        {
+            _logger.LogWarning("Document {DocumentId} has no extracted text to chunk", document.Id);
+            return new List<DocumentChunk>();
+        }
+        
         var enhancedChunks = await ChunkDocumentSemanticAsync(
             document.ExtractedText, 
             strategy, 
@@ -193,9 +200,13 @@ public class SemanticChunkingService : ISemanticChunkingService
                 Title = chunk.Title,
                 SectionPath = chunk.SectionPath,
                 ChunkType = chunk.ChunkType,
-                KeywordsJson = JsonSerializer.Serialize(chunk.Keywords),
+                KeywordsJson = chunk.Keywords != null && chunk.Keywords.Any() 
+                    ? JsonSerializer.Serialize(chunk.Keywords) 
+                    : null,
                 ImportanceScore = chunk.ImportanceScore,
-                MetadataJson = JsonSerializer.Serialize(chunk.Metadata),
+                MetadataJson = chunk.Metadata != null && chunk.Metadata.Any() 
+                    ? JsonSerializer.Serialize(chunk.Metadata) 
+                    : null,
                 TokenCount = EstimateTokenCount(chunk.Text),
                 CreatedAt = DateTime.UtcNow
             };

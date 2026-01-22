@@ -239,11 +239,13 @@ public class RetrievalMetricsService : IRetrievalMetricsService
                 allRelevantIds.Add(query.RelevantDocumentIds);
 
                 // Calculate per-query metrics
+                // TODO: Enhance SearchSimilarDocumentsAsync to return actual similarity scores
+                // Currently using simplified score of 1.0 for all retrieved documents
                 var queryMetric = new QueryMetrics
                 {
                     QueryId = query.QueryId,
                     RetrievedIds = retrievedIds,
-                    RetrievalScores = retrievedDocs.ToDictionary(d => d.Id, d => 1.0), // Simplified score
+                    RetrievalScores = retrievedDocs.ToDictionary(d => d.Id, d => 1.0),
                 };
 
                 // Calculate reciprocal rank

@@ -42,6 +42,23 @@ public interface ISemanticChunkingService
 }
 
 /// <summary>
+/// Interface extension for document-specific operations
+/// Note: This is kept separate to avoid circular dependency issues
+/// between Core and Data layers
+/// </summary>
+public interface IDocumentChunkingExtensions
+{
+    /// <summary>
+    /// Create DocumentChunk entities with rich metadata
+    /// </summary>
+    Task<List<object>> CreateEnhancedDocumentChunksAsync(
+        object document,
+        ChunkingStrategy strategy = ChunkingStrategy.Semantic,
+        ChunkingOptions? options = null,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
 /// Chunking strategy options
 /// </summary>
 public enum ChunkingStrategy

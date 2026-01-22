@@ -15,6 +15,9 @@ public class FineTuningService : IFineTuningService
     private readonly ApplicationDbContext _context;
     private readonly ILogger<FineTuningService> _logger;
     private readonly IMultiProviderAIService _aiService;
+    
+    // Constants for text processing
+    private const int MaxRepresentativeTextLength = 1000;
 
     public FineTuningService(
         ApplicationDbContext context,
@@ -309,8 +312,8 @@ public class FineTuningService : IFineTuningService
             
             if (firstChunk != null && !string.IsNullOrWhiteSpace(firstChunk.ChunkText))
             {
-                return firstChunk.ChunkText.Length > 1000
-                    ? firstChunk.ChunkText.Substring(0, 1000)
+                return firstChunk.ChunkText.Length > MaxRepresentativeTextLength
+                    ? firstChunk.ChunkText.Substring(0, MaxRepresentativeTextLength)
                     : firstChunk.ChunkText;
             }
         }
@@ -318,8 +321,8 @@ public class FineTuningService : IFineTuningService
         // Fallback to extracted text
         if (!string.IsNullOrWhiteSpace(document.ExtractedText))
         {
-            return document.ExtractedText.Length > 1000
-                ? document.ExtractedText.Substring(0, 1000)
+            return document.ExtractedText.Length > MaxRepresentativeTextLength
+                ? document.ExtractedText.Substring(0, MaxRepresentativeTextLength)
                 : document.ExtractedText;
         }
 
