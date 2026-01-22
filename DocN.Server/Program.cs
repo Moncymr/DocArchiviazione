@@ -489,10 +489,6 @@ builder.Services.AddScoped<ISynthesisAgent, SynthesisAgent>();
 builder.Services.AddScoped<IClassificationAgent, ClassificationAgent>();
 builder.Services.AddScoped<IAgentOrchestrator, AgentOrchestrator>();
 
-// Register Agent Configuration services
-builder.Services.AddScoped<IAgentConfigurationService, AgentConfigurationService>();
-builder.Services.AddScoped<AgentTemplateSeeder>();
-
 // Register Query Intent Classification and Statistical Answer services
 builder.Services.AddScoped<IQueryIntentClassifier, QueryIntentClassifier>();
 builder.Services.AddScoped<IDocumentStatisticsService, DocumentStatisticsService>();
@@ -557,10 +553,6 @@ using (var scope = app.Services.CreateScope())
     {
         var seeder = scope.ServiceProvider.GetRequiredService<DatabaseSeeder>();
         await seeder.SeedAsync();
-        
-        // Seed agent templates
-        var agentTemplateSeeder = scope.ServiceProvider.GetRequiredService<AgentTemplateSeeder>();
-        await agentTemplateSeeder.SeedTemplatesAsync();
         
         logger.LogInformation("Database seeding completed successfully");
     }
