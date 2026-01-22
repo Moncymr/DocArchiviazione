@@ -237,8 +237,11 @@ public class BatchEmbeddingProcessor : BackgroundService
                 foreach (var doc in documentsWithoutText)
                 {
                     doc.ChunkEmbeddingStatus = ChunkEmbeddingStatus.NotRequired;
-                    _logger.LogInformation("Document {Id}: {FileName} marked as NotRequired (no ExtractedText available)", 
-                        doc.Id, doc.FileName);
+                    if (_config.EnableDetailedLogging)
+                    {
+                        _logger.LogDebug("Document {Id}: {FileName} marked as NotRequired (no ExtractedText available)", 
+                            doc.Id, doc.FileName);
+                    }
                 }
                 
                 await context.SaveChangesAsync(cancellationToken);
