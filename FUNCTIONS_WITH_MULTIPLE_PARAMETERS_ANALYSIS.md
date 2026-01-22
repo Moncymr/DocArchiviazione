@@ -10,14 +10,14 @@
 **Domanda:** Ci sono funzioni che hanno più di due parametri in input?  
 **Question:** Are there functions that have more than two parameters as input?
 
-**Risposta:** **Sì**, nel codebase sono presenti **oltre 40 metodi** con 3 o più parametri.  
-**Answer:** **Yes**, there are **over 40 methods** in the codebase with 3 or more parameters.
+**Risposta:** **Sì**, nel codebase sono presenti **oltre 25 metodi pubblici verificati** con 3 o più parametri.  
+**Answer:** **Yes**, there are **over 25 verified public methods** in the codebase with 3 or more parameters.
 
 ---
 
 ## Dettaglio Metodi per Categoria / Methods by Category
 
-### 1. Document Service Methods (11 metodi)
+### 1. Document Service Methods (6 metodi verificati)
 
 #### File: `DocN.Data/Services/DocumentService.cs`
 
@@ -29,11 +29,6 @@
 | `RemoveGroupShareAsync` | **3 parametri**: `int documentId, int groupId, string currentUserId` | Rimozione condivisione gruppo |
 | `UpdateDocumentVisibilityAsync` | **3 parametri**: `int documentId, DocumentVisibility visibility, string userId` | Aggiornamento visibilità |
 | `GetUserDocumentsAsync` | **3 parametri**: `string userId, int page = 1, int pageSize = 20` | Paginazione documenti utente |
-| `SearchDocumentsAsync` | **4 parametri**: `string searchTerm, string userId, int page = 1, int pageSize = 20` | Ricerca con paginazione |
-| `GetDocumentsByCategoryAsync` | **4 parametri**: `int categoryId, string userId, int page = 1, int pageSize = 20` | Filtraggio per categoria |
-| `GetDocumentsByDateRangeAsync` | **5 parametri**: `DateTime startDate, DateTime endDate, string userId, int page = 1, int pageSize = 20` | Filtraggio per intervallo date |
-| `UpdateDocumentMetadataAsync` | **3 parametri**: `int documentId, Dictionary<string, string> metadata, string userId` | Aggiornamento metadati |
-| `MoveDocumentToCategoryAsync` | **3 parametri**: `int documentId, int newCategoryId, string userId` | Spostamento categoria |
 
 ---
 
@@ -59,52 +54,20 @@ Metodi ripetuti in 6 handler diversi (GoogleDrive, FTP, LocalFolder, SFTP, Share
 
 ---
 
-### 3. AI/RAG Service Methods (12+ metodi)
+### 3. AI/RAG Service Methods (4 metodi verificati)
 
-#### File: `DocN.Core/Services/EnhancedAgentRAGService.cs`
+#### File: `DocN.Data/Services/EnhancedAgentRAGService.cs`
 
 | Metodo | Parametri | Note |
 |--------|-----------|------|
 | `GenerateResponseAsync` | **5 parametri**: `string query, string userId, int? conversationId = null, List<int>? specificDocumentIds = null, int topK = 5` | Generazione risposta RAG con molte opzioni |
-
-#### File: `DocN.Core/Services/RetrievalMetricsService.cs`
-
-| Metodo | Parametri | Note |
-|--------|-----------|------|
-| `CalculateNDCG` | **3 parametri**: `List<int> retrievedDocIds, Dictionary<int, double> relevanceScores, int k = 10` | Calcolo metriche NDCG |
-| `CalculateMRR` | **2 parametri**: `List<int> retrievedDocIds, List<int> relevantDocIds` | Calcolo Mean Reciprocal Rank |
-| `CalculatePrecisionAtK` | **3 parametri**: `List<int> retrievedDocIds, List<int> relevantDocIds, int k` | Precision at K |
-| `CalculateRecallAtK` | **3 parametri**: `List<int> retrievedDocIds, List<int> relevantDocIds, int k` | Recall at K |
-
-#### File: `DocN.Core/Services/ContextualCompressionService.cs`
-
-| Metodo | Parametri | Note |
-|--------|-----------|------|
-| `CompressContextAsync` | **3 parametri**: `string query, List<string> retrievedChunks, int targetTokenCount = 2000` | Compressione contestuale |
-
-#### File: `DocN.Data/Services/MultiProviderAIService.cs` & `CategoryService.cs`
-
-| Metodo | Parametri | Note |
-|--------|-----------|------|
-| `SuggestCategoryAsync` | **2 parametri**: `string fileName, string extractedText` | Suggerimento categoria (al limite) |
-| `AnalyzeDocumentContentAsync` | **3 parametri**: `string filePath, string extractedText, string? fileExtension = null` | Analisi contenuto |
-
-#### File: `DocN.Core/Services/ChunkingService.cs`
-
-| Metodo | Parametri | Note |
-|--------|-----------|------|
-| `ChunkText` | **3 parametri**: `string text, int chunkSize = 1000, int overlap = 200` | Chunking del testo |
-| `ChunkDocument` | **3 parametri**: `string documentText, int chunkSize = 1000, int overlap = 200` | Chunking documento |
-
-#### File: `DocN.Core/Services/BM25Service.cs`
-
-| Metodo | Parametri | Note |
-|--------|-----------|------|
-| `CalculateScore` | **3 parametri**: `string query, string documentText, Dictionary<string, double>? documentFieldWeights = null` | Calcolo score BM25 |
+| `GenerateStreamingResponseAsync` | **4 parametri**: `string query, string userId, int? conversationId = null, List<int>? specificDocumentIds = null` | Generazione risposta streaming |
+| `SearchDocumentsAsync` | **4 parametri**: `string query, string userId, int topK = 10, double minSimilarity = 0.7` | Ricerca documenti semantica |
+| `SearchDocumentsWithEmbeddingAsync` | **4 parametri**: `float[] queryEmbedding, string userId, int topK = 10, double minSimilarity = 0.7` | Ricerca con embedding pre-calcolato |
 
 ---
 
-### 4. Utility & Helper Methods (8+ metodi)
+### 4. Utility & Helper Methods (7 metodi verificati)
 
 #### File: `DocN.Data/Services/LogService.cs`
 
@@ -112,21 +75,12 @@ Metodi ripetuti in 6 handler diversi (GoogleDrive, FTP, LocalFolder, SFTP, Share
 |--------|-----------|------|
 | `LogInfoAsync` | **5 parametri**: `string category, string message, string? details = null, string? userId = null, string? fileName = null` | Log informativo |
 | `LogWarningAsync` | **5 parametri**: `string category, string message, string? details = null, string? userId = null, string? fileName = null` | Log warning |
-| `LogErrorAsync` | **5 parametri**: `string category, string message, string? details = null, string? userId = null, string? fileName = null` | Log errore |
+| `LogErrorAsync` | **6 parametri**: `string category, string message, string? details = null, string? userId = null, string? fileName = null, string? stackTrace = null` | Log errore con stack trace |
+| `LogDebugAsync` | **5 parametri**: `string category, string message, string? details = null, string? userId = null, string? fileName = null` | Log debug |
+| `GetLogsAsync` | **4 parametri**: `string? category = null, string? userId = null, DateTime? fromDate = null, int maxRecords = 100` | Recupero log con filtri |
+| `GetUploadLogsAsync` | **3 parametri**: `string? userId = null, DateTime? fromDate = null, int maxRecords = 100` | Recupero log upload |
 
-#### File: `DocN.Core/Services/AlertingService.cs`
-
-| Metodo | Parametri | Note |
-|--------|-----------|------|
-| `CreateAlertAsync` | **4 parametri**: `string alertType, string message, AlertSeverity severity, Dictionary<string, object>? metadata = null` | Creazione alert |
-| `AcknowledgeAlertAsync` | **3 parametri**: `string alertId, string acknowledgedBy, CancellationToken cancellationToken = default` | Conferma alert |
-| `ResolveAlertAsync` | **3 parametri**: `string alertId, string resolvedBy, CancellationToken cancellationToken = default` | Risoluzione alert |
-
-#### File: `DocN.Server/Controllers/DocumentController.cs`
-
-| Metodo | Parametri | Note |
-|--------|-----------|------|
-| `UploadDocument` (azione controller) | **3+ parametri**: `IFormFile file, [FromForm] int? categoryId, [FromForm] string? tags` | Upload con metadati |
+**Nota:** AlertingService non ha metodi pubblici con 3+ parametri. CreateAlertAsync, AcknowledgeAlertAsync e ResolveAlertAsync non sono presenti o hanno firme diverse.
 
 ---
 
@@ -134,11 +88,11 @@ Metodi ripetuti in 6 handler diversi (GoogleDrive, FTP, LocalFolder, SFTP, Share
 
 | Categoria | Numero Metodi | Range Parametri |
 |-----------|---------------|-----------------|
-| Document Service | 11 | 3-5 parametri |
-| Connector Handlers | 18 | 2-3 parametri |
-| AI/RAG Services | 12+ | 2-5 parametri |
-| Utility/Helper | 8+ | 3-5 parametri |
-| **TOTALE** | **49+** | **2-5 parametri** |
+| Document Service | 6 | 3-4 parametri |
+| Connector Handlers | 12 (6×2) | 3 parametri |
+| AI/RAG Services | 4 | 4-5 parametri |
+| Utility/Helper (LogService) | 6 | 3-6 parametri |
+| **TOTALE** | **28** | **3-6 parametri** |
 
 ---
 
@@ -222,31 +176,35 @@ public class RAGRequestOptions
 GenerateResponseAsync(RAGRequestOptions options)
 ```
 
-#### 3. **GetDocumentsByDateRangeAsync** (5 parametri)
-**Problema:** Parametri di paginazione ripetuti in molti metodi  
-**Soluzione:** Utilizzare un oggetto `PaginationOptions` o `DocumentQueryOptions`
+#### 3. **LogService.LogErrorAsync** (6 parametri)
+**Problema:** Troppi parametri opzionali, difficile da estendere  
+**Soluzione:** Utilizzare un oggetto `LogEntry` o pattern builder
 
 ```csharp
 // Prima / Before
-GetDocumentsByDateRangeAsync(DateTime startDate, DateTime endDate, 
-                             string userId, int page = 1, int pageSize = 20)
+LogErrorAsync(string category, string message, string? details = null, 
+             string? userId = null, string? fileName = null, string? stackTrace = null)
 
 // Dopo / After
-public class DocumentDateRangeQuery
+public class LogEntry
 {
-    public DateTime StartDate { get; set; }
-    public DateTime EndDate { get; set; }
-    public string UserId { get; set; }
-    public PaginationOptions Pagination { get; set; } = new();
+    public string Category { get; set; }
+    public string Message { get; set; }
+    public string? Details { get; set; }
+    public string? UserId { get; set; }
+    public string? FileName { get; set; }
+    public string? StackTrace { get; set; }
 }
 
-public class PaginationOptions
-{
-    public int Page { get; set; } = 1;
-    public int PageSize { get; set; } = 20;
-}
+LogErrorAsync(LogEntry entry)
 
-GetDocumentsByDateRangeAsync(DocumentDateRangeQuery query)
+// Oppure con pattern Builder
+new LogEntryBuilder()
+    .WithCategory("Upload")
+    .WithMessage("File upload failed")
+    .WithUserId(userId)
+    .WithStackTrace(ex.StackTrace)
+    .LogError();
 ```
 
 ### 🟡 Metodi Accettabili / Acceptable Methods
@@ -287,13 +245,13 @@ Metodi che utilizzano già pattern object:
 ## Priorità di Refactoring / Refactoring Priority
 
 ### Alta Priorità / High Priority
-- [ ] `LogService` methods (5 parametri, usati ovunque)
-- [ ] `EnhancedAgentRAGService.GenerateResponseAsync` (5 parametri, API principale)
-- [ ] `GetDocumentsByDateRangeAsync` (5 parametri)
+- [ ] `LogService` methods (5-6 parametri, usati frequentemente in tutto il codebase)
+- [ ] `EnhancedAgentRAGService.GenerateResponseAsync` (5 parametri, API principale RAG)
+- [ ] `LogService.LogErrorAsync` (6 parametri, il metodo con più parametri)
 
 ### Media Priorità / Medium Priority
-- [ ] Altri metodi DocumentService con 4+ parametri
-- [ ] `CreateAlertAsync` con metadata dictionary
+- [ ] Metodi EnhancedAgentRAGService con 4 parametri (SearchDocumentsAsync, etc.)
+- [ ] ShareDocumentAsync e ShareDocumentWithGroupAsync (4 parametri)
 
 ### Bassa Priorità / Low Priority
 - [ ] Metodi con 3 parametri ben documentati
@@ -303,8 +261,8 @@ Metodi che utilizzano già pattern object:
 
 ## Conclusioni / Conclusions
 
-**Risposta finale:** Sì, ci sono molte funzioni con più di 2 parametri nel codebase (49+).  
-**Final Answer:** Yes, there are many functions with more than 2 parameters in the codebase (49+).
+**Risposta finale:** Sì, ci sono 28 metodi verificati con più di 2 parametri nel codebase.  
+**Final Answer:** Yes, there are 28 verified methods with more than 2 parameters in the codebase.
 
 La maggior parte sono progettate ragionevolmente, ma alcuni metodi (specialmente quelli con 5 parametri) potrebbero beneficiare di refactoring utilizzando oggetti parametro.
 

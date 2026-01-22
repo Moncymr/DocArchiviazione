@@ -4,7 +4,7 @@
 **"Ci sono funzioni che hanno più di due parametri in input?"**
 
 ## Risposta Breve
-✅ **SÌ**, sono presenti **49+ metodi** con 3 o più parametri nel codebase.
+✅ **SÌ**, sono presenti **28 metodi verificati** con 3 o più parametri nel codebase.
 
 ---
 
@@ -14,22 +14,32 @@
 
 | Categoria | Numero Metodi | Parametri Tipici |
 |-----------|---------------|------------------|
-| 📄 Document Service | 11 | 3-5 parametri |
-| 🔌 Connector Handlers | 18 | 2-3 parametri |
-| 🤖 AI/RAG Services | 12+ | 2-5 parametri |
-| 🛠️ Utility/Helper | 8+ | 3-5 parametri |
-| **TOTALE** | **49+** | **2-5 parametri** |
+| 📄 Document Service | 6 | 3-4 parametri |
+| 🔌 Connector Handlers | 12 | 3 parametri |
+| 🤖 AI/RAG Services | 4 | 4-5 parametri |
+| 🛠️ Utility/Helper | 6 | 3-6 parametri |
+| **TOTALE** | **28** | **3-6 parametri** |
 
 ---
 
 ## Top 5 Metodi con Più Parametri
 
-### 🥇 LogService (5 parametri)
+### 🥇 LogService.LogErrorAsync (6 parametri - IL MASSIMO)
+```csharp
+LogErrorAsync(string category, string message, string? details = null, 
+             string? userId = null, string? fileName = null, string? stackTrace = null)
+```
+- **File:** `DocN.Data/Services/LogService.cs`
+- **Uso:** Log errori con stack trace completo
+- **Raccomandazione:** ⚠️ Refactoring ad ALTISSIMA priorità → usare `LogEntry` object
+
+### 🥇 LogService Methods (5 parametri ciascuno)
 ```csharp
 LogInfoAsync(string category, string message, string? details = null, 
              string? userId = null, string? fileName = null)
 ```
 - **File:** `DocN.Data/Services/LogService.cs`
+- **Metodi:** LogInfoAsync, LogWarningAsync, LogDebugAsync (tutti 5 parametri)
 - **Uso:** Logging con contesto opzionale
 - **Raccomandazione:** ⚠️ Refactoring ad alta priorità → usare `LogContext` object
 
@@ -42,15 +52,6 @@ GenerateResponseAsync(string query, string userId, int? conversationId = null,
 - **Uso:** Generazione risposte RAG
 - **Raccomandazione:** ⚠️ Refactoring ad alta priorità → usare `RAGRequestOptions` object
 
-### 🥇 GetDocumentsByDateRangeAsync (5 parametri)
-```csharp
-GetDocumentsByDateRangeAsync(DateTime startDate, DateTime endDate, 
-                            string userId, int page = 1, int pageSize = 20)
-```
-- **File:** `DocN.Data/Services/DocumentService.cs`
-- **Uso:** Ricerca documenti per intervallo date
-- **Raccomandazione:** ⚠️ Refactoring ad alta priorità → usare `DocumentDateRangeQuery` object
-
 ### 🥈 ShareDocumentAsync (4 parametri)
 ```csharp
 ShareDocumentAsync(int documentId, string shareWithUserId, 
@@ -60,59 +61,64 @@ ShareDocumentAsync(int documentId, string shareWithUserId,
 - **Uso:** Condivisione documenti tra utenti
 - **Raccomandazione:** ✅ Accettabile - tutti i parametri sono essenziali
 
-### 🥈 CreateAlertAsync (4 parametri)
+### 🥈 EnhancedAgentRAGService Methods (4 parametri)
 ```csharp
-CreateAlertAsync(string alertType, string message, AlertSeverity severity, 
-                Dictionary<string, object>? metadata = null)
+SearchDocumentsAsync(string query, string userId, int topK = 10, double minSimilarity = 0.7)
+GenerateStreamingResponseAsync(string query, string userId, 
+                              int? conversationId = null, List<int>? specificDocumentIds = null)
 ```
-- **File:** `DocN.Core/Services/AlertingService.cs`
-- **Uso:** Creazione alert di sistema
-- **Raccomandazione:** ⚠️ Media priorità → considerare `AlertRequest` object
+- **File:** `DocN.Data/Services/EnhancedAgentRAGService.cs`
+- **Uso:** Ricerca documenti e generazione risposte streaming
+- **Raccomandazione:** ⚠️ Media priorità → considerare `SearchOptions` object
 
 ---
 
 ## Esempi di Refactoring Raccomandato
 
-### Prima (5 parametri)
+### Prima (6 parametri - LogErrorAsync)
 ```csharp
-public async Task LogInfoAsync(
+public async Task LogErrorAsync(
     string category, 
     string message, 
     string? details = null, 
     string? userId = null, 
-    string? fileName = null)
+    string? fileName = null,
+    string? stackTrace = null)
 {
     // implementazione
 }
 
-// Chiamata
-await LogInfoAsync("Document", "Upload completato", "File: doc.pdf", userId, "doc.pdf");
+// Chiamata - troppo verbosa e confusa
+await LogErrorAsync("Upload", "File upload failed", 
+                   "Connection timeout", userId, "doc.pdf", ex.StackTrace);
 ```
 
 ### Dopo (1 parametro - oggetto)
 ```csharp
-public class LogContext
+public class LogEntry
 {
     public string Category { get; set; }
     public string Message { get; set; }
     public string? Details { get; set; }
     public string? UserId { get; set; }
     public string? FileName { get; set; }
+    public string? StackTrace { get; set; }
 }
 
-public async Task LogInfoAsync(LogContext context)
+public async Task LogErrorAsync(LogEntry entry)
 {
     // implementazione
 }
 
 // Chiamata - più leggibile e manutenibile
-await LogInfoAsync(new LogContext
+await LogErrorAsync(new LogEntry
 {
-    Category = "Document",
-    Message = "Upload completato",
-    Details = "File: doc.pdf",
+    Category = "Upload",
+    Message = "File upload failed",
+    Details = "Connection timeout",
     UserId = userId,
-    FileName = "doc.pdf"
+    FileName = "doc.pdf",
+    StackTrace = ex.StackTrace
 });
 ```
 
@@ -121,13 +127,14 @@ await LogInfoAsync(new LogContext
 ## Priorità Interventi
 
 ### 🔴 Alta Priorità (Refactoring Raccomandato)
-1. **LogService methods** - 5 parametri, usati frequentemente
-2. **EnhancedAgentRAGService.GenerateResponseAsync** - 5 parametri, API principale
-3. **GetDocumentsByDateRangeAsync** - 5 parametri, pattern ripetuto
+1. **LogService.LogErrorAsync** - 6 parametri, il metodo più complesso
+2. **LogService methods** (LogInfoAsync, LogWarningAsync, LogDebugAsync) - 5 parametri ciascuno, usati frequentemente
+3. **EnhancedAgentRAGService.GenerateResponseAsync** - 5 parametri, API principale RAG
 
 ### 🟡 Media Priorità (Da Valutare)
-4. Altri metodi DocumentService con 4+ parametri
-5. CreateAlertAsync con dictionary metadata
+4. Altri metodi EnhancedAgentRAGService con 4 parametri (SearchDocumentsAsync, etc.)
+5. ShareDocumentAsync e ShareDocumentWithGroupAsync (4 parametri)
+6. GetLogsAsync (4 parametri con tutti opzionali)
 
 ### 🟢 Bassa Priorità (Accettabili)
 - Metodi con 3 parametri ben documentati
@@ -152,7 +159,7 @@ Per l'analisi dettagliata completa, consultare:
 📋 **[FUNCTIONS_WITH_MULTIPLE_PARAMETERS_ANALYSIS.md](./FUNCTIONS_WITH_MULTIPLE_PARAMETERS_ANALYSIS.md)**
 
 Include:
-- Elenco completo di tutti i 49+ metodi
+- Elenco completo di tutti i 28 metodi verificati
 - File path e signature complete
 - Pattern comuni identificati
 - Esempi di refactoring dettagliati
@@ -163,11 +170,14 @@ Include:
 
 ## Conclusione
 
-Il codebase contiene diverse funzioni con più di 2 parametri. La maggior parte sono ragionevolmente progettate, ma alcuni metodi (soprattutto quelli con 5 parametri) potrebbero beneficiare di refactoring utilizzando il pattern "Parameter Object" per migliorare manutenibilità e leggibilità.
+Il codebase contiene 28 funzioni verificate con più di 2 parametri. La maggior parte sono ragionevolmente progettate, ma alcuni metodi (soprattutto LogService con 5-6 parametri) potrebbero beneficiare di refactoring utilizzando il pattern "Parameter Object" per migliorare manutenibilità e leggibilità.
+
+Il metodo con più parametri è **LogErrorAsync con 6 parametri**, seguito dai metodi LogService con 5 parametri e EnhancedAgentRAGService.GenerateResponseAsync con 5 parametri.
 
 ---
 
 **Data Analisi:** 2026-01-22  
-**Metodi Identificati:** 49+  
-**File Analizzati:** 20+ file C#  
-**Progetti Coinvolti:** DocN.Core, DocN.Data, DocN.Server, DocN.Client
+**Metodi Identificati:** 28 verificati  
+**File Analizzati:** 10+ file C# principali  
+**Progetti Coinvolti:** DocN.Core, DocN.Data, DocN.Server, DocN.Client  
+**Metodo con Più Parametri:** LogErrorAsync (6 parametri)
