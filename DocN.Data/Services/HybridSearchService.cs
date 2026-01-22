@@ -74,9 +74,9 @@ public class HybridSearchService : IHybridSearchService
 {
     private readonly ApplicationDbContext _context;
     private readonly IEmbeddingService _embeddingService;
-    private readonly IBM25Service? _bm25Service;
-    private readonly ISemanticCacheService? _semanticCacheService;
-    private readonly IQueryRewritingService? _queryRewritingService;
+    private readonly DocN.Core.Interfaces.IBM25Service? _bm25Service;
+    private readonly DocN.Core.Interfaces.ISemanticCacheService? _semanticCacheService;
+    private readonly DocN.Core.Interfaces.IQueryRewritingService? _queryRewritingService;
     private readonly ILogger<HybridSearchService>? _logger;
 
     // Constants for vector search optimization
@@ -90,9 +90,9 @@ public class HybridSearchService : IHybridSearchService
     public HybridSearchService(
         ApplicationDbContext context, 
         IEmbeddingService embeddingService,
-        IBM25Service? bm25Service = null,
-        ISemanticCacheService? semanticCacheService = null,
-        IQueryRewritingService? queryRewritingService = null,
+        DocN.Core.Interfaces.IBM25Service? bm25Service = null,
+        DocN.Core.Interfaces.ISemanticCacheService? semanticCacheService = null,
+        DocN.Core.Interfaces.IQueryRewritingService? queryRewritingService = null,
         ILogger<HybridSearchService>? logger = null)
     {
         _context = context;
@@ -108,25 +108,23 @@ public class HybridSearchService : IHybridSearchService
     /// </summary>
     public async Task<List<SearchResult>> SearchAsync(string query, SearchOptions options)
     {
-        // 1. Try semantic cache first if enabled
-        float[]? queryEmbedding = null;
-        if (options.UseSemanticCache && _semanticCacheService != null)
+        // 1. Generate query embedding once (will be used for both cache and search)
+        var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query);
+        
+        // 2. Try semantic cache first if enabled and embedding was generated
+        if (options.UseSemanticCache && _semanticCacheService != null && queryEmbedding != null)
         {
-            queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(query);
-            if (queryEmbedding != null)
+            var cachedResults = await _semanticCacheService.GetCachedResultsAsync<List<SearchResult>>(
+                query, queryEmbedding, similarityThreshold: 0.95);
+            
+            if (cachedResults != null)
             {
-                var cachedResults = await _semanticCacheService.GetCachedResultsAsync<List<SearchResult>>(
-                    query, queryEmbedding, similarityThreshold: 0.95);
-                
-                if (cachedResults != null)
-                {
-                    _logger?.LogInformation("Returning cached results for query: {Query}", TruncateQuery(query));
-                    return cachedResults;
-                }
+                _logger?.LogInformation("Returning cached results for query: {Query}", TruncateQuery(query));
+                return cachedResults;
             }
         }
         
-        // 2. Apply query expansion if enabled
+        // 3. Apply query expansion if enabled
         string searchQuery = query;
         if (options.EnableQueryExpansion && _queryRewritingService != null)
         {
@@ -134,6 +132,9 @@ public class HybridSearchService : IHybridSearchService
             {
                 searchQuery = await _queryRewritingService.ExpandQueryAsync(query);
                 _logger?.LogDebug("Query expanded: '{Original}' → '{Expanded}'", query, searchQuery);
+                
+                // Re-generate embedding for expanded query
+                queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(searchQuery);
             }
             catch (Exception ex)
             {
@@ -141,27 +142,23 @@ public class HybridSearchService : IHybridSearchService
             }
         }
         
-        // 3. Generate query embedding if not already done
+        // 4. Check if we have a valid embedding
         if (queryEmbedding == null)
         {
-            queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(searchQuery);
-            if (queryEmbedding == null)
-            {
-                // Fallback to text search only if embedding generation fails
-                return await TextSearchAsync(searchQuery, options);
-            }
+            // Fallback to text search only if embedding generation fails
+            return await TextSearchAsync(searchQuery, options);
         }
 
-        // 4. Perform vector search
+        // 5. Perform vector search
         var vectorResults = await VectorSearchAsync(queryEmbedding, options);
 
-        // 5. Perform full-text search (with BM25 if enabled)
+        // 6. Perform full-text search (with BM25 if enabled)
         var textResults = await TextSearchAsync(searchQuery, options);
 
-        // 6. Merge results using weighted fusion
+        // 7. Merge results using weighted fusion
         var merged = MergeWithWeightedFusion(vectorResults, textResults, options);
         
-        // 7. Cache results if semantic cache is enabled
+        // 8. Cache results if semantic cache is enabled
         if (options.UseSemanticCache && _semanticCacheService != null && queryEmbedding != null)
         {
             await _semanticCacheService.SetCachedResultsAsync(query, queryEmbedding, merged);
@@ -411,6 +408,7 @@ public class HybridSearchService : IHybridSearchService
             documentsQuery = documentsQuery.Where(d => d.ContentType == options.DocumentType);
         }
         
+        // Note: Author filter is mapped to OwnerId as the Document model doesn't have a separate Author field
         if (!string.IsNullOrEmpty(options.Author))
         {
             documentsQuery = documentsQuery.Where(d => d.OwnerId == options.Author);
@@ -502,6 +500,7 @@ public class HybridSearchService : IHybridSearchService
             documentsQuery = documentsQuery.Where(d => d.ContentType == options.DocumentType);
         }
         
+        // Note: Author filter is mapped to OwnerId as the Document model doesn't have a separate Author field
         if (!string.IsNullOrEmpty(options.Author))
         {
             documentsQuery = documentsQuery.Where(d => d.OwnerId == options.Author);
