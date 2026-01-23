@@ -37,9 +37,11 @@ public class ApplicationSeeder
                 var errorMessage = "Cannot connect to database. Please verify:\n" +
                     "1. Connection string is correct and database server is accessible\n" +
                     "2. Database has been created using SQL scripts in Database/ folder\n" +
-                    "3. Database user has appropriate permissions";
-                _logger.LogError(errorMessage);
-                throw new InvalidOperationException(errorMessage);
+                    "3. Database user has appropriate permissions\n" +
+                    "Application will continue but database-dependent features will not work.";
+                _logger.LogWarning(errorMessage);
+                // Don't throw - let the application continue and handle database issues when features are accessed
+                return;
             }
             
             // Note: MigrateAsync is commented out because EF Core doesn't support VECTOR type yet
@@ -68,7 +70,14 @@ public class ApplicationSeeder
     {
         try
         {
-            return await _context.Database.CanConnectAsync();
+            // Add timeout to prevent hanging indefinitely
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            return await _context.Database.CanConnectAsync(cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogWarning("Database connection check timed out after 30 seconds");
+            return false;
         }
         catch (Exception ex)
         {
