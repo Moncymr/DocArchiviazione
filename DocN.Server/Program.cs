@@ -423,6 +423,59 @@ builder.Services.AddScoped<ILogService, LogService>();
 // Register Distributed Cache Service (works with both Redis and in-memory cache)
 builder.Services.AddSingleton<IDistributedCacheService, DistributedCacheService>();
 
+// ════════════════════════════════════════════════════════════════════════════════
+// Distributed Vector Store Configuration
+// ════════════════════════════════════════════════════════════════════════════════
+// Uses SQL Server 2025 as primary storage with Redis for distributed coordination
+// Enables horizontal scaling across multiple application instances
+// ════════════════════════════════════════════════════════════════════════════════
+
+// Register RAG support services
+builder.Services.AddScoped<IMMRService, MMRService>();
+builder.Services.AddScoped<IReRankingService, ReRankingService>();
+builder.Services.AddScoped<IContextualCompressionService, ContextualCompressionService>();
+builder.Services.AddScoped<ISelfQueryService, SelfQueryService>();
+
+// Register primary vector store based on configuration
+var vectorStoreConfig = builder.Configuration.GetSection("VectorStore").Get<DocN.Core.Configuration.VectorStoreConfiguration>()
+    ?? new DocN.Core.Configuration.VectorStoreConfiguration();
+
+if (vectorStoreConfig.Provider == "PgVector" && vectorStoreConfig.PgVector.Enabled)
+{
+    // Optional: Use PgVector for advanced distributed scenarios
+    Log.Information("Using PgVectorStoreService (PostgreSQL with pgvector extension)");
+    builder.Services.AddScoped<IVectorStoreService>(sp =>
+    {
+        var primaryStore = ActivatorUtilities.CreateInstance<PgVectorStoreService>(sp);
+        
+        // Wrap with distributed layer if enabled
+        if (vectorStoreConfig.Distributed.Enabled)
+        {
+            return ActivatorUtilities.CreateInstance<DistributedVectorStoreService>(sp, primaryStore);
+        }
+        
+        return primaryStore;
+    });
+}
+else
+{
+    // Default: Use SQL Server 2025 based vector store
+    Log.Information("Using EnhancedVectorStoreService (SQL Server 2025 with distributed support)");
+    builder.Services.AddScoped<IVectorStoreService>(sp =>
+    {
+        var primaryStore = ActivatorUtilities.CreateInstance<EnhancedVectorStoreService>(sp);
+        
+        // Wrap with distributed layer if enabled
+        if (vectorStoreConfig.Distributed.Enabled)
+        {
+            Log.Information("Distributed Vector Store enabled - instances will coordinate via Redis");
+            return ActivatorUtilities.CreateInstance<DistributedVectorStoreService>(sp, primaryStore);
+        }
+        
+        return primaryStore;
+    });
+}
+
 // Register Multi-Provider AI Service (supports Gemini, OpenAI, Azure OpenAI from database config)
 builder.Services.AddScoped<IMultiProviderAIService, MultiProviderAIService>();
 
@@ -457,6 +510,14 @@ builder.Services.Configure<DocN.Core.AI.Configuration.EnhancedRAGConfiguration>(
 // Configure Contextual Compression settings
 builder.Services.Configure<DocN.Core.Interfaces.ContextualCompressionConfiguration>(
     builder.Configuration.GetSection("EnhancedRAG:ContextualCompression"));
+
+// Configure Distributed Cache settings
+builder.Services.Configure<DocN.Core.Configuration.DistributedCacheConfiguration>(
+    builder.Configuration.GetSection("DistributedCache"));
+
+// Configure Vector Store settings (SQL Server 2025 with distributed support)
+builder.Services.Configure<DocN.Core.Configuration.VectorStoreConfiguration>(
+    builder.Configuration.GetSection("VectorStore"));
 
 // ════════════════════════════════════════════════════════════════════════════════
 // RAG Provider Registration - Inizializzazione automatica via Dependency Injection
