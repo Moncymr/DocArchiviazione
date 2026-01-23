@@ -252,20 +252,30 @@ public class DistributedVectorStoreService : IVectorStoreService
 
             if (result > 0 && _config.Distributed.Enabled)
             {
-                // Cache all vectors in distributed cache
+                // Use SemaphoreSlim to limit concurrent cache operations
+                using var semaphore = new SemaphoreSlim(10, 10); // Max 10 concurrent operations
+                
                 var cacheTasks = entries.Select(async entry =>
                 {
-                    var cacheKey = $"vector:{entry.Id}";
-                    var vectorData = new CachedVectorData
+                    await semaphore.WaitAsync();
+                    try
                     {
-                        Id = entry.Id,
-                        Vector = entry.Vector,
-                        Metadata = entry.Metadata,
-                        Timestamp = DateTime.UtcNow
-                    };
+                        var cacheKey = $"vector:{entry.Id}";
+                        var vectorData = new CachedVectorData
+                        {
+                            Id = entry.Id,
+                            Vector = entry.Vector,
+                            Metadata = entry.Metadata,
+                            Timestamp = DateTime.UtcNow
+                        };
 
-                    await _distributedCache.SetAsync(cacheKey, vectorData, TimeSpan.FromHours(24));
-                    _syncQueue.TryAdd(entry.Id, 0);
+                        await _distributedCache.SetAsync(cacheKey, vectorData, TimeSpan.FromHours(24));
+                        _syncQueue.TryAdd(entry.Id, 0);
+                    }
+                    finally
+                    {
+                        semaphore.Release();
+                    }
                 });
 
                 await Task.WhenAll(cacheTasks);
@@ -296,11 +306,9 @@ public class DistributedVectorStoreService : IVectorStoreService
         Dictionary<string, object>? metadataFilter,
         double minSimilarity)
     {
-        // Create a hash of the query parameters
+        // Create a secure hash of the query parameters
         var queryHash = ComputeVectorHash(queryVector);
-        var filterHash = metadataFilter != null
-            ? string.Join("|", metadataFilter.Select(kv => $"{kv.Key}={kv.Value}"))
-            : "none";
+        var filterHash = ComputeMetadataHash(metadataFilter);
 
         return $"search:{queryHash}:{topK}:{minSimilarity:F2}:{filterHash}";
     }
@@ -312,26 +320,38 @@ public class DistributedVectorStoreService : IVectorStoreService
         Dictionary<string, object>? metadataFilter)
     {
         var queryHash = ComputeVectorHash(queryVector);
-        var filterHash = metadataFilter != null
-            ? string.Join("|", metadataFilter.Select(kv => $"{kv.Key}={kv.Value}"))
-            : "none";
+        var filterHash = ComputeMetadataHash(metadataFilter);
 
         return $"mmr:{queryHash}:{topK}:{lambda:F2}:{filterHash}";
     }
 
     private string ComputeVectorHash(float[] vector)
     {
-        // Simple hash of first and last few elements for cache key
+        // Use SHA256 for better distribution and collision resistance
         if (vector.Length == 0) return "empty";
 
-        var elements = new List<float>();
-        elements.AddRange(vector.Take(5));
-        if (vector.Length > 10)
-        {
-            elements.AddRange(vector.Skip(vector.Length - 5));
-        }
+        using var sha256 = System.Security.Cryptography.SHA256.Create();
+        var bytes = new byte[vector.Length * sizeof(float)];
+        Buffer.BlockCopy(vector, 0, bytes, 0, bytes.Length);
+        var hashBytes = sha256.ComputeHash(bytes);
+        
+        // Take first 8 bytes and convert to hex string for compact cache key
+        return Convert.ToHexString(hashBytes, 0, 8);
+    }
 
-        return string.Join("_", elements.Select(v => v.ToString("F4")));
+    private string ComputeMetadataHash(Dictionary<string, object>? metadata)
+    {
+        if (metadata == null || !metadata.Any())
+            return "none";
+
+        // Serialize metadata to JSON and hash it securely
+        using var sha256 = System.Security.Cryptography.SHA256.Create();
+        var json = System.Text.Json.JsonSerializer.Serialize(metadata);
+        var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+        var hashBytes = sha256.ComputeHash(bytes);
+        
+        // Take first 8 bytes for compact cache key
+        return Convert.ToHexString(hashBytes, 0, 8);
     }
 }
 

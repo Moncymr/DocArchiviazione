@@ -519,6 +519,18 @@ builder.Services.Configure<DocN.Core.Configuration.DistributedCacheConfiguration
 builder.Services.Configure<DocN.Core.Configuration.VectorStoreConfiguration>(
     builder.Configuration.GetSection("VectorStore"));
 
+// Configure PgVector settings if using PostgreSQL
+builder.Services.Configure<DocN.Data.Services.PgVectorConfiguration>(options =>
+{
+    var vectorStoreConfig = builder.Configuration.GetSection("VectorStore").Get<DocN.Core.Configuration.VectorStoreConfiguration>();
+    if (vectorStoreConfig?.PgVector != null)
+    {
+        options.ConnectionString = vectorStoreConfig.PgVector.ConnectionString;
+        options.TableName = vectorStoreConfig.PgVector.TableName;
+        options.DefaultDimension = vectorStoreConfig.PgVector.DefaultDimension;
+    }
+});
+
 // ════════════════════════════════════════════════════════════════════════════════
 // RAG Provider Registration - Inizializzazione automatica via Dependency Injection
 // ════════════════════════════════════════════════════════════════════════════════
