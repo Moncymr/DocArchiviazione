@@ -72,6 +72,13 @@ public class ReRankingService : IReRankingService
                 // Combina score originale con nuovo score (weighted average)
                 var combinedScore = (result.SimilarityScore * 0.3) + (relevanceScore * 0.7);
                 
+                // Apply temporal weighting if enabled
+                if (_config.EnableTemporalWeighting && result.UploadedAt.HasValue)
+                {
+                    var recencyBoost = CalculateRecencyBoost(result.UploadedAt.Value);
+                    combinedScore = (combinedScore * (1 - _config.RecencyWeight)) + (recencyBoost * _config.RecencyWeight);
+                }
+                
                 rerankedResults.Add((result, combinedScore));
             }
 
@@ -342,5 +349,24 @@ Valuta quanto ogni documento è rilevante per la query e restituisci gli score i
             return text ?? string.Empty;
 
         return text.Substring(0, maxLength) + "...";
+    }
+
+    /// <summary>
+    /// Calculate recency boost for temporal weighting
+    /// Uses exponential decay based on document age
+    /// </summary>
+    /// <param name="uploadedAt">Document upload date</param>
+    /// <returns>Recency score between 0 and 1</returns>
+    private double CalculateRecencyBoost(DateTime uploadedAt)
+    {
+        var now = DateTime.UtcNow;
+        var ageInDays = (now - uploadedAt).TotalDays;
+
+        // Exponential decay: score = e^(-λ * age)
+        // where λ = ln(2) / half_life
+        var lambda = Math.Log(2) / _config.RecencyDecayDays;
+        var recencyScore = Math.Exp(-lambda * ageInDays);
+
+        return recencyScore;
     }
 }

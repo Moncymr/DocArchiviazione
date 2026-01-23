@@ -142,4 +142,9 @@ public class RelevantDocumentResult
     /// Full extracted text (optional)
     /// </summary>
     public string? ExtractedText { get; set; }
+
+    /// <summary>
+    /// Document upload date (for temporal weighting)
+    /// </summary>
+    public DateTime? UploadedAt { get; set; }
 }

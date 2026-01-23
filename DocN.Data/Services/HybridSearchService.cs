@@ -14,6 +14,19 @@ public class SearchOptions
     public string? CategoryFilter { get; set; }
     public string? OwnerId { get; set; }
     public DocumentVisibility? VisibilityFilter { get; set; }
+    
+    // Advanced filtering options
+    public DateTime? DateFrom { get; set; }
+    public DateTime? DateTo { get; set; }
+    public string? DocumentType { get; set; }
+    public string? Author { get; set; }
+    
+    // Search strategy configuration
+    public bool UseBM25 { get; set; } = true;
+    public double VectorWeight { get; set; } = 0.5; // Weight for vector search (0-1)
+    public double TextWeight { get; set; } = 0.5; // Weight for text/BM25 search (0-1)
+    public bool EnableQueryExpansion { get; set; } = false;
+    public bool EnableSemanticCache { get; set; } = false;
 }
 
 /// <summary>
@@ -24,9 +37,12 @@ public class SearchResult
     public Document Document { get; set; } = null!;
     public double VectorScore { get; set; }
     public double TextScore { get; set; }
+    public double BM25Score { get; set; }
     public double CombinedScore { get; set; }
     public int? VectorRank { get; set; }
     public int? TextRank { get; set; }
+    public int? BM25Rank { get; set; }
+    public Dictionary<string, int>? TermFrequencies { get; set; }
 }
 
 /// <summary>
@@ -54,6 +70,7 @@ public class HybridSearchService : IHybridSearchService
 {
     private readonly ApplicationDbContext _context;
     private readonly IEmbeddingService _embeddingService;
+    private readonly IBM25SearchService? _bm25SearchService;
 
     // Constants for vector search optimization
     private const int CandidateLimitMultiplier = 10; // Get 10x topK candidates for better results
@@ -63,10 +80,14 @@ public class HybridSearchService : IHybridSearchService
     private const int SqlErrorInvalidColumnName = 207; // Invalid column name (VECTOR columns don't exist)
     private const int SqlErrorInvalidDataType = 8116; // Argument data type is invalid (VECTOR type not recognized)
 
-    public HybridSearchService(ApplicationDbContext context, IEmbeddingService embeddingService)
+    public HybridSearchService(
+        ApplicationDbContext context, 
+        IEmbeddingService embeddingService,
+        IBM25SearchService? bm25SearchService = null)
     {
         _context = context;
         _embeddingService = embeddingService;
+        _bm25SearchService = bm25SearchService;
     }
 
     /// <summary>
@@ -85,11 +106,39 @@ public class HybridSearchService : IHybridSearchService
         // 2. Perform vector search
         var vectorResults = await VectorSearchAsync(queryEmbedding, options);
 
-        // 3. Perform full-text search
-        var textResults = await TextSearchAsync(query, options);
+        // 3. Perform text search (BM25 or simple text search)
+        List<SearchResult> textResults;
+        if (options.UseBM25 && _bm25SearchService != null)
+        {
+            var bm25Results = await _bm25SearchService.SearchAsync(
+                query, 
+                options.TopK * 2, 
+                options.CategoryFilter, 
+                options.OwnerId);
+            
+            textResults = bm25Results.Select(r => new SearchResult
+            {
+                Document = r.Document,
+                VectorScore = 0,
+                TextScore = 0,
+                BM25Score = r.Score,
+                CombinedScore = r.Score,
+                TermFrequencies = r.TermFrequencies
+            }).ToList();
+            
+            // Add BM25 ranks
+            for (int i = 0; i < textResults.Count; i++)
+            {
+                textResults[i].BM25Rank = i + 1;
+            }
+        }
+        else
+        {
+            textResults = await TextSearchAsync(query, options);
+        }
 
-        // 4. Merge results using Reciprocal Rank Fusion (RRF)
-        var merged = MergeWithRRF(vectorResults, textResults, options.TopK);
+        // 4. Merge results using weighted Reciprocal Rank Fusion (RRF)
+        var merged = MergeWithWeightedRRF(vectorResults, textResults, options);
 
         return merged;
     }
@@ -319,6 +368,17 @@ public class HybridSearchService : IHybridSearchService
             documentsQuery = documentsQuery.Where(d => d.Visibility == options.VisibilityFilter.Value);
         }
 
+        // Date filters
+        if (options.DateFrom.HasValue)
+        {
+            documentsQuery = documentsQuery.Where(d => d.UploadedAt >= options.DateFrom.Value);
+        }
+
+        if (options.DateTo.HasValue)
+        {
+            documentsQuery = documentsQuery.Where(d => d.UploadedAt <= options.DateTo.Value);
+        }
+
         // Optimize: Limit candidates before loading into memory
         var candidateLimit = Math.Max(options.TopK * CandidateLimitMultiplier, MinCandidateLimit);
         documentsQuery = documentsQuery.OrderByDescending(d => d.UploadedAt).Take(candidateLimit);
@@ -459,6 +519,105 @@ public class HybridSearchService : IHybridSearchService
         }
 
         return results.Take(options.TopK * 2).ToList(); // Return 2x TopK for fusion
+    }
+
+    /// <summary>
+    /// Merge results using weighted Reciprocal Rank Fusion (RRF)
+    /// Allows configurable weights for vector vs text search
+    /// </summary>
+    private List<SearchResult> MergeWithWeightedRRF(
+        List<SearchResult> vectorResults,
+        List<SearchResult> textResults,
+        SearchOptions options,
+        int k = 60)
+    {
+        var mergedScores = new Dictionary<int, SearchResult>();
+
+        // Normalize weights
+        var totalWeight = options.VectorWeight + options.TextWeight;
+        var normalizedVectorWeight = totalWeight > 0 ? options.VectorWeight / totalWeight : 0.5;
+        var normalizedTextWeight = totalWeight > 0 ? options.TextWeight / totalWeight : 0.5;
+
+        // Process vector results
+        foreach (var result in vectorResults)
+        {
+            var docId = result.Document.Id;
+            if (!mergedScores.ContainsKey(docId))
+            {
+                mergedScores[docId] = new SearchResult
+                {
+                    Document = result.Document,
+                    VectorScore = result.VectorScore,
+                    VectorRank = result.VectorRank,
+                    TextScore = 0,
+                    BM25Score = 0,
+                    CombinedScore = 0
+                };
+            }
+            
+            // Add weighted RRF score from vector ranking
+            if (result.VectorRank.HasValue)
+            {
+                mergedScores[docId].CombinedScore += normalizedVectorWeight * (1.0 / (k + result.VectorRank.Value));
+            }
+        }
+
+        // Process text/BM25 results
+        foreach (var result in textResults)
+        {
+            var docId = result.Document.Id;
+            if (!mergedScores.ContainsKey(docId))
+            {
+                mergedScores[docId] = new SearchResult
+                {
+                    Document = result.Document,
+                    VectorScore = 0,
+                    TextScore = result.TextScore,
+                    BM25Score = result.BM25Score,
+                    TextRank = result.TextRank,
+                    BM25Rank = result.BM25Rank,
+                    TermFrequencies = result.TermFrequencies,
+                    CombinedScore = 0
+                };
+            }
+            else
+            {
+                mergedScores[docId].TextScore = result.TextScore;
+                mergedScores[docId].BM25Score = result.BM25Score;
+                mergedScores[docId].TextRank = result.TextRank;
+                mergedScores[docId].BM25Rank = result.BM25Rank;
+                mergedScores[docId].TermFrequencies = result.TermFrequencies;
+            }
+            
+            // Add weighted RRF score from text/BM25 ranking
+            var rank = result.BM25Rank ?? result.TextRank;
+            if (rank.HasValue)
+            {
+                mergedScores[docId].CombinedScore += normalizedTextWeight * (1.0 / (k + rank.Value));
+            }
+        }
+
+        // Apply date filters if specified
+        if (options.DateFrom.HasValue || options.DateTo.HasValue)
+        {
+            mergedScores = mergedScores
+                .Where(kvp =>
+                {
+                    var doc = kvp.Value.Document;
+                    if (options.DateFrom.HasValue && doc.UploadedAt < options.DateFrom.Value)
+                        return false;
+                    if (options.DateTo.HasValue && doc.UploadedAt > options.DateTo.Value)
+                        return false;
+                    return true;
+                })
+                .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+        }
+
+        // Sort by combined RRF score and return top K
+        return mergedScores.Values
+            .OrderByDescending(r => r.CombinedScore)
+            .Take(options.TopK)
+            .ToList();
     }
 
     /// <summary>

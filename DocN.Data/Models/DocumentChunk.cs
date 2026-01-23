@@ -111,4 +111,33 @@ public class DocumentChunk
     /// End position of this chunk in the original document text
     /// </summary>
     public int EndPosition { get; set; }
+
+    // Rich metadata for enhanced retrieval
+    
+    /// <summary>
+    /// Title or heading associated with this chunk (extracted from document structure)
+    /// </summary>
+    public string? Title { get; set; }
+    
+    /// <summary>
+    /// Section name where this chunk belongs (e.g., "Introduction", "Methodology")
+    /// </summary>
+    public string? Section { get; set; }
+    
+    /// <summary>
+    /// Keywords extracted from this chunk for enhanced search
+    /// Stored as JSON array of strings
+    /// </summary>
+    public string? KeywordsJson { get; set; }
+    
+    /// <summary>
+    /// Semantic type of the chunk (e.g., "paragraph", "list", "table", "heading")
+    /// </summary>
+    public string? ChunkType { get; set; }
+    
+    /// <summary>
+    /// Importance score of this chunk (0.0 - 1.0)
+    /// Higher scores indicate more important/relevant content
+    /// </summary>
+    public double? ImportanceScore { get; set; }
 }

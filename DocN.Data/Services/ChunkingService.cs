@@ -27,6 +27,23 @@ public interface IChunkingService
     List<DocumentChunk> ChunkDocument(Document document, int chunkSize = 1000, int overlap = 200);
 
     /// <summary>
+    /// Create DocumentChunk entities with semantic chunking and rich metadata
+    /// </summary>
+    /// <param name="document">The document to chunk</param>
+    /// <param name="chunkSize">Maximum characters per chunk</param>
+    /// <param name="overlap">Number of overlapping characters between chunks</param>
+    /// <returns>List of DocumentChunk entities with metadata (without embeddings)</returns>
+    List<DocumentChunk> ChunkDocumentSemantic(Document document, int chunkSize = 1000, int overlap = 200);
+
+    /// <summary>
+    /// Extract keywords from a text chunk
+    /// </summary>
+    /// <param name="text">Text to extract keywords from</param>
+    /// <param name="maxKeywords">Maximum number of keywords to extract</param>
+    /// <returns>List of keywords</returns>
+    List<string> ExtractKeywords(string text, int maxKeywords = 10);
+
+    /// <summary>
     /// Estimate token count for a text (rough estimation)
     /// </summary>
     /// <param name="text">Text to estimate</param>
@@ -212,5 +229,275 @@ public class ChunkingService : IChunkingService
         // Simple estimation: 1 token ≈ 4 characters
         // This is a rough approximation that works reasonably well for English
         return (int)Math.Ceiling(text.Length / 4.0);
+    }
+
+    /// <summary>
+    /// Create DocumentChunk entities with semantic chunking and rich metadata
+    /// Analyzes document structure and extracts metadata for better retrieval
+    /// </summary>
+    public List<DocumentChunk> ChunkDocumentSemantic(Document document, int chunkSize = 1000, int overlap = 200)
+    {
+        var text = document.ExtractedText;
+        if (string.IsNullOrWhiteSpace(text))
+            return new List<DocumentChunk>();
+
+        // Detect document structure
+        var structure = AnalyzeDocumentStructure(text);
+        
+        // Perform semantic chunking based on structure
+        var textChunks = ChunkText(text, chunkSize, overlap);
+        var documentChunks = new List<DocumentChunk>();
+        
+        var currentPosition = 0;
+        for (int i = 0; i < textChunks.Count; i++)
+        {
+            var chunk = textChunks[i];
+            var endPosition = currentPosition + chunk.Length;
+            
+            // Extract metadata for this chunk
+            var keywords = ExtractKeywords(chunk);
+            var chunkType = DetectChunkType(chunk);
+            var title = FindNearestTitle(structure, currentPosition);
+            var section = FindSection(structure, currentPosition);
+            var importance = CalculateImportanceScore(chunk, chunkType);
+            
+            documentChunks.Add(new DocumentChunk
+            {
+                DocumentId = document.Id,
+                ChunkIndex = i,
+                ChunkText = chunk,
+                TokenCount = EstimateTokenCount(chunk),
+                StartPosition = currentPosition,
+                EndPosition = endPosition,
+                CreatedAt = DateTime.UtcNow,
+                
+                // Rich metadata
+                Title = title,
+                Section = section,
+                KeywordsJson = System.Text.Json.JsonSerializer.Serialize(keywords),
+                ChunkType = chunkType,
+                ImportanceScore = importance
+            });
+            
+            // Update position for next chunk (accounting for overlap)
+            currentPosition = endPosition - overlap;
+        }
+
+        return documentChunks;
+    }
+
+    /// <summary>
+    /// Extract keywords from text using simple frequency-based approach
+    /// </summary>
+    public List<string> ExtractKeywords(string text, int maxKeywords = 10)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return new List<string>();
+
+        // Common stop words to filter out
+        var stopWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
+            "of", "with", "by", "from", "as", "is", "was", "are", "were", "be",
+            "been", "being", "have", "has", "had", "do", "does", "did", "will",
+            "would", "should", "could", "may", "might", "can", "this", "that",
+            "these", "those", "i", "you", "he", "she", "it", "we", "they", "il",
+            "lo", "la", "i", "gli", "le", "un", "una", "di", "da", "in", "con",
+            "su", "per", "tra", "fra", "e", "o", "ma", "se", "come", "quando"
+        };
+
+        // Tokenize and count word frequencies
+        var words = text.Split(new[] { ' ', '\n', '\r', '\t', '.', ',', ';', ':', '!', '?', '"', '\'', '(', ')', '[', ']', '{', '}' },
+            StringSplitOptions.RemoveEmptyEntries);
+
+        var wordFrequency = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        
+        foreach (var word in words)
+        {
+            var cleanWord = word.Trim().ToLowerInvariant();
+            
+            // Filter: length > 3, not a stop word, not all numbers
+            if (cleanWord.Length > 3 && 
+                !stopWords.Contains(cleanWord) && 
+                !cleanWord.All(char.IsDigit))
+            {
+                wordFrequency[cleanWord] = wordFrequency.GetValueOrDefault(cleanWord, 0) + 1;
+            }
+        }
+
+        // Return top keywords by frequency
+        return wordFrequency
+            .OrderByDescending(kvp => kvp.Value)
+            .Take(maxKeywords)
+            .Select(kvp => kvp.Key)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Analyze document structure to identify sections and titles
+    /// </summary>
+    private DocumentStructure AnalyzeDocumentStructure(string text)
+    {
+        var structure = new DocumentStructure();
+        var lines = text.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+        
+        var position = 0;
+        foreach (var line in lines)
+        {
+            var trimmedLine = line.Trim();
+            
+            // Detect headings (short lines, possibly all caps or ending with specific patterns)
+            if (trimmedLine.Length > 0 && trimmedLine.Length < 100)
+            {
+                // Check if it looks like a heading
+                if (IsLikelyHeading(trimmedLine))
+                {
+                    structure.Titles.Add(new TitlePosition
+                    {
+                        Title = trimmedLine,
+                        Position = position
+                    });
+                }
+            }
+            
+            position += line.Length + 1; // +1 for newline
+        }
+        
+        return structure;
+    }
+
+    /// <summary>
+    /// Check if a line is likely a heading
+    /// </summary>
+    private bool IsLikelyHeading(string line)
+    {
+        // Heuristics for heading detection:
+        // - All uppercase
+        // - Starts with numbers (e.g., "1. Introduction")
+        // - Short and ends without punctuation
+        // - Contains common heading words
+        
+        if (string.IsNullOrWhiteSpace(line))
+            return false;
+        
+        var headingKeywords = new[] { "chapter", "section", "introduction", "conclusion", 
+            "background", "methodology", "results", "discussion", "abstract", "summary",
+            "capitolo", "sezione", "introduzione", "conclusione", "risultati" };
+        
+        var lowerLine = line.ToLowerInvariant();
+        
+        return line.Length < 100 && (
+            line == line.ToUpperInvariant() ||
+            char.IsDigit(line[0]) ||
+            (!line.EndsWith('.') && !line.EndsWith(',')) ||
+            headingKeywords.Any(kw => lowerLine.Contains(kw))
+        );
+    }
+
+    /// <summary>
+    /// Find the nearest title before a given position
+    /// </summary>
+    private string? FindNearestTitle(DocumentStructure structure, int position)
+    {
+        return structure.Titles
+            .Where(t => t.Position <= position)
+            .OrderByDescending(t => t.Position)
+            .FirstOrDefault()?.Title;
+    }
+
+    /// <summary>
+    /// Find the section containing a given position
+    /// </summary>
+    private string? FindSection(DocumentStructure structure, int position)
+    {
+        // For now, section is the same as title
+        // In a more advanced implementation, you could have hierarchical sections
+        return FindNearestTitle(structure, position);
+    }
+
+    /// <summary>
+    /// Detect the type of chunk based on its content
+    /// </summary>
+    private string DetectChunkType(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return "empty";
+        
+        var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        
+        // Check if it's a list
+        if (lines.Length > 1 && lines.Count(l => l.TrimStart().StartsWith("-") || 
+            l.TrimStart().StartsWith("•") || 
+            char.IsDigit(l.TrimStart().FirstOrDefault())) > lines.Length / 2)
+        {
+            return "list";
+        }
+        
+        // Check if it looks like a heading (short, possibly all caps)
+        if (text.Length < 100 && text == text.ToUpper())
+        {
+            return "heading";
+        }
+        
+        // Check if it contains table-like structure (multiple tabs or pipes)
+        if (text.Count(c => c == '\t') > 5 || text.Count(c => c == '|') > 5)
+        {
+            return "table";
+        }
+        
+        // Default to paragraph
+        return "paragraph";
+    }
+
+    /// <summary>
+    /// Calculate importance score for a chunk based on its type and content
+    /// </summary>
+    private double CalculateImportanceScore(string text, string chunkType)
+    {
+        double score = 0.5; // Base score
+        
+        // Adjust based on chunk type
+        switch (chunkType)
+        {
+            case "heading":
+                score = 0.9; // Headings are very important
+                break;
+            case "list":
+                score = 0.7; // Lists contain structured information
+                break;
+            case "table":
+                score = 0.8; // Tables contain structured data
+                break;
+            case "paragraph":
+                score = 0.5; // Regular paragraphs
+                break;
+        }
+        
+        // Increase importance if text is long (more content)
+        if (text.Length > 500)
+            score += 0.1;
+        
+        // Increase importance if text contains numbers (might be data)
+        if (text.Count(char.IsDigit) > text.Length * 0.1)
+            score += 0.1;
+        
+        return Math.Min(score, 1.0);
+    }
+
+    /// <summary>
+    /// Internal class to represent document structure
+    /// </summary>
+    private class DocumentStructure
+    {
+        public List<TitlePosition> Titles { get; set; } = new();
+    }
+
+    /// <summary>
+    /// Internal class to represent a title and its position
+    /// </summary>
+    private class TitlePosition
+    {
+        public string Title { get; set; } = string.Empty;
+        public int Position { get; set; }
     }
 }

@@ -131,4 +131,21 @@ public class ReRankingConfiguration
     /// Peso dello score LLM nell'approccio ibrido (0-1)
     /// </summary>
     public double LLMWeight { get; set; } = 0.4;
+
+    /// <summary>
+    /// Enable temporal weighting to favor recent documents
+    /// </summary>
+    public bool EnableTemporalWeighting { get; set; } = false;
+
+    /// <summary>
+    /// Weight for recency in scoring (0-1)
+    /// Higher values give more importance to recent documents
+    /// </summary>
+    public double RecencyWeight { get; set; } = 0.1;
+
+    /// <summary>
+    /// Time decay half-life in days
+    /// Documents older than this will have their score halved
+    /// </summary>
+    public int RecencyDecayDays { get; set; } = 180;
 }
