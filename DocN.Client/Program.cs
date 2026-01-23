@@ -206,7 +206,7 @@ builder.Services.AddScoped<DocN.Data.Services.IEmbeddingService, DocN.Data.Servi
 builder.Services.AddScoped<DocN.Data.Services.ICategoryService, DocN.Data.Services.CategoryService>();
 builder.Services.AddScoped<IDocumentStatisticsService, DocumentStatisticsService>();
 builder.Services.AddScoped<IMultiProviderAIService, MultiProviderAIService>();
-builder.Services.AddScoped<IOCRService, TesseractOCRService>();
+builder.Services.AddScoped<DocN.Core.Interfaces.IOCRService, DocN.Data.Services.TesseractOCRService>();
 builder.Services.AddScoped<IFileProcessingService, FileProcessingService>();
 builder.Services.AddScoped<ILogService, LogService>();
 builder.Services.AddScoped<ICacheService, CacheService>();
@@ -255,12 +255,12 @@ if (hasAIServiceConfigured)
     builder.Services.AddSingleton(kernel);
 
     // Register Semantic RAG Service only when AI services are configured
-    builder.Services.AddScoped<ISemanticRAGService, SemanticRAGService>();
+    builder.Services.AddScoped<DocN.Core.Interfaces.ISemanticRAGService, DocN.Data.Services.SemanticRAGService>();
 }
 else
 {
     // Register a no-op service that returns empty results when AI is not configured
-    builder.Services.AddScoped<ISemanticRAGService, NoOpSemanticRAGService>();
+    builder.Services.AddScoped<DocN.Core.Interfaces.ISemanticRAGService, DocN.Data.Services.NoOpSemanticRAGService>();
 }
 
 // Register ApplicationSeeder
