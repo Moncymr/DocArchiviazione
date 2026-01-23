@@ -61,8 +61,9 @@ public class ApplicationSeeder
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "An error occurred while seeding the database");
-            throw;
+            _logger.LogError(ex, "An error occurred while seeding the database. Application will continue but may not function correctly.");
+            // Don't throw - let the application continue
+            // Database issues will be caught when users try to access features
         }
     }
 
