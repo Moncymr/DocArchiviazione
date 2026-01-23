@@ -45,7 +45,7 @@ Il sistema **DocArchiviazione** è attualmente una piattaforma RAG (Retrieval-Au
 
 **Stack Tecnologico:**
 - **.NET 10.0** con ASP.NET Core
-- **Entity Framework Core** con supporto vettoriale (SQL Server/PostgreSQL)
+- **Entity Framework Core** con SQL Server 2025 (native vector support)
 - **Microsoft Semantic Kernel 1.29.0** per orchestrazione AI
 - **Hangfire** per job processing asincroni
 - **OpenTelemetry** per observability distribuita
@@ -92,7 +92,7 @@ Il sistema **DocArchiviazione** è attualmente una piattaforma RAG (Retrieval-Au
 
 #### 1.3.1 Scalabilità
 - ❌ **Limite:** Embedding generation sincrono può rallentare con grandi volumi
-- ❌ **Limite:** Vector store non distribuito (single instance)
+- ⚠️ **Parziale:** SQL Server vector operations necessitano ottimizzazione indici per scale massivo
 - ❌ **Limite:** Assenza di caching distribuito (Redis/Memcached)
 
 #### 1.3.2 Sicurezza e Compliance
@@ -133,10 +133,11 @@ Il sistema **DocArchiviazione** è attualmente una piattaforma RAG (Retrieval-Au
 - **Disponibilità:** 99.9% uptime (< 8.76 ore downtime/anno)
 
 **Soluzioni Proposte:**
-1. **Vector Database Distribuito**
-   - Migrazione a Pinecone, Qdrant, Milvus o Weaviate
-   - Sharding automatico per scalabilità orizzontale
-   - Replica multi-region per bassa latenza
+1. **SQL Server 2025 Optimization**
+   - Utilizzo native vector support in SQL Server 2025
+   - Ottimizzazione indici vettoriali (columnstore, filtered indexes)
+   - SQL Server Always On per alta disponibilità
+   - Read replicas per distribuzione carico lettura
 
 2. **Caching Distribuito**
    - Redis Cluster per semantic cache condiviso
@@ -264,10 +265,11 @@ Priorità Media:
 
 #### 1.1 Scalabilità Infrastrutturale
 **Attività:**
-- [ ] Migrazione vector store a soluzione distribuita (Qdrant o Milvus)
-  - Setup cluster Qdrant con 3+ nodi
-  - Migrazione embeddings esistenti
-  - Testing performance (latency, throughput)
+- [ ] Ottimizzazione SQL Server 2025 per vector operations
+  - Implementazione indici vettoriali ottimizzati
+  - Configurazione columnstore indexes per embeddings
+  - Query optimization per similarity search
+  - Setup SQL Server Always On per HA
   
 - [ ] Implementazione caching distribuito
   - Redis Cluster per semantic cache
@@ -281,6 +283,7 @@ Priorità Media:
 
 **Deliverable:**
 - Sistema capace di gestire 1M documenti con latenza < 1s p95
+- SQL Server 2025 ottimizzato per vector operations
 - Caching con hit rate > 60%
 - Ingestion throughput 10,000+ docs/ora
 
@@ -616,10 +619,11 @@ Priorità Media:
         │  - Embedding Services   - Agent Framework    │
         └─────────┬─────────────────────────┬──────────┘
                   │                         │
-     ┌────────────▼───────┐    ┌───────────▼──────────┐
-     │  PostgreSQL        │    │  Vector Store        │
-     │  (Metadata, Auth)  │    │  (Qdrant/Milvus)     │
-     └────────────────────┘    └──────────────────────┘
+     ┌────────────▼────────────────────────▼──────────┐
+     │         SQL Server 2025                        │
+     │  (Metadata, Auth, Vector Store con native      │
+     │   vector support per similarity search)        │
+     └────────────┬───────────────────────────────────┘
                   │
      ┌────────────▼────────────────────────────────────┐
      │  Object Storage (Azure Blob / S3)               │
@@ -627,47 +631,66 @@ Priorità Media:
      └─────────────────────────────────────────────────┘
 ```
 
-### 4.2 Vector Store Recommendation
+### 4.2 Ottimizzazione SQL Server 2025 per Vector Operations
 
-**Raccomandazione: Qdrant**
+**Raccomandazione: SQL Server 2025 Native Vector Support**
 
-**Pro:**
-- Open-source con enterprise support
-- Performance eccellenti (HNSW + filtri)
-- Distributed clustering nativo
-- Payload filtering avanzato (metadata)
-- Multi-vector support (hybrid embeddings)
-- Self-hosted o cloud-managed
+**Vantaggi:**
+- **Native integration**: Embeddings e metadata nello stesso database
+- **ACID compliance**: Transazioni atomiche per consistenza dati
+- **Mature tooling**: Familiarità team, backup consolidati, monitoring esistente
+- **Cost-effective**: Nessuna infrastruttura aggiuntiva da gestire
+- **Vector capabilities**: SQL Server 2025 include native vector support per similarity search
+- **Enterprise features**: Always On, read replicas, columnstore indexes
 
-**Alternativa: Milvus**
-- Più maturo per ultra-large scale (billions vectors)
-- Comunità più grande
-- Più complesso da operare
+**Strategie di Ottimizzazione:**
+
+1. **Columnstore Indexes** per storage efficiente embeddings
+2. **Filtered Indexes** per query con metadata filtering
+3. **Partitioning** per gestire grandi volumi (> 10M documents)
+4. **In-Memory OLTP** per tabelle hot (recent queries cache)
+5. **Query Store** per tuning automatico query similarity
 
 **Implementazione:**
 ```csharp
-// Migrare IVectorStoreService a Qdrant client
-public class QdrantVectorStore : IVectorStoreService
+// Ottimizzare IVectorStoreService con SQL Server 2025 vector functions
+public class SqlServerVectorStore : IVectorStoreService
 {
-    private readonly QdrantClient _client;
+    private readonly DbContext _context;
     
     public async Task<List<SearchResult>> SearchAsync(
         float[] queryVector, 
         int topK, 
         Dictionary<string, object> filters)
     {
-        var searchParams = new SearchParams
-        {
-            Vector = queryVector,
-            Limit = topK,
-            Filter = BuildFilter(filters), // metadata filtering
-            WithPayload = true
-        };
+        // Utilizzo native vector similarity functions in SQL Server 2025
+        var query = @"
+            SELECT TOP(@topK) 
+                d.Id, 
+                d.Content,
+                d.Metadata,
+                VECTOR_DISTANCE('cosine', e.Embedding, @queryVector) as Distance
+            FROM Documents d
+            INNER JOIN Embeddings e ON d.Id = e.DocumentId
+            WHERE (@categoryFilter IS NULL OR d.Category = @categoryFilter)
+            ORDER BY Distance ASC
+        ";
         
-        return await _client.SearchAsync("documents", searchParams);
+        return await _context.Database
+            .SqlQueryRaw<SearchResult>(query, 
+                new SqlParameter("@topK", topK),
+                new SqlParameter("@queryVector", SerializeVector(queryVector)),
+                new SqlParameter("@categoryFilter", filters.GetValueOrDefault("category")))
+            .ToListAsync();
     }
 }
 ```
+
+**Performance Tuning:**
+- **Batch operations**: Inserimento embeddings in batch (1000+ rows)
+- **Parallel queries**: Query parallelization con OPTION (MAXDOP N)
+- **Read replicas**: Distribuzione carico similarity search su replicas
+- **Resource Governor**: Limitare risorse per job batch
 
 ### 4.3 Caching Strategy
 
@@ -1069,7 +1092,7 @@ Q1 2027+: FASE 5 - Innovazione (Ongoing)
 **Contingency Plans:**
 - **Budget overrun:** Ridurre scope Fase 5, posticipare nice-to-have
 - **Timeline slip:** Estendere Fase 3-4, ridurre features non critiche
-- **Technical blockers:** Pivot a tecnologie alternative (es. Milvus se Qdrant fallisce)
+- **Technical blockers:** Ottimizzare SQL Server 2025 con consulenza Microsoft, valutare partitioning avanzato
 - **Team turnover:** Knowledge sharing obbligatorio, documentazione completa
 
 ---
@@ -1097,10 +1120,10 @@ DocArchiviazione è già una **piattaforma RAG avanzata** con solide fondamenta 
 - [ ] Kickoff meeting con team esteso
 
 **Week 3-4: Quick Wins**
-- [ ] Deploy Qdrant cluster (staging)
+- [ ] Ottimizzazione indici SQL Server 2025 per vector operations
 - [ ] Implementare basic SSO (Azure AD)
 - [ ] Setup Grafana dashboard base
-- [ ] Migrare 10K documenti a Qdrant (test)
+- [ ] Testing performance similarity search con 10K documenti
 
 ### 7.3 Success Criteria
 
@@ -1163,7 +1186,7 @@ Il progetto sarà considerato **successo** se a fine Q4 2026:
 **Tooling:**
 - LangChain: https://python.langchain.com/
 - Semantic Kernel: https://github.com/microsoft/semantic-kernel
-- Qdrant: https://qdrant.tech/
+- SQL Server 2025 Vector Support: https://learn.microsoft.com/sql/relational-databases/vectors/
 - Haystack: https://haystack.deepset.ai/
 
 **Community:**
