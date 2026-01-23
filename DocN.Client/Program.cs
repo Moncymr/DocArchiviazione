@@ -128,17 +128,10 @@ builder.Services.AddMemoryCache(options =>
 // Database configuration
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 
-// Use a fallback connection string only in development
+// Validate connection string is configured
 if (string.IsNullOrEmpty(connectionString))
 {
-    if (builder.Environment.IsDevelopment())
-    {
-        connectionString = "Server=NTSPJ-060-02\\SQL2025;Database=DocNDb;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True;Encrypt=True";
-    }
-    else
-    {
-        throw new InvalidOperationException("Database connection string 'DefaultConnection' is not configured. Please set it in appsettings.json or environment variables.");
-    }
+    throw new InvalidOperationException("Database connection string 'DefaultConnection' is not configured. Please set it in appsettings.json or environment variables.");
 }
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
