@@ -209,6 +209,7 @@ builder.Services.AddScoped<IMultiProviderAIService, MultiProviderAIService>();
 builder.Services.AddScoped<IOCRService, TesseractOCRService>();
 builder.Services.AddScoped<IFileProcessingService, FileProcessingService>();
 builder.Services.AddScoped<ILogService, LogService>();
+builder.Services.AddScoped<ICacheService, CacheService>();
 
 // Configure Semantic Kernel for RAG Service (only if AI services are configured)
 var azureOpenAIEndpoint = builder.Configuration["AzureOpenAI:Endpoint"];
@@ -253,19 +254,11 @@ if (hasAIServiceConfigured)
     var kernel = kernelBuilder.Build();
     builder.Services.AddSingleton(kernel);
 
-    // Register additional services for RAG
-    builder.Services.AddScoped<DocN.Data.Services.IChunkingService, ChunkingService>();
-    builder.Services.AddScoped<ICacheService, CacheService>();
-
     // Register Semantic RAG Service only when AI services are configured
     builder.Services.AddScoped<ISemanticRAGService, SemanticRAGService>();
 }
 else
 {
-    // Register a no-op implementation when no AI service is configured
-    builder.Services.AddScoped<DocN.Data.Services.IChunkingService, ChunkingService>();
-    builder.Services.AddScoped<ICacheService, CacheService>();
-
     // Register a no-op service that returns empty results when AI is not configured
     builder.Services.AddScoped<ISemanticRAGService, NoOpSemanticRAGService>();
 }
