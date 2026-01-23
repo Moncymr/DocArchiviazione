@@ -417,6 +417,11 @@ builder.Services.AddScoped<DocN.Data.Services.IEmbeddingService, DocN.Data.Servi
 builder.Services.AddScoped<DocN.Data.Services.IChunkingService, DocN.Data.Services.ChunkingService>();
 builder.Services.AddScoped<ICacheService, CacheService>();
 builder.Services.AddScoped<IHybridSearchService, HybridSearchService>();
+builder.Services.AddScoped<IBM25SearchService, BM25SearchService>();
+builder.Services.AddScoped<ISemanticCacheService, SemanticCacheService>();
+builder.Services.AddScoped<IQueryExpansionService, QueryExpansionService>();
+builder.Services.AddScoped<IRetrievalMetricsService, RetrievalMetricsService>();
+builder.Services.AddScoped<IIngestionQueueService, IngestionQueueService>();
 builder.Services.AddScoped<IBatchProcessingService, BatchProcessingService>();
 builder.Services.AddScoped<ILogService, LogService>();
 
