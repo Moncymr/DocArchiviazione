@@ -2,6 +2,7 @@ using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Caching.Memory;
 using System.Text.Json;
 using System.Collections.Concurrent;
+using DocN.Core.Interfaces;
 
 namespace DocN.Server.Services;
 
@@ -9,15 +10,6 @@ namespace DocN.Server.Services;
 /// Distributed cache service that works with both Redis and in-memory cache
 /// Provides intelligent caching for embeddings, search results, and session data
 /// </summary>
-public interface IDistributedCacheService
-{
-    Task<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default);
-    Task SetAsync<T>(string key, T value, TimeSpan? expiration = null, CancellationToken cancellationToken = default);
-    Task RemoveAsync(string key, CancellationToken cancellationToken = default);
-    Task RemoveByPrefixAsync(string prefix, CancellationToken cancellationToken = default);
-    Task<bool> ExistsAsync(string key, CancellationToken cancellationToken = default);
-}
-
 public class DistributedCacheService : IDistributedCacheService
 {
     private readonly IDistributedCache? _distributedCache;
