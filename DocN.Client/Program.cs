@@ -202,8 +202,8 @@ builder.Services.Configure<EmbeddingsSettings>(builder.Configuration.GetSection(
 // Application Services
 builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddScoped<DocN.Data.Services.IChunkingService, DocN.Data.Services.ChunkingService>();
-builder.Services.AddScoped<DocN.Data.Services.IEmbeddingService, EmbeddingService>();
-builder.Services.AddScoped<DocN.Data.Services.ICategoryService, CategoryService>();
+builder.Services.AddScoped<DocN.Data.Services.IEmbeddingService, DocN.Data.Services.EmbeddingService>();
+builder.Services.AddScoped<DocN.Data.Services.ICategoryService, DocN.Data.Services.CategoryService>();
 builder.Services.AddScoped<IDocumentStatisticsService, DocumentStatisticsService>();
 builder.Services.AddScoped<IMultiProviderAIService, MultiProviderAIService>();
 builder.Services.AddScoped<IOCRService, TesseractOCRService>();
