@@ -430,7 +430,7 @@ builder.Services.AddSingleton<IDistributedCacheService, DistributedCacheService>
 // Enables horizontal scaling across multiple application instances
 // ════════════════════════════════════════════════════════════════════════════════
 
-// Register RAG support services
+// Register RAG support services FIRST (required by vector store services)
 builder.Services.AddScoped<IMMRService, MMRService>();
 builder.Services.AddScoped<IReRankingService, ReRankingService>();
 builder.Services.AddScoped<IContextualCompressionService, ContextualCompressionService>();
@@ -446,7 +446,8 @@ if (vectorStoreConfig.Provider == "PgVector" && vectorStoreConfig.PgVector.Enabl
     Log.Information("Using PgVectorStoreService (PostgreSQL with pgvector extension)");
     builder.Services.AddScoped<IVectorStoreService>(sp =>
     {
-        var primaryStore = ActivatorUtilities.CreateInstance<PgVectorStoreService>(sp);
+        // Resolve dependencies from service provider
+        var primaryStore = sp.GetRequiredService<PgVectorStoreService>();
         
         // Wrap with distributed layer if enabled
         if (vectorStoreConfig.Distributed.Enabled)
@@ -456,6 +457,9 @@ if (vectorStoreConfig.Provider == "PgVector" && vectorStoreConfig.PgVector.Enabl
         
         return primaryStore;
     });
+    
+    // Register PgVectorStoreService so it can be resolved
+    builder.Services.AddScoped<PgVectorStoreService>();
 }
 else
 {
@@ -463,7 +467,8 @@ else
     Log.Information("Using EnhancedVectorStoreService (SQL Server 2025 with distributed support)");
     builder.Services.AddScoped<IVectorStoreService>(sp =>
     {
-        var primaryStore = ActivatorUtilities.CreateInstance<EnhancedVectorStoreService>(sp);
+        // Resolve dependencies from service provider
+        var primaryStore = sp.GetRequiredService<EnhancedVectorStoreService>();
         
         // Wrap with distributed layer if enabled
         if (vectorStoreConfig.Distributed.Enabled)
@@ -474,6 +479,9 @@ else
         
         return primaryStore;
     });
+    
+    // Register EnhancedVectorStoreService so it can be resolved
+    builder.Services.AddScoped<EnhancedVectorStoreService>();
 }
 
 // Register Multi-Provider AI Service (supports Gemini, OpenAI, Azure OpenAI from database config)
