@@ -283,19 +283,25 @@ using (var scope = app.Services.CreateScope())
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
     try
     {
+        logger.LogInformation("Starting database seeding...");
         var seeder = scope.ServiceProvider.GetRequiredService<DocN.Data.Services.ApplicationSeeder>();
         await seeder.SeedAsync();
         logger.LogInformation("Database seeding completed successfully");
     }
+    catch (TaskCanceledException tcex)
+    {
+        logger.LogWarning(tcex, "Database seeding was cancelled. This may happen when Client and Server start simultaneously. Application will continue.");
+    }
     catch (Exception ex)
     {
-        logger.LogError(ex, "An error occurred while seeding the database. The application will continue but may not function correctly without initial data.\n" +
+        logger.LogError(ex, "An error occurred while seeding the database: {Message}. The application will continue but may not function correctly without initial data.\n" +
             "Please verify:\n" +
             "1. Database connection string is correct and database server is accessible\n" +
             "2. Database has been created using the SQL scripts in Database/ folder\n" +
             "3. Database user has appropriate permissions\n" +
             "4. If this is first startup, ensure the database has been initialized\n" +
-            "5. If Client and Server start simultaneously, one may fail to seed - this is normal and can be ignored");
+            "5. If Client and Server start simultaneously, one may fail to seed - this is normal and can be ignored", 
+            ex.Message);
 
         // Log additional diagnostic information
         logger.LogWarning("Application will attempt to start despite seeding failure. Database may have been seeded by another instance. Some features may not work correctly.");

@@ -44,6 +44,10 @@ public class ApplicationSeeder
                 return;
             }
             
+            // Add small delay to reduce chance of concurrent seeding conflicts when Client and Server start together
+            // This helps prevent database locks when both try to seed simultaneously
+            await Task.Delay(Random.Shared.Next(100, 500));
+            
             // Note: MigrateAsync is commented out because EF Core doesn't support VECTOR type yet
             // Use the SQL script Database/CreateDatabase_Complete_V2.sql to create the database
             // await _context.Database.MigrateAsync();
@@ -61,7 +65,7 @@ public class ApplicationSeeder
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "An error occurred while seeding the database. Application will continue but may not function correctly.");
+            _logger.LogError(ex, "An error occurred while seeding the database: {Message}. Application will continue but may not function correctly.", ex.Message);
             // Don't throw - let the application continue
             // Database issues will be caught when users try to access features
         }
@@ -73,7 +77,9 @@ public class ApplicationSeeder
         {
             // Add timeout to prevent hanging indefinitely
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            return await _context.Database.CanConnectAsync(cts.Token);
+            var canConnect = await _context.Database.CanConnectAsync(cts.Token);
+            _logger.LogInformation("Database connection check result: {CanConnect}", canConnect);
+            return canConnect;
         }
         catch (OperationCanceledException)
         {
@@ -82,7 +88,7 @@ public class ApplicationSeeder
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to check database connection");
+            _logger.LogError(ex, "Failed to check database connection: {Message}", ex.Message);
             return false;
         }
     }
