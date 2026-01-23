@@ -566,12 +566,12 @@ var useEnhancedAgentRAG = builder.Configuration.GetValue<bool>("EnhancedRAG:UseE
 if (useEnhancedAgentRAG)
 {
     Log.Information("Using EnhancedAgentRAGService with Microsoft Agent Framework");
-    builder.Services.AddScoped<ISemanticRAGService, EnhancedAgentRAGService>();
+    builder.Services.AddScoped<DocN.Core.Interfaces.ISemanticRAGService, DocN.Data.Services.EnhancedAgentRAGService>();
 }
 else
 {
     Log.Information("Using MultiProviderSemanticRAGService (default)");
-    builder.Services.AddScoped<ISemanticRAGService, MultiProviderSemanticRAGService>();
+    builder.Services.AddScoped<DocN.Core.Interfaces.ISemanticRAGService, DocN.Data.Services.MultiProviderSemanticRAGService>();
 }
 
 // Register agents (used by both implementations if needed)
