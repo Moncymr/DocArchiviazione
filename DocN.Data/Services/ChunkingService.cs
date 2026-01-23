@@ -76,6 +76,18 @@ public interface IChunkingService
 /// </remarks>
 public class ChunkingService : IChunkingService
 {
+    // Common stop words to filter out (static readonly for performance)
+    private static readonly HashSet<string> StopWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
+        "of", "with", "by", "from", "as", "is", "was", "are", "were", "be",
+        "been", "being", "have", "has", "had", "do", "does", "did", "will",
+        "would", "should", "could", "may", "might", "can", "this", "that",
+        "these", "those", "i", "you", "he", "she", "it", "we", "they", "il",
+        "lo", "la", "i", "gli", "le", "un", "una", "di", "da", "in", "con",
+        "su", "per", "tra", "fra", "e", "o", "ma", "se", "come", "quando"
+    };
+
     /// <summary>
     /// Suddivide testo in chunk utilizzando strategia sliding window con overlap intelligente
     /// </summary>
@@ -294,18 +306,6 @@ public class ChunkingService : IChunkingService
         if (string.IsNullOrWhiteSpace(text))
             return new List<string>();
 
-        // Common stop words to filter out
-        var stopWords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
-            "of", "with", "by", "from", "as", "is", "was", "are", "were", "be",
-            "been", "being", "have", "has", "had", "do", "does", "did", "will",
-            "would", "should", "could", "may", "might", "can", "this", "that",
-            "these", "those", "i", "you", "he", "she", "it", "we", "they", "il",
-            "lo", "la", "i", "gli", "le", "un", "una", "di", "da", "in", "con",
-            "su", "per", "tra", "fra", "e", "o", "ma", "se", "come", "quando"
-        };
-
         // Tokenize and count word frequencies
         var words = text.Split(new[] { ' ', '\n', '\r', '\t', '.', ',', ';', ':', '!', '?', '"', '\'', '(', ')', '[', ']', '{', '}' },
             StringSplitOptions.RemoveEmptyEntries);
@@ -318,7 +318,7 @@ public class ChunkingService : IChunkingService
             
             // Filter: length > 3, not a stop word, not all numbers
             if (cleanWord.Length > 3 && 
-                !stopWords.Contains(cleanWord) && 
+                !StopWords.Contains(cleanWord) && 
                 !cleanWord.All(char.IsDigit))
             {
                 wordFrequency[cleanWord] = wordFrequency.GetValueOrDefault(cleanWord, 0) + 1;
@@ -388,7 +388,7 @@ public class ChunkingService : IChunkingService
         
         return line.Length < 100 && (
             line == line.ToUpperInvariant() ||
-            char.IsDigit(line[0]) ||
+            (line.Length > 0 && char.IsDigit(line[0])) ||
             (!line.EndsWith('.') && !line.EndsWith(',')) ||
             headingKeywords.Any(kw => lowerLine.Contains(kw))
         );

@@ -73,15 +73,14 @@ public class CacheStatistics
 /// </summary>
 public class SemanticCacheService : ISemanticCacheService
 {
-    private readonly IEmbeddingService _embeddingService;
     private readonly List<CachedSearchResult> _cache = new();
     private readonly object _cacheLock = new();
     private int _hits = 0;
     private int _misses = 0;
+    private const int MaxCacheSize = 1000;
 
-    public SemanticCacheService(IEmbeddingService embeddingService)
+    public SemanticCacheService()
     {
-        _embeddingService = embeddingService;
     }
 
     /// <summary>
@@ -142,12 +141,11 @@ public class SemanticCacheService : ISemanticCacheService
 
         lock (_cacheLock)
         {
-            // Limit cache size (keep only last 1000 entries)
-            if (_cache.Count >= 1000)
+            // Limit cache size (keep only last entries)
+            if (_cache.Count >= MaxCacheSize)
             {
-                // Remove oldest entry
-                var oldest = _cache.OrderBy(c => c.CachedAt).First();
-                _cache.Remove(oldest);
+                // Remove oldest entry (first in list since we add to end)
+                _cache.RemoveAt(0);
             }
 
             _cache.Add(cachedResult);
