@@ -1,7 +1,7 @@
 using Microsoft.SemanticKernel;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.Extensions.Logging;
-using System.Text.Json;
+using DocN.Data.Services;
 
 namespace DocN.Data.Services;
 
@@ -50,8 +50,7 @@ public class QueryExpansionResult
 /// </summary>
 public class QueryExpansionService : IQueryExpansionService
 {
-    private readonly Kernel? _kernel;
-    private readonly IChatCompletionService? _chatService;
+    private readonly IKernelProvider? _kernelProvider;
     private readonly ILogger<QueryExpansionService> _logger;
 
     // Synonym dictionary for common terms (Italian and English)
@@ -83,12 +82,11 @@ public class QueryExpansionService : IQueryExpansionService
     };
 
     public QueryExpansionService(
-        Kernel? kernel,
-        ILogger<QueryExpansionService> logger)
+        ILogger<QueryExpansionService> logger,
+        IKernelProvider? kernelProvider = null)
     {
-        _kernel = kernel;
-        _chatService = kernel?.GetRequiredService<IChatCompletionService>();
         _logger = logger;
+        _kernelProvider = kernelProvider;
     }
 
     /// <summary>
@@ -115,7 +113,7 @@ public class QueryExpansionService : IQueryExpansionService
 
             // Try AI-based expansion if available
             List<string> aiExpansionTerms = new();
-            if (_chatService != null)
+            if (_kernelProvider != null)
             {
                 try
                 {
@@ -165,13 +163,21 @@ public class QueryExpansionService : IQueryExpansionService
     /// </summary>
     public async Task<List<string>> GenerateRelatedTermsAsync(string query, int count = 5)
     {
-        if (_chatService == null)
+        if (_kernelProvider == null)
         {
             return new List<string>();
         }
 
         try
         {
+            var kernel = await _kernelProvider.GetKernelAsync();
+            if (kernel == null)
+            {
+                return new List<string>();
+            }
+
+            var chatService = kernel.GetRequiredService<IChatCompletionService>();
+            
             var prompt = $@"Given the search query: ""{query}""
 
 Generate {count} related keywords or phrases that someone might use when searching for similar information.
@@ -186,7 +192,7 @@ Only return the comma-separated keywords, nothing else.";
             var chatHistory = new Microsoft.SemanticKernel.ChatCompletion.ChatHistory();
             chatHistory.AddUserMessage(prompt);
 
-            var response = await _chatService.GetChatMessageContentAsync(chatHistory);
+            var response = await chatService.GetChatMessageContentAsync(chatHistory);
             var content = response.Content ?? string.Empty;
 
             // Parse comma-separated keywords
