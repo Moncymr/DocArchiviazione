@@ -430,6 +430,12 @@ builder.Services.AddScoped<IIngestionQueueService, IngestionQueueService>();
 builder.Services.AddScoped<IBatchProcessingService, BatchProcessingService>();
 builder.Services.AddScoped<ILogService, LogService>();
 
+// Register Dashboard and Personalization Services
+builder.Services.AddScoped<IDashboardWidgetService, DashboardWidgetService>();
+builder.Services.AddScoped<ISavedSearchService, SavedSearchService>();
+builder.Services.AddScoped<ISearchSuggestionService, SearchSuggestionService>();
+builder.Services.AddScoped<IUserActivityService, UserActivityService>();
+
 // Register Distributed Cache Service (works with both Redis and in-memory cache)
 builder.Services.AddSingleton<IDistributedCacheService, DistributedCacheService>();
 

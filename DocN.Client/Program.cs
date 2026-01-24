@@ -116,6 +116,9 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
+// Add FluentUI Blazor components
+builder.Services.AddFluentUIComponents();
+
 // Add HttpClient for Blazor components
 builder.Services.AddHttpClient();
 
@@ -216,6 +219,12 @@ builder.Services.AddScoped<IMultiProviderAIService, MultiProviderAIService>();
 builder.Services.AddScoped<IOCRService, TesseractOCRService>();
 builder.Services.AddScoped<IFileProcessingService, FileProcessingService>();
 builder.Services.AddScoped<ILogService, LogService>();
+
+// Dashboard and Personalization Services
+builder.Services.AddScoped<IDashboardWidgetService, DashboardWidgetService>();
+builder.Services.AddScoped<ISavedSearchService, SavedSearchService>();
+builder.Services.AddScoped<ISearchSuggestionService, SearchSuggestionService>();
+builder.Services.AddScoped<IUserActivityService, UserActivityService>();
 
 // Configure Semantic Kernel for RAG Service (only if AI services are configured)
 var azureOpenAIEndpoint = builder.Configuration["AzureOpenAI:Endpoint"];
