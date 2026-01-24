@@ -227,6 +227,11 @@ builder.Services.AddCors(options =>
     });
 });
 
+// Configure Authorization with granular permission-based access control
+builder.Services.AddAuthorization();
+builder.Services.AddSingleton<IAuthorizationHandler, PermissionAuthorizationHandler>();
+builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
+
 // Add Rate Limiting for API protection
 builder.Services.AddRateLimiter(options =>
 {

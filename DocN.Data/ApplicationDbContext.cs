@@ -43,6 +43,11 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<GoldenDataset> GoldenDatasets { get; set; } = null!;
     public DbSet<GoldenDatasetSample> GoldenDatasetSamples { get; set; } = null!;
     public DbSet<GoldenDatasetEvaluationRecord> GoldenDatasetEvaluationRecords { get; set; } = null!;
+    
+    // Dashboard and personalization
+    public DbSet<DashboardWidget> DashboardWidgets { get; set; } = null!;
+    public DbSet<SavedSearch> SavedSearches { get; set; } = null!;
+    public DbSet<UserActivity> UserActivities { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -580,6 +585,64 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
             entity.HasIndex(e => e.ConfigurationId);
             entity.HasIndex(e => e.TenantId);
             entity.HasIndex(e => new { e.GoldenDatasetId, e.EvaluatedAt });
+        });
+        
+        // DashboardWidget configuration
+        modelBuilder.Entity<DashboardWidget>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.WidgetType).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Configuration).HasColumnType("nvarchar(max)");
+            
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => new { e.UserId, e.Position });
+        });
+        
+        // SavedSearch configuration
+        modelBuilder.Entity<SavedSearch>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Query).IsRequired().HasMaxLength(1000);
+            entity.Property(e => e.Filters).HasColumnType("nvarchar(max)");
+            entity.Property(e => e.SearchType).IsRequired().HasMaxLength(20);
+            
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => new { e.UserId, e.LastUsedAt });
+        });
+        
+        // UserActivity configuration
+        modelBuilder.Entity<UserActivity>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.ActivityType).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.Description).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.Metadata).HasColumnType("nvarchar(max)");
+            
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+                
+            entity.HasOne(e => e.Document)
+                .WithMany()
+                .HasForeignKey(e => e.DocumentId)
+                .OnDelete(DeleteBehavior.SetNull);
+            
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => e.CreatedAt);
+            entity.HasIndex(e => new { e.UserId, e.CreatedAt });
         });
     }
     
