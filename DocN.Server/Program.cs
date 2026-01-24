@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.SemanticKernel;
+using Microsoft.AspNetCore.Authorization;
 using DocN.Data;
 using DocN.Data.Services;
 using DocN.Data.Services.Agents;
