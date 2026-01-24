@@ -1,0 +1,166 @@
+@using DocN.Data.Services
+@using DocN.Data.Models
+@using Microsoft.AspNetCore.Components
+@using Microsoft.FluentUI.AspNetCore.Components
+@using System.Security.Claims
+@inject IUserActivityService ActivityService
+@inject ILogger<ActivityFeedWidget> Logger
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<FluentCard Class="widget-card activity-feed-widget">
+    <FluentStack Orientation="Orientation.Vertical" Style="gap: 1rem;">
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center">
+            <FluentIcon Value="@(new string.Timeline())" Color="Color.Accent" />
+            <FluentLabel Typo="Typography.H6">@Title</FluentLabel>
+        </FluentStack>
+
+        @if (_loading)
+        {
+            <FluentProgressRing />
+        }
+        else if (_error != null)
+        {
+            <FluentMessageBar Intent="MessageIntent.Error">
+                @_error
+            </FluentMessageBar>
+        }
+        else if (_activities?.Any() == true)
+        {
+            <FluentStack Orientation="Orientation.Vertical" Style="gap: 0.75rem;">
+                @foreach (var activity in _activities)
+                {
+                    <FluentStack Orientation="Orientation.Horizontal" Style="gap: 0.75rem;" VerticalAlignment="VerticalAlignment.Start">
+                        <FluentIcon Value="@GetActivityIcon(activity.ActivityType)" Color="@GetActivityColor(activity.ActivityType)" />
+                        <FluentStack Orientation="Orientation.Vertical" Style="gap: 0.25rem; flex: 1;">
+                            <FluentLabel Typo="Typography.Body">@activity.Description</FluentLabel>
+                            <FluentLabel Typo="Typography.Caption" Color="Color.Neutral">
+                                @GetRelativeTime(activity.CreatedAt)
+                            </FluentLabel>
+                        </FluentStack>
+                    </FluentStack>
+                    @if (activity != _activities.Last())
+                    {
+                        <FluentDivider />
+                    }
+                }
+            </FluentStack>
+        }
+        else
+        {
+            <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center" Style="padding: 2rem;">
+                <FluentIcon Value="@(new string.Timeline())" Color="Color.Neutral" />
+                <FluentLabel Typo="Typography.Body" Color="Color.Neutral">No recent activity</FluentLabel>
+            </FluentStack>
+        }
+    </FluentStack>
+</FluentCard>
+
+@code {
+    [Parameter]
+    public string Title { get; set; } = "Recent Activity";
+
+    [Parameter]
+    public int WidgetId { get; set; }
+
+    [Parameter]
+    public int MaxCount { get; set; } = 10;
+
+    private List<UserActivity>? _activities;
+    private bool _loading = true;
+    private string? _error;
+    private string? _userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        _userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        await LoadActivitiesAsync();
+    }
+
+    private async Task LoadActivitiesAsync()
+    {
+        try
+        {
+            _loading = true;
+            _error = null;
+
+            if (string.IsNullOrEmpty(_userId))
+            {
+                _error = "User not authenticated";
+                return;
+            }
+
+            _activities = (await ActivityService.GetUserActivitiesAsync(_userId, MaxCount))
+                .OrderByDescending(a => a.CreatedAt)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading user activities");
+            _error = "Failed to load activities";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private string GetActivityIcon(string activityType)
+    {
+        return activityType.ToLower() switch
+        {
+            "upload" => new string.ArrowUpload(),
+            "download" => new string.ArrowDownload(),
+            "view" => new string.Eye(),
+            "edit" => new string.Edit(),
+            "delete" => new string.Delete(),
+            "share" => new string.Share(),
+            "search" => new string.Search(),
+            _ => new string.Circle()
+        };
+    }
+
+    private Color GetActivityColor(string activityType)
+    {
+        return activityType.ToLower() switch
+        {
+            "upload" => Color.Success,
+            "download" => Color.Info,
+            "delete" => Color.Error,
+            "edit" => Color.Warning,
+            "share" => Color.Accent,
+            _ => Color.Neutral
+        };
+    }
+
+    private string GetRelativeTime(DateTime timestamp)
+    {
+        var timeSpan = DateTime.UtcNow - timestamp;
+        
+        if (timeSpan.TotalMinutes < 1)
+            return "Just now";
+        if (timeSpan.TotalMinutes < 60)
+            return $"{(int)timeSpan.TotalMinutes} minute{((int)timeSpan.TotalMinutes != 1 ? "s" : "")} ago";
+        if (timeSpan.TotalHours < 24)
+            return $"{(int)timeSpan.TotalHours} hour{((int)timeSpan.TotalHours != 1 ? "s" : "")} ago";
+        if (timeSpan.TotalDays < 7)
+            return $"{(int)timeSpan.TotalDays} day{((int)timeSpan.TotalDays != 1 ? "s" : "")} ago";
+        if (timeSpan.TotalDays < 30)
+            return $"{(int)(timeSpan.TotalDays / 7)} week{((int)(timeSpan.TotalDays / 7) != 1 ? "s" : "")} ago";
+        
+        return timestamp.ToString("MMM dd, yyyy");
+    }
+}
+
+<style>
+    .widget-card {
+        padding: 1.5rem;
+        height: 100%;
+    }
+
+    .activity-feed-widget {
+        min-height: 300px;
+        max-height: 500px;
+        overflow-y: auto;
+    }
+</style>

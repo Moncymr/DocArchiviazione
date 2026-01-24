@@ -1,0 +1,145 @@
+@using DocN.Data.Services
+@using DocN.Data.Models
+@using Microsoft.AspNetCore.Components
+@using Microsoft.FluentUI.AspNetCore.Components
+@inject IDocumentStatisticsService StatisticsService
+@inject ILogger<StatisticsWidget> Logger
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject System.Security.Claims.ClaimsPrincipal User
+
+<FluentCard Class="widget-card statistics-widget">
+    <FluentStack Orientation="Orientation.Vertical" Style="gap: 1rem;">
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center">
+            <FluentIcon Value="@(new string.ChartMultiple())" Color="Color.Accent" />
+            <FluentLabel Typo="Typography.H6">@Title</FluentLabel>
+        </FluentStack>
+
+        @if (_loading)
+        {
+            <FluentProgressRing />
+        }
+        else if (_error != null)
+        {
+            <FluentMessageBar Intent="MessageIntent.Error">
+                @_error
+            </FluentMessageBar>
+        }
+        else if (_statistics != null)
+        {
+            <FluentGrid Spacing="2">
+                <FluentGridItem xs="12" sm="6">
+                    <FluentStack Orientation="Orientation.Vertical" Style="gap: 0.5rem;">
+                        <FluentLabel Typo="Typography.Body">Total Documents</FluentLabel>
+                        <FluentLabel Typo="Typography.H4" Color="Color.Accent">@_statistics.TotalDocuments</FluentLabel>
+                    </FluentStack>
+                </FluentGridItem>
+
+                <FluentGridItem xs="12" sm="6">
+                    <FluentStack Orientation="Orientation.Vertical" Style="gap: 0.5rem;">
+                        <FluentLabel Typo="Typography.Body">Total Size</FluentLabel>
+                        <FluentLabel Typo="Typography.H4" Color="Color.Accent">@FormatFileSize(_statistics.TotalStorageBytes)</FluentLabel>
+                    </FluentStack>
+                </FluentGridItem>
+
+                <FluentGridItem xs="12" sm="6">
+                    <FluentStack Orientation="Orientation.Vertical" Style="gap: 0.5rem;">
+                        <FluentLabel Typo="Typography.Body">Completed</FluentLabel>
+                        <FluentLabel Typo="Typography.H4" Color="Color.Success">@_statistics.CompletedEmbeddingsCount</FluentLabel>
+                    </FluentStack>
+                </FluentGridItem>
+
+                <FluentGridItem xs="12" sm="6">
+                    <FluentStack Orientation="Orientation.Vertical" Style="gap: 0.5rem;">
+                        <FluentLabel Typo="Typography.Body">Pending</FluentLabel>
+                        <FluentLabel Typo="Typography.H4" Color="Color.Warning">@_statistics.PendingEmbeddingsCount</FluentLabel>
+                    </FluentStack>
+                </FluentGridItem>
+            </FluentGrid>
+
+            @if (_statistics.DocumentsByCategory?.Any() == true)
+            {
+                <FluentDivider />
+                <FluentLabel Typo="Typography.Subtitle">By Category</FluentLabel>
+                <FluentStack Orientation="Orientation.Vertical" Style="gap: 0.5rem;">
+                    @foreach (var category in _statistics.DocumentsByCategory.Take(5))
+                    {
+                        <FluentStack Orientation="Orientation.Horizontal" HorizontalAlignment="HorizontalAlignment.SpaceBetween">
+                            <FluentLabel>@category.Key</FluentLabel>
+                            <FluentBadge Appearance="Appearance.Neutral">@category.Value</FluentBadge>
+                        </FluentStack>
+                    }
+                </FluentStack>
+            }
+        }
+    </FluentStack>
+</FluentCard>
+
+@code {
+    [Parameter]
+    public string Title { get; set; } = "Document Statistics";
+
+    [Parameter]
+    public int WidgetId { get; set; }
+
+    private DocumentStatistics? _statistics;
+    private bool _loading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadStatisticsAsync();
+    }
+
+    private async Task LoadStatisticsAsync()
+    {
+        try
+        {
+            _loading = true;
+            _error = null;
+            
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier);
+            
+            if (string.IsNullOrEmpty(userId))
+            {
+                _error = "User not authenticated";
+                return;
+            }
+            
+            _statistics = await StatisticsService.GetStatisticsAsync(userId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading statistics");
+            _error = "Failed to load statistics";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+}
+
+<style>
+    .widget-card {
+        padding: 1.5rem;
+        height: 100%;
+    }
+
+    .statistics-widget {
+        min-height: 300px;
+    }
+</style>

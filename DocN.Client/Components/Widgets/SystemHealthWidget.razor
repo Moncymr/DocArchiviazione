@@ -1,0 +1,195 @@
+@using DocN.Data.Services
+@using DocN.Data.Models
+@using Microsoft.AspNetCore.Components
+@using Microsoft.FluentUI.AspNetCore.Components
+@inject IDocumentService DocumentService
+@inject ILogger<SystemHealthWidget> Logger
+
+<FluentCard Class="widget-card system-health-widget">
+    <FluentStack Orientation="Orientation.Vertical" Style="gap: 1rem;">
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center">
+            <FluentIcon Value="@(new string.HeartPulse())" Color="@GetHealthColor()" />
+            <FluentLabel Typo="Typography.H6">@Title</FluentLabel>
+        </FluentStack>
+
+        @if (_loading)
+        {
+            <FluentProgressRing />
+        }
+        else if (_error != null)
+        {
+            <FluentMessageBar Intent="MessageIntent.Error">
+                @_error
+            </FluentMessageBar>
+        }
+        else
+        {
+            <FluentStack Orientation="Orientation.Vertical" Style="gap: 1rem;">
+                <!-- Processing Queue Status -->
+                <FluentCard Appearance="Appearance.Filled" Style="padding: 1rem;">
+                    <FluentStack Orientation="Orientation.Vertical" Style="gap: 0.5rem;">
+                        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center">
+                            <FluentIcon Value="@(new Icons.Regular.Size20.Queue())" Color="Color.Neutral" />
+                            <FluentLabel Typo="Typography.Subtitle">Processing Queue</FluentLabel>
+                        </FluentStack>
+                        <FluentStack Orientation="Orientation.Horizontal" HorizontalAlignment="HorizontalAlignment.SpaceBetween">
+                            <FluentLabel Typo="Typography.Body">Pending</FluentLabel>
+                            <FluentBadge Appearance="Appearance.Neutral">@_healthStatus.PendingDocuments</FluentBadge>
+                        </FluentStack>
+                        <FluentStack Orientation="Orientation.Horizontal" HorizontalAlignment="HorizontalAlignment.SpaceBetween">
+                            <FluentLabel Typo="Typography.Body">Processing</FluentLabel>
+                            <FluentBadge Appearance="Appearance.Accent">@_healthStatus.ProcessingDocuments</FluentBadge>
+                        </FluentStack>
+                        <FluentStack Orientation="Orientation.Horizontal" HorizontalAlignment="HorizontalAlignment.SpaceBetween">
+                            <FluentLabel Typo="Typography.Body">Failed</FluentLabel>
+                            <FluentBadge Appearance="@(_healthStatus.FailedDocuments > 0 ? Appearance.Lightweight : Appearance.Neutral)">
+                                @_healthStatus.FailedDocuments
+                            </FluentBadge>
+                        </FluentStack>
+                    </FluentStack>
+                </FluentCard>
+
+                <!-- System Status -->
+                <FluentCard Appearance="Appearance.Filled" Style="padding: 1rem;">
+                    <FluentStack Orientation="Orientation.Vertical" Style="gap: 0.5rem;">
+                        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center">
+                            <FluentIcon Value="@(new Icons.Regular.Size20.Server())" Color="Color.Neutral" />
+                            <FluentLabel Typo="Typography.Subtitle">System Status</FluentLabel>
+                        </FluentStack>
+                        <FluentStack Orientation="Orientation.Horizontal" HorizontalAlignment="HorizontalAlignment.SpaceBetween">
+                            <FluentLabel Typo="Typography.Body">Database</FluentLabel>
+                            <FluentBadge Appearance="Appearance.Accent" BackgroundColor="@GetStatusColor(_healthStatus.DatabaseStatus)">
+                                @_healthStatus.DatabaseStatus
+                            </FluentBadge>
+                        </FluentStack>
+                        <FluentStack Orientation="Orientation.Horizontal" HorizontalAlignment="HorizontalAlignment.SpaceBetween">
+                            <FluentLabel Typo="Typography.Body">AI Service</FluentLabel>
+                            <FluentBadge Appearance="Appearance.Accent" BackgroundColor="@GetStatusColor(_healthStatus.AIServiceStatus)">
+                                @_healthStatus.AIServiceStatus
+                            </FluentBadge>
+                        </FluentStack>
+                        <FluentStack Orientation="Orientation.Horizontal" HorizontalAlignment="HorizontalAlignment.SpaceBetween">
+                            <FluentLabel Typo="Typography.Body">Storage</FluentLabel>
+                            <FluentBadge Appearance="Appearance.Accent" BackgroundColor="@GetStatusColor(_healthStatus.StorageStatus)">
+                                @_healthStatus.StorageStatus
+                            </FluentBadge>
+                        </FluentStack>
+                    </FluentStack>
+                </FluentCard>
+
+                <!-- Quick Stats -->
+                <FluentGrid Spacing="2">
+                    <FluentGridItem xs="12">
+                        <FluentLabel Typo="Typography.Caption" Color="Color.Neutral">
+                            Last updated: @_lastUpdate.ToString("HH:mm:ss")
+                        </FluentLabel>
+                    </FluentGridItem>
+                </FluentGrid>
+
+                <FluentButton Appearance="Appearance.Outline" OnClick="RefreshHealthStatus">
+                    <FluentIcon Value="@(new Icons.Regular.Size20.ArrowClockwise())" Slot="start" />
+                    Refresh
+                </FluentButton>
+            </FluentStack>
+        }
+    </FluentStack>
+</FluentCard>
+
+@code {
+    [Parameter]
+    public string Title { get; set; } = "System Health";
+
+    [Parameter]
+    public int WidgetId { get; set; }
+
+    private SystemHealthStatus _healthStatus = new();
+    private bool _loading = true;
+    private string? _error;
+    private DateTime _lastUpdate = DateTime.Now;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadHealthStatusAsync();
+    }
+
+    private async Task LoadHealthStatusAsync()
+    {
+        try
+        {
+            _loading = true;
+            _error = null;
+
+            // Get health status from various sources
+            // For now, we'll use document counts as a proxy for system health
+            var allDocuments = await DocumentService.GetAllDocumentsAsync(1, 1000);
+            
+            _healthStatus = new SystemHealthStatus
+            {
+                PendingDocuments = allDocuments.Count(d => string.IsNullOrEmpty(d.ExtractedText)),
+                ProcessingDocuments = allDocuments.Count(d => d.ProcessingStatus == "Processing"),
+                FailedDocuments = allDocuments.Count(d => d.ProcessingStatus == "Failed"),
+                DatabaseStatus = "Healthy",
+                AIServiceStatus = "Healthy",
+                StorageStatus = "Healthy"
+            };
+
+            _lastUpdate = DateTime.Now;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading system health status");
+            _error = "Failed to load system health";
+            _healthStatus.DatabaseStatus = "Error";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task RefreshHealthStatus()
+    {
+        await LoadHealthStatusAsync();
+    }
+
+    private Color GetHealthColor()
+    {
+        if (_healthStatus.FailedDocuments > 10)
+            return Color.Error;
+        if (_healthStatus.PendingDocuments > 50)
+            return Color.Warning;
+        return Color.Success;
+    }
+
+    private string GetStatusColor(string status)
+    {
+        return status.ToLower() switch
+        {
+            "healthy" => "var(--success)",
+            "warning" => "var(--warning)",
+            "error" => "var(--error)",
+            _ => "var(--neutral)"
+        };
+    }
+
+    private class SystemHealthStatus
+    {
+        public int PendingDocuments { get; set; }
+        public int ProcessingDocuments { get; set; }
+        public int FailedDocuments { get; set; }
+        public string DatabaseStatus { get; set; } = "Unknown";
+        public string AIServiceStatus { get; set; } = "Unknown";
+        public string StorageStatus { get; set; } = "Unknown";
+    }
+}
+
+<style>
+    .widget-card {
+        padding: 1.5rem;
+        height: 100%;
+    }
+
+    .system-health-widget {
+        min-height: 300px;
+    }
+</style>

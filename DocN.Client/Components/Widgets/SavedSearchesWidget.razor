@@ -1,0 +1,175 @@
+@using DocN.Data.Services
+@using DocN.Data.Models
+@using Microsoft.AspNetCore.Components
+@using Microsoft.FluentUI.AspNetCore.Components
+@using System.Security.Claims
+@inject ISavedSearchService SavedSearchService
+@inject ILogger<SavedSearchesWidget> Logger
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager NavigationManager
+
+<FluentCard Class="widget-card saved-searches-widget">
+    <FluentStack Orientation="Orientation.Vertical" Style="gap: 1rem;">
+        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center">
+            <FluentIcon Value="@(new string.BookmarkMultiple())" Color="Color.Accent" />
+            <FluentLabel Typo="Typography.H6">@Title</FluentLabel>
+        </FluentStack>
+
+        @if (_loading)
+        {
+            <FluentProgressRing />
+        }
+        else if (_error != null)
+        {
+            <FluentMessageBar Intent="MessageIntent.Error">
+                @_error
+            </FluentMessageBar>
+        }
+        else if (_savedSearches?.Any() == true)
+        {
+            <FluentStack Orientation="Orientation.Vertical" Style="gap: 0.75rem;">
+                @foreach (var search in _savedSearches)
+                {
+                    <FluentCard Class="search-item" @onclick="() => ExecuteSearch(search)">
+                        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" Style="gap: 1rem;">
+                            <FluentIcon Value="@GetSearchIcon(search.SearchType)" Color="Color.Neutral" />
+                            <FluentStack Orientation="Orientation.Vertical" Style="gap: 0.25rem; flex: 1;">
+                                <FluentLabel Typo="Typography.Body" Style="font-weight: 500;">@search.Name</FluentLabel>
+                                <FluentLabel Typo="Typography.Caption" Color="Color.Neutral">
+                                    @search.Query
+                                </FluentLabel>
+                                @if (search.LastUsedAt.HasValue)
+                                {
+                                    <FluentLabel Typo="Typography.Caption" Color="Color.Neutral">
+                                        Last used: @search.LastUsedAt.Value.ToString("MMM dd, yyyy")
+                                    </FluentLabel>
+                                }
+                            </FluentStack>
+                            <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.End" Style="gap: 0.25rem;">
+                                <FluentBadge Appearance="Appearance.Neutral">@search.SearchType</FluentBadge>
+                                @if (search.UseCount > 0)
+                                {
+                                    <FluentLabel Typo="Typography.Caption" Color="Color.Neutral">
+                                        Used @search.UseCount time@(search.UseCount != 1 ? "s" : "")
+                                    </FluentLabel>
+                                }
+                            </FluentStack>
+                        </FluentStack>
+                    </FluentCard>
+                }
+            </FluentStack>
+
+            <FluentButton Appearance="Appearance.Outline" OnClick="NavigateToSearch">
+                View All Searches
+            </FluentButton>
+        }
+        else
+        {
+            <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center" Style="padding: 2rem;">
+                <FluentIcon Value="@(new string.BookmarkMultiple())" Color="Color.Neutral" />
+                <FluentLabel Typo="Typography.Body" Color="Color.Neutral">No saved searches</FluentLabel>
+                <FluentButton Appearance="Appearance.Accent" OnClick="NavigateToSearch">
+                    Go to Search
+                </FluentButton>
+            </FluentStack>
+        }
+    </FluentStack>
+</FluentCard>
+
+@code {
+    [Parameter]
+    public string Title { get; set; } = "Saved Searches";
+
+    [Parameter]
+    public int WidgetId { get; set; }
+
+    [Parameter]
+    public int MaxCount { get; set; } = 5;
+
+    private List<SavedSearch>? _savedSearches;
+    private bool _loading = true;
+    private string? _error;
+    private string? _userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        _userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        await LoadSavedSearchesAsync();
+    }
+
+    private async Task LoadSavedSearchesAsync()
+    {
+        try
+        {
+            _loading = true;
+            _error = null;
+
+            if (string.IsNullOrEmpty(_userId))
+            {
+                _error = "User not authenticated";
+                return;
+            }
+
+            // Get most used searches
+            _savedSearches = (await SavedSearchService.GetMostUsedSearchesAsync(_userId, MaxCount))
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading saved searches");
+            _error = "Failed to load saved searches";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void ExecuteSearch(SavedSearch search)
+    {
+        // Navigate to search page with the query
+        NavigationManager.NavigateTo($"/search?q={Uri.EscapeDataString(search.Query)}&type={search.SearchType}");
+        
+        // Record search use asynchronously
+        _ = SavedSearchService.RecordSearchUseAsync(search.Id);
+    }
+
+    private void NavigateToSearch()
+    {
+        NavigationManager.NavigateTo("/search");
+    }
+
+    private string GetSearchIcon(string searchType)
+    {
+        return searchType.ToLower() switch
+        {
+            "hybrid" => new string.SearchSquare(),
+            "vector" => new string.VectorTriangle(),
+            "text" => new string.TextT(),
+            _ => new string.Search()
+        };
+    }
+}
+
+<style>
+    .widget-card {
+        padding: 1.5rem;
+        height: 100%;
+    }
+
+    .saved-searches-widget {
+        min-height: 300px;
+    }
+
+    .search-item {
+        padding: 0.75rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .search-item:hover {
+        background-color: var(--neutral-layer-2);
+        transform: translateX(4px);
+    }
+</style>
