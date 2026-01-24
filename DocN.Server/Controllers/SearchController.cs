@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
 using DocN.Data.Services;
 using DocN.Data.Models;
+using DocN.Data.Constants;
+using DocN.Server.Middleware;
 
 namespace DocN.Server.Controllers;
 
@@ -35,6 +37,7 @@ public class SearchController : ControllerBase
     /// <response code="400">Richiesta non valida (query vuota)</response>
     /// <response code="500">Errore interno del server</response>
     [HttpPost("hybrid")]
+    [RequirePermission(Permissions.DocumentRead)]
     [ProducesResponseType(typeof(SearchResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
@@ -93,6 +96,7 @@ public class SearchController : ControllerBase
     /// <response code="400">Richiesta non valida</response>
     /// <response code="500">Errore interno del server</response>
     [HttpPost("vector")]
+    [RequirePermission(Permissions.DocumentRead)]
     [ProducesResponseType(typeof(SearchResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
@@ -160,6 +164,7 @@ public class SearchController : ControllerBase
     /// <response code="400">Richiesta non valida</response>
     /// <response code="500">Errore interno del server</response>
     [HttpPost("text")]
+    [RequirePermission(Permissions.DocumentRead)]
     [ProducesResponseType(typeof(SearchResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]

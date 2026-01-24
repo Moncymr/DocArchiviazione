@@ -4,6 +4,8 @@ using DocN.Data;
 using DocN.Data.Models;
 using DocN.Data.Services;
 using Microsoft.Extensions.Logging;
+using DocN.Data.Constants;
+using DocN.Server.Middleware;
 
 namespace DocN.Server.Controllers;
 
@@ -108,6 +110,7 @@ public class ConfigController : ControllerBase
     /// - Health check periodico provider AI
     /// </remarks>
     [HttpPost("test")]
+    [RequirePermission(Permissions.RagConfig)]
     [ProducesResponseType(typeof(ConfigurationTestResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
@@ -670,6 +673,7 @@ public class ConfigController : ControllerBase
     /// <response code="200">Configuration retrieved successfully</response>
     /// <response code="404">No active configuration found</response>
     [HttpGet("active")]
+    [RequirePermission(Permissions.RagView)]
     [ProducesResponseType(typeof(AIConfiguration), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<AIConfiguration>> GetActiveConfiguration()
@@ -701,6 +705,7 @@ public class ConfigController : ControllerBase
     /// <response code="200">Configuration activated successfully</response>
     /// <response code="404">Configuration not found</response>
     [HttpPost("{id}/activate")]
+    [RequirePermission(Permissions.RagConfig)]
     [ProducesResponseType(typeof(AIConfiguration), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<AIConfiguration>> ActivateConfiguration(int id)
@@ -754,6 +759,7 @@ public class ConfigController : ControllerBase
     /// <returns>Diagnostic information about all configurations</returns>
     [HttpGet("diagnostics")]
     [HttpGet("diagnostica")] // Italian alias
+    [RequirePermission(Permissions.RagConfig)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<ActionResult> GetConfigurationDiagnostics()
     {
@@ -825,6 +831,7 @@ public class ConfigController : ControllerBase
     /// <returns>Success message</returns>
     /// <response code="200">Cache cleared successfully</response>
     [HttpPost("clear-cache")]
+    [RequirePermission(Permissions.AdminSystem)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public ActionResult ClearConfigurationCache()
     {
@@ -853,6 +860,7 @@ public class ConfigController : ControllerBase
     /// <returns>List of all AI configurations</returns>
     /// <response code="200">Configurations retrieved successfully</response>
     [HttpGet]
+    [RequirePermission(Permissions.RagView)]
     [ProducesResponseType(typeof(List<AIConfiguration>), StatusCodes.Status200OK)]
     public async Task<ActionResult<List<AIConfiguration>>> GetAllConfigurations()
     {
@@ -880,6 +888,7 @@ public class ConfigController : ControllerBase
     /// <response code="200">Configuration saved successfully</response>
     /// <response code="400">Invalid configuration data</response>
     [HttpPost]
+    [RequirePermission(Permissions.RagConfig)]
     [ProducesResponseType(typeof(AIConfiguration), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<AIConfiguration>> SaveConfiguration([FromBody] AIConfiguration config)
