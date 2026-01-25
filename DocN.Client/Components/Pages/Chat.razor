@@ -105,9 +105,9 @@
                                             <span class="confidence-label">Confidenza:</span>
                                             <div class="confidence-bar">
                                                 <div class="confidence-fill @GetConfidenceClass(GetConfidenceScore(msg.Metadata))" 
-                                                     style="width: @((GetConfidenceScore(msg.Metadata) * 100).ToString("F0"))%"></div>
+                                                     style="width: @(string.Format("{0:F0}", GetConfidenceScore(msg.Metadata) * 100))%"></div>
                                             </div>
-                                            <span class="confidence-value">@((GetConfidenceScore(msg.Metadata) * 100).ToString("F0"))%</span>
+                                            <span class="confidence-value">@(string.Format("{0:F0}", GetConfidenceScore(msg.Metadata) * 100))%</span>
                                         </div>
                                     }
                                     
@@ -116,12 +116,12 @@
                                         <span class="feedback-label">Questa risposta è stata utile?</span>
                                         <div class="feedback-buttons">
                                             <button class="btn-feedback @(msg.UserRating == 5 ? "active thumbs-up" : "")" 
-                                                    @onclick="async () => await RateMessage(msg, 5)"
+                                                    @onclick="@(async () => await RateMessage(msg, 5))"
                                                     title="Utile">
                                                 👍
                                             </button>
                                             <button class="btn-feedback @(msg.UserRating == 1 ? "active thumbs-down" : "")" 
-                                                    @onclick="async () => await RateMessage(msg, 1)"
+                                                    @onclick="@(async () => await RateMessage(msg, 1))"
                                                     title="Non utile">
                                                 👎
                                             </button>
@@ -162,7 +162,7 @@
                                                         @if (sourceInfo.similarityScore > 0)
                                                         {
                                                             <span class="similarity-badge @GetSimilarityClass(sourceInfo.similarityScore)">
-                                                                @((sourceInfo.similarityScore * 100).ToString("F0"))% match
+                                                                @(string.Format("{0:F0}", sourceInfo.similarityScore * 100))% match
                                                             </span>
                                                         }
                                                     </div>
