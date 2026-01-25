@@ -111,9 +111,27 @@
 
     protected override async Task OnInitializedAsync()
     {
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        _userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
-        await LoadHealthStatusAsync();
+        try
+        {
+            _loading = true;
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            _userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            
+            if (string.IsNullOrEmpty(_userId))
+            {
+                _error = "User not authenticated";
+                _loading = false;
+                return;
+            }
+            
+            await LoadHealthStatusAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error initializing system health widget");
+            _error = "Failed to initialize system health";
+            _loading = false;
+        }
     }
 
     private async Task LoadHealthStatusAsync()
@@ -123,15 +141,9 @@
             _loading = true;
             _error = null;
 
-            if (string.IsNullOrEmpty(_userId))
-            {
-                _error = "User not authenticated";
-                return;
-            }
-
             // Get health status from various sources
             // For now, we'll use document counts as a proxy for system health
-            var allDocuments = await DocumentService.GetUserDocumentsAsync(_userId, 1, 1000);
+            var allDocuments = await DocumentService.GetUserDocumentsAsync(_userId!, 1, 1000);
             
             _healthStatus = new SystemHealthStatus
             {

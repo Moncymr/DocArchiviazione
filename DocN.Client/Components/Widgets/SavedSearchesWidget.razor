@@ -126,15 +126,25 @@
         }
     }
 
-    private async Task ExecuteSearch(SavedSearch search)
+    private void ExecuteSearch(SavedSearch search)
     {
         // Navigate to search page with the query
         NavigationManager.NavigateTo($"/search?q={Uri.EscapeDataString(search.Query)}&type={search.SearchType}");
         
-        // Record search use asynchronously
+        // Record search use asynchronously with error handling
         if (!string.IsNullOrEmpty(_userId))
         {
-            _ = SavedSearchService.RecordSearchUseAsync(search.Id, _userId);
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await SavedSearchService.RecordSearchUseAsync(search.Id, _userId);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError(ex, "Error recording search use for search {SearchId}", search.Id);
+                }
+            });
         }
     }
 
