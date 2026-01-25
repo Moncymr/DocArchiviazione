@@ -174,6 +174,7 @@ public class NoOpSemanticRAGService : ISemanticRAGService
 
         // Use raw SQL with VECTOR_DISTANCE function for document-level search
         // Using CTE to calculate distance once for better performance
+        // IMPORTANT: VECTOR_DISTANCE returns distance (0-2), we convert to similarity (0-1) using 1-distance
         var docSql = $@"
             WITH ScoredDocs AS (
                 SELECT 
@@ -181,7 +182,7 @@ public class NoOpSemanticRAGService : ISemanticRAGService
                     d.FileName,
                     d.ActualCategory,
                     d.ExtractedText,
-                    CAST(VECTOR_DISTANCE('cosine', d.{docVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension}))) AS FLOAT) AS SimilarityScore
+                    CAST((1 - VECTOR_DISTANCE('cosine', d.{docVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension})))) AS FLOAT) AS SimilarityScore
                 FROM Documents d
                 WHERE d.OwnerId = @userId
                     AND d.{docVectorColumn} IS NOT NULL
@@ -193,6 +194,7 @@ public class NoOpSemanticRAGService : ISemanticRAGService
 
         // Use raw SQL with VECTOR_DISTANCE function for chunk-level search
         // Using CTE to calculate distance once for better performance
+        // IMPORTANT: VECTOR_DISTANCE returns distance (0-2), we convert to similarity (0-1) using 1-distance
         var chunkSql = $@"
             WITH ScoredChunks AS (
                 SELECT 
@@ -201,7 +203,7 @@ public class NoOpSemanticRAGService : ISemanticRAGService
                     dc.ChunkIndex,
                     d.FileName,
                     d.ActualCategory,
-                    CAST(VECTOR_DISTANCE('cosine', dc.{chunkVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension}))) AS FLOAT) AS SimilarityScore
+                    CAST((1 - VECTOR_DISTANCE('cosine', dc.{chunkVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension})))) AS FLOAT) AS SimilarityScore
                 FROM DocumentChunks dc
                 INNER JOIN Documents d ON dc.DocumentId = d.Id
                 WHERE d.OwnerId = @userId

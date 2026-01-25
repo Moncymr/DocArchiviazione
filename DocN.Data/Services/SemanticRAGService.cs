@@ -646,6 +646,7 @@ Il sistema non fornisce risposte basate su conoscenze generali, ma solo su infor
 
         // Use raw SQL with VECTOR_DISTANCE function for document-level search
         // Note: This requires SQL Server 2025 with VECTOR type support
+        // IMPORTANT: VECTOR_DISTANCE returns distance (0-2), we convert to similarity (0-1) using 1-distance
         var sql = $@"
             WITH DocumentScores AS (
                 SELECT TOP (@topK)
@@ -653,11 +654,11 @@ Il sistema non fornisce risposte basate su conoscenze generali, ma solo su infor
                     d.FileName,
                     d.ActualCategory,
                     d.ExtractedText,
-                    CAST(VECTOR_DISTANCE('cosine', d.{docVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension}))) AS FLOAT) AS SimilarityScore
+                    CAST((1 - VECTOR_DISTANCE('cosine', d.{docVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension})))) AS FLOAT) AS SimilarityScore
                 FROM Documents d
                 WHERE d.OwnerId = @userId
                     AND d.{docVectorColumn} IS NOT NULL
-                    AND VECTOR_DISTANCE('cosine', d.{docVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension}))) >= @minSimilarity
+                    AND (1 - VECTOR_DISTANCE('cosine', d.{docVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension})))) >= @minSimilarity
                 ORDER BY SimilarityScore DESC
             ),
             ChunkScores AS (
@@ -667,12 +668,12 @@ Il sistema non fornisce risposte basate su conoscenze generali, ma solo su infor
                     d.ActualCategory,
                     dc.ChunkText,
                     dc.ChunkIndex,
-                    CAST(VECTOR_DISTANCE('cosine', dc.{chunkVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension}))) AS FLOAT) AS SimilarityScore
+                    CAST((1 - VECTOR_DISTANCE('cosine', dc.{chunkVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension})))) AS FLOAT) AS SimilarityScore
                 FROM DocumentChunks dc
                 INNER JOIN Documents d ON dc.DocumentId = d.Id
                 WHERE d.OwnerId = @userId
                     AND dc.{chunkVectorColumn} IS NOT NULL
-                    AND VECTOR_DISTANCE('cosine', dc.{chunkVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension}))) >= @minSimilarity
+                    AND (1 - VECTOR_DISTANCE('cosine', dc.{chunkVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension})))) >= @minSimilarity
                 ORDER BY SimilarityScore DESC
             )
             SELECT 
@@ -882,6 +883,7 @@ Il sistema non fornisce risposte basate su conoscenze generali, ma solo su infor
 
         // Use raw SQL with VECTOR_DISTANCE function for document-level search
         // Using CTE to calculate distance once for better performance
+        // IMPORTANT: VECTOR_DISTANCE returns distance (0-2), we convert to similarity (0-1) using 1-distance
         var docSql = $@"
             WITH ScoredDocs AS (
                 SELECT 
@@ -889,7 +891,7 @@ Il sistema non fornisce risposte basate su conoscenze generali, ma solo su infor
                     d.FileName,
                     d.ActualCategory,
                     d.ExtractedText,
-                    CAST(VECTOR_DISTANCE('cosine', d.{docVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension}))) AS FLOAT) AS SimilarityScore
+                    CAST((1 - VECTOR_DISTANCE('cosine', d.{docVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension})))) AS FLOAT) AS SimilarityScore
                 FROM Documents d
                 WHERE d.OwnerId = @userId
                     AND d.{docVectorColumn} IS NOT NULL
@@ -901,6 +903,7 @@ Il sistema non fornisce risposte basate su conoscenze generali, ma solo su infor
 
         // Use raw SQL with VECTOR_DISTANCE function for chunk-level search
         // Using CTE to calculate distance once for better performance
+        // IMPORTANT: VECTOR_DISTANCE returns distance (0-2), we convert to similarity (0-1) using 1-distance
         var chunkSql = $@"
             WITH ScoredChunks AS (
                 SELECT 
@@ -909,7 +912,7 @@ Il sistema non fornisce risposte basate su conoscenze generali, ma solo su infor
                     dc.ChunkIndex,
                     d.FileName,
                     d.ActualCategory,
-                    CAST(VECTOR_DISTANCE('cosine', dc.{chunkVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension}))) AS FLOAT) AS SimilarityScore
+                    CAST((1 - VECTOR_DISTANCE('cosine', dc.{chunkVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension})))) AS FLOAT) AS SimilarityScore
                 FROM DocumentChunks dc
                 INNER JOIN Documents d ON dc.DocumentId = d.Id
                 WHERE d.OwnerId = @userId

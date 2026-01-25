@@ -304,11 +304,11 @@ Il sistema non fornisce risposte basate su conoscenze generali, ma solo su infor
                     d.FileName,
                     d.ActualCategory,
                     d.ExtractedText,
-                    CAST(VECTOR_DISTANCE('cosine', d.{docVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension}))) AS FLOAT) AS SimilarityScore
+                    CAST((1 - VECTOR_DISTANCE('cosine', d.{docVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension})))) AS FLOAT) AS SimilarityScore
                 FROM Documents d
                 WHERE d.OwnerId = @userId
                     AND d.{docVectorColumn} IS NOT NULL
-                    AND VECTOR_DISTANCE('cosine', d.{docVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension}))) >= @minSimilarity
+                    AND (1 - VECTOR_DISTANCE('cosine', d.{docVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension})))) >= @minSimilarity
                 ORDER BY SimilarityScore DESC
             ),
             ChunkScores AS (
@@ -318,12 +318,12 @@ Il sistema non fornisce risposte basate su conoscenze generali, ma solo su infor
                     d.ActualCategory,
                     dc.ChunkText,
                     dc.ChunkIndex,
-                    CAST(VECTOR_DISTANCE('cosine', dc.{chunkVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension}))) AS FLOAT) AS SimilarityScore
+                    CAST((1 - VECTOR_DISTANCE('cosine', dc.{chunkVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension})))) AS FLOAT) AS SimilarityScore
                 FROM DocumentChunks dc
                 INNER JOIN Documents d ON dc.DocumentId = d.Id
                 WHERE d.OwnerId = @userId
                     AND dc.{chunkVectorColumn} IS NOT NULL
-                    AND VECTOR_DISTANCE('cosine', dc.{chunkVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension}))) >= @minSimilarity
+                    AND (1 - VECTOR_DISTANCE('cosine', dc.{chunkVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension})))) >= @minSimilarity
                 ORDER BY SimilarityScore DESC
             )
             SELECT 
