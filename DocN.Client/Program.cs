@@ -227,6 +227,9 @@ builder.Services.AddScoped<ISavedSearchService, SavedSearchService>();
 builder.Services.AddScoped<ISearchSuggestionService, SearchSuggestionService>();
 builder.Services.AddScoped<IUserActivityService, UserActivityService>();
 
+// Notification Service for real-time updates
+builder.Services.AddSingleton<DocN.Client.Services.NotificationClientService>();
+
 // Configure Semantic Kernel for RAG Service (only if AI services are configured)
 var azureOpenAIEndpoint = builder.Configuration["AzureOpenAI:Endpoint"];
 var azureOpenAIKey = builder.Configuration["AzureOpenAI:ApiKey"];
