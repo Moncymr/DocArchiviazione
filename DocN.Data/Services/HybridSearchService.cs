@@ -239,11 +239,12 @@ public class HybridSearchService : IHybridSearchService
             whereConditions.Add("d.Visibility = @visibilityFilter");
         }
         
-        whereConditions.Add($"VECTOR_DISTANCE('cosine', d.{docVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension}))) >= @minSimilarity");
+        whereConditions.Add($"(1 - VECTOR_DISTANCE('cosine', d.{docVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension})))) >= @minSimilarity");
         
         var whereClause = string.Join(" AND ", whereConditions);
 
         // Use raw SQL with VECTOR_DISTANCE function
+        // IMPORTANT: VECTOR_DISTANCE returns distance (0-2), we convert to similarity (0-1) using 1-distance
         var sql = $@"
             SELECT TOP (@topK)
                 d.Id,
@@ -256,7 +257,7 @@ public class HybridSearchService : IHybridSearchService
                 d.UploadedAt,
                 d.OwnerId,
                 d.Visibility,
-                CAST(VECTOR_DISTANCE('cosine', d.{docVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension}))) AS FLOAT) AS SimilarityScore
+                CAST((1 - VECTOR_DISTANCE('cosine', d.{docVectorColumn}, CAST(@queryEmbedding AS VECTOR({embeddingDimension})))) AS FLOAT) AS SimilarityScore
             FROM Documents d
             WHERE {whereClause}
             ORDER BY SimilarityScore DESC";
