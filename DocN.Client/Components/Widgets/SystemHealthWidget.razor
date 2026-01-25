@@ -1,103 +1,74 @@
 @using DocN.Data.Services
 @using DocN.Data.Models
-@using Microsoft.AspNetCore.Components
-@using Microsoft.FluentUI.AspNetCore.Components
-@inject IDocumentService DocumentService
+@using System.Security.Claims
+@inject IDocumentStatisticsService StatisticsService
+@inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ILogger<SystemHealthWidget> Logger
 
-<FluentCard Class="widget-card system-health-widget">
-    <FluentStack Orientation="Orientation.Vertical" Style="gap: 1rem;">
-        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center">
-            <FluentIcon Value="@(new string.HeartPulse())" Color="@GetHealthColor()" />
-            <FluentLabel Typo="Typography.H6">@Title</FluentLabel>
-        </FluentStack>
+<div class="widget-card system-health-widget">
+    <div class="widget-header">
+        <h3>💚 @Title</h3>
+    </div>
 
-        @if (_loading)
-        {
-            <FluentProgressRing />
-        }
-        else if (_error != null)
-        {
-            <FluentMessageBar Intent="MessageIntent.Error">
-                @_error
-            </FluentMessageBar>
-        }
-        else
-        {
-            <FluentStack Orientation="Orientation.Vertical" Style="gap: 1rem;">
-                <!-- Processing Queue Status -->
-                <FluentCard Appearance="Appearance.Filled" Style="padding: 1rem;">
-                    <FluentStack Orientation="Orientation.Vertical" Style="gap: 0.5rem;">
-                        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center">
-                            <FluentIcon Value="@(new Icons.Regular.Size20.Queue())" Color="Color.Neutral" />
-                            <FluentLabel Typo="Typography.Subtitle">Processing Queue</FluentLabel>
-                        </FluentStack>
-                        <FluentStack Orientation="Orientation.Horizontal" HorizontalAlignment="HorizontalAlignment.SpaceBetween">
-                            <FluentLabel Typo="Typography.Body">Pending</FluentLabel>
-                            <FluentBadge Appearance="Appearance.Neutral">@_healthStatus.PendingDocuments</FluentBadge>
-                        </FluentStack>
-                        <FluentStack Orientation="Orientation.Horizontal" HorizontalAlignment="HorizontalAlignment.SpaceBetween">
-                            <FluentLabel Typo="Typography.Body">Processing</FluentLabel>
-                            <FluentBadge Appearance="Appearance.Accent">@_healthStatus.ProcessingDocuments</FluentBadge>
-                        </FluentStack>
-                        <FluentStack Orientation="Orientation.Horizontal" HorizontalAlignment="HorizontalAlignment.SpaceBetween">
-                            <FluentLabel Typo="Typography.Body">Failed</FluentLabel>
-                            <FluentBadge Appearance="@(_healthStatus.FailedDocuments > 0 ? Appearance.Lightweight : Appearance.Neutral)">
-                                @_healthStatus.FailedDocuments
-                            </FluentBadge>
-                        </FluentStack>
-                    </FluentStack>
-                </FluentCard>
+    @if (_loading)
+    {
+        <div class="widget-loading">Caricamento...</div>
+    }
+    else if (_error != null)
+    {
+        <div class="widget-error">@_error</div>
+    }
+    else
+    {
+        <div class="health-sections">
+            <!-- Processing Queue Status -->
+            <div class="health-section">
+                <h4>⚙️ Coda Elaborazione</h4>
+                <div class="health-stats">
+                    <div class="health-stat">
+                        <span>In Coda</span>
+                        <span class="stat-badge warning">@_healthStatus.PendingDocuments</span>
+                    </div>
+                    <div class="health-stat">
+                        <span>In Elaborazione</span>
+                        <span class="stat-badge info">@_healthStatus.ProcessingDocuments</span>
+                    </div>
+                    <div class="health-stat">
+                        <span>Falliti</span>
+                        <span class="stat-badge @(_healthStatus.FailedDocuments > 0 ? "error" : "")">@_healthStatus.FailedDocuments</span>
+                    </div>
+                </div>
+            </div>
 
-                <!-- System Status -->
-                <FluentCard Appearance="Appearance.Filled" Style="padding: 1rem;">
-                    <FluentStack Orientation="Orientation.Vertical" Style="gap: 0.5rem;">
-                        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center">
-                            <FluentIcon Value="@(new Icons.Regular.Size20.Server())" Color="Color.Neutral" />
-                            <FluentLabel Typo="Typography.Subtitle">System Status</FluentLabel>
-                        </FluentStack>
-                        <FluentStack Orientation="Orientation.Horizontal" HorizontalAlignment="HorizontalAlignment.SpaceBetween">
-                            <FluentLabel Typo="Typography.Body">Database</FluentLabel>
-                            <FluentBadge Appearance="Appearance.Accent" BackgroundColor="@GetStatusColor(_healthStatus.DatabaseStatus)">
-                                @_healthStatus.DatabaseStatus
-                            </FluentBadge>
-                        </FluentStack>
-                        <FluentStack Orientation="Orientation.Horizontal" HorizontalAlignment="HorizontalAlignment.SpaceBetween">
-                            <FluentLabel Typo="Typography.Body">AI Service</FluentLabel>
-                            <FluentBadge Appearance="Appearance.Accent" BackgroundColor="@GetStatusColor(_healthStatus.AIServiceStatus)">
-                                @_healthStatus.AIServiceStatus
-                            </FluentBadge>
-                        </FluentStack>
-                        <FluentStack Orientation="Orientation.Horizontal" HorizontalAlignment="HorizontalAlignment.SpaceBetween">
-                            <FluentLabel Typo="Typography.Body">Storage</FluentLabel>
-                            <FluentBadge Appearance="Appearance.Accent" BackgroundColor="@GetStatusColor(_healthStatus.StorageStatus)">
-                                @_healthStatus.StorageStatus
-                            </FluentBadge>
-                        </FluentStack>
-                    </FluentStack>
-                </FluentCard>
+            <!-- System Status -->
+            <div class="health-section">
+                <h4>🖥️ Stato Sistema</h4>
+                <div class="health-stats">
+                    <div class="health-stat">
+                        <span>Database</span>
+                        <span class="status-badge @GetStatusClass(_healthStatus.DatabaseStatus)">@_healthStatus.DatabaseStatus</span>
+                    </div>
+                    <div class="health-stat">
+                        <span>Servizio AI</span>
+                        <span class="status-badge @GetStatusClass(_healthStatus.AIServiceStatus)">@_healthStatus.AIServiceStatus</span>
+                    </div>
+                    <div class="health-stat">
+                        <span>Storage</span>
+                        <span class="status-badge @GetStatusClass(_healthStatus.StorageStatus)">@_healthStatus.StorageStatus</span>
+                    </div>
+                </div>
+            </div>
 
-                <!-- Quick Stats -->
-                <FluentGrid Spacing="2">
-                    <FluentGridItem xs="12">
-                        <FluentLabel Typo="Typography.Caption" Color="Color.Neutral">
-                            Last updated: @_lastUpdate.ToString("HH:mm:ss")
-                        </FluentLabel>
-                    </FluentGridItem>
-                </FluentGrid>
-
-                <FluentButton Appearance="Appearance.Outline" OnClick="RefreshHealthStatus">
-                    <FluentIcon Value="@(new Icons.Regular.Size20.ArrowClockwise())" Slot="start" />
-                    Refresh
-                </FluentButton>
-            </FluentStack>
-        }
-    </FluentStack>
-</FluentCard>
+            <div class="last-update">
+                Ultimo aggiornamento: @_lastUpdate.ToString("HH:mm:ss")
+            </div>
+        </div>
+    }
+</div>
 
 @code {
     [Parameter]
-    public string Title { get; set; } = "System Health";
+    public string Title { get; set; } = "Stato Sistema";
 
     [Parameter]
     public int WidgetId { get; set; }
@@ -119,17 +90,25 @@
             _loading = true;
             _error = null;
 
-            // Get health status from various sources
-            // For now, we'll use document counts as a proxy for system health
-            var allDocuments = await DocumentService.GetAllDocumentsAsync(1, 1000);
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            if (string.IsNullOrEmpty(userId))
+            {
+                _error = "Utente non autenticato";
+                return;
+            }
+
+            // Get health status from document statistics
+            var stats = await StatisticsService.GetStatisticsAsync(userId);
             
             _healthStatus = new SystemHealthStatus
             {
-                PendingDocuments = allDocuments.Count(d => string.IsNullOrEmpty(d.ExtractedText)),
-                ProcessingDocuments = allDocuments.Count(d => d.ProcessingStatus == "Processing"),
-                FailedDocuments = allDocuments.Count(d => d.ProcessingStatus == "Failed"),
+                PendingDocuments = stats.PendingEmbeddingsCount,
+                ProcessingDocuments = stats.ProcessingEmbeddingsCount,
+                FailedDocuments = 0,
                 DatabaseStatus = "Healthy",
-                AIServiceStatus = "Healthy",
+                AIServiceStatus = stats.CompletedEmbeddingsCount > 0 ? "Healthy" : "Unknown",
                 StorageStatus = "Healthy"
             };
 
@@ -138,7 +117,7 @@
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error loading system health status");
-            _error = "Failed to load system health";
+            _error = "Errore nel caricamento stato sistema";
             _healthStatus.DatabaseStatus = "Error";
         }
         finally
@@ -147,28 +126,14 @@
         }
     }
 
-    private async Task RefreshHealthStatus()
-    {
-        await LoadHealthStatusAsync();
-    }
-
-    private Color GetHealthColor()
-    {
-        if (_healthStatus.FailedDocuments > 10)
-            return Color.Error;
-        if (_healthStatus.PendingDocuments > 50)
-            return Color.Warning;
-        return Color.Success;
-    }
-
-    private string GetStatusColor(string status)
+    private string GetStatusClass(string status)
     {
         return status.ToLower() switch
         {
-            "healthy" => "var(--success)",
-            "warning" => "var(--warning)",
-            "error" => "var(--error)",
-            _ => "var(--neutral)"
+            "healthy" => "success",
+            "warning" => "warning",
+            "error" => "error",
+            _ => ""
         };
     }
 
@@ -185,11 +150,110 @@
 
 <style>
     .widget-card {
+        background: white;
+        border-radius: 10px;
         padding: 1.5rem;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         height: 100%;
     }
 
-    .system-health-widget {
-        min-height: 300px;
+    .widget-header h3 {
+        margin: 0 0 1.5rem 0;
+        font-size: 1.2rem;
+        color: #333;
+    }
+
+    .widget-loading {
+        text-align: center;
+        padding: 2rem;
+        color: #666;
+    }
+
+    .widget-error {
+        padding: 1rem;
+        background: #f8d7da;
+        color: #721c24;
+        border-radius: 5px;
+    }
+
+    .health-sections {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .health-section h4 {
+        margin: 0 0 0.75rem 0;
+        font-size: 0.95rem;
+        color: #666;
+    }
+
+    .health-stats {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .health-stat {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.5rem;
+        background: #f8f9fa;
+        border-radius: 4px;
+    }
+
+    .stat-badge {
+        background: #e9ecef;
+        color: #666;
+        padding: 0.25rem 0.75rem;
+        border-radius: 12px;
+        font-size: 0.85rem;
+        font-weight: 600;
+    }
+
+    .stat-badge.warning {
+        background: #fff3cd;
+        color: #856404;
+    }
+
+    .stat-badge.info {
+        background: #cfe2ff;
+        color: #084298;
+    }
+
+    .stat-badge.error {
+        background: #f8d7da;
+        color: #721c24;
+    }
+
+    .status-badge {
+        padding: 0.25rem 0.75rem;
+        border-radius: 12px;
+        font-size: 0.85rem;
+        font-weight: 600;
+    }
+
+    .status-badge.success {
+        background: #d1e7dd;
+        color: #0a3622;
+    }
+
+    .status-badge.warning {
+        background: #fff3cd;
+        color: #856404;
+    }
+
+    .status-badge.error {
+        background: #f8d7da;
+        color: #721c24;
+    }
+
+    .last-update {
+        text-align: center;
+        font-size: 0.75rem;
+        color: #999;
+        padding-top: 1rem;
+        border-top: 1px solid #e9ecef;
     }
 </style>

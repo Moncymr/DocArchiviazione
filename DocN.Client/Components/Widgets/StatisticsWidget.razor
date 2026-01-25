@@ -1,82 +1,68 @@
 @using DocN.Data.Services
 @using DocN.Data.Models
-@using Microsoft.AspNetCore.Components
-@using Microsoft.FluentUI.AspNetCore.Components
+@using System.Security.Claims
 @inject IDocumentStatisticsService StatisticsService
 @inject ILogger<StatisticsWidget> Logger
 @inject AuthenticationStateProvider AuthenticationStateProvider
-@inject System.Security.Claims.ClaimsPrincipal User
 
-<FluentCard Class="widget-card statistics-widget">
-    <FluentStack Orientation="Orientation.Vertical" Style="gap: 1rem;">
-        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center">
-            <FluentIcon Value="@(new string.ChartMultiple())" Color="Color.Accent" />
-            <FluentLabel Typo="Typography.H6">@Title</FluentLabel>
-        </FluentStack>
+<div class="widget-card statistics-widget">
+    <div class="widget-header">
+        <h3>📊 @Title</h3>
+    </div>
 
-        @if (_loading)
+    @if (_loading)
+    {
+        <div class="widget-loading">Caricamento...</div>
+    }
+    else if (_error != null)
+    {
+        <div class="widget-error">@_error</div>
+    }
+    else if (_statistics != null)
+    {
+        <div class="stats-grid">
+            <div class="stat-item">
+                <div class="stat-label">Documenti Totali</div>
+                <div class="stat-value">@_statistics.TotalDocuments</div>
+            </div>
+
+            <div class="stat-item">
+                <div class="stat-label">Spazio Totale</div>
+                <div class="stat-value">@FormatFileSize(_statistics.TotalStorageBytes)</div>
+            </div>
+
+            <div class="stat-item">
+                <div class="stat-label">Completati</div>
+                <div class="stat-value success">@_statistics.CompletedEmbeddingsCount</div>
+            </div>
+
+            <div class="stat-item">
+                <div class="stat-label">In Coda</div>
+                <div class="stat-value warning">@_statistics.PendingEmbeddingsCount</div>
+            </div>
+        </div>
+
+        @if (_statistics.DocumentsByCategory?.Any() == true)
         {
-            <FluentProgressRing />
-        }
-        else if (_error != null)
-        {
-            <FluentMessageBar Intent="MessageIntent.Error">
-                @_error
-            </FluentMessageBar>
-        }
-        else if (_statistics != null)
-        {
-            <FluentGrid Spacing="2">
-                <FluentGridItem xs="12" sm="6">
-                    <FluentStack Orientation="Orientation.Vertical" Style="gap: 0.5rem;">
-                        <FluentLabel Typo="Typography.Body">Total Documents</FluentLabel>
-                        <FluentLabel Typo="Typography.H4" Color="Color.Accent">@_statistics.TotalDocuments</FluentLabel>
-                    </FluentStack>
-                </FluentGridItem>
-
-                <FluentGridItem xs="12" sm="6">
-                    <FluentStack Orientation="Orientation.Vertical" Style="gap: 0.5rem;">
-                        <FluentLabel Typo="Typography.Body">Total Size</FluentLabel>
-                        <FluentLabel Typo="Typography.H4" Color="Color.Accent">@FormatFileSize(_statistics.TotalStorageBytes)</FluentLabel>
-                    </FluentStack>
-                </FluentGridItem>
-
-                <FluentGridItem xs="12" sm="6">
-                    <FluentStack Orientation="Orientation.Vertical" Style="gap: 0.5rem;">
-                        <FluentLabel Typo="Typography.Body">Completed</FluentLabel>
-                        <FluentLabel Typo="Typography.H4" Color="Color.Success">@_statistics.CompletedEmbeddingsCount</FluentLabel>
-                    </FluentStack>
-                </FluentGridItem>
-
-                <FluentGridItem xs="12" sm="6">
-                    <FluentStack Orientation="Orientation.Vertical" Style="gap: 0.5rem;">
-                        <FluentLabel Typo="Typography.Body">Pending</FluentLabel>
-                        <FluentLabel Typo="Typography.H4" Color="Color.Warning">@_statistics.PendingEmbeddingsCount</FluentLabel>
-                    </FluentStack>
-                </FluentGridItem>
-            </FluentGrid>
-
-            @if (_statistics.DocumentsByCategory?.Any() == true)
-            {
-                <FluentDivider />
-                <FluentLabel Typo="Typography.Subtitle">By Category</FluentLabel>
-                <FluentStack Orientation="Orientation.Vertical" Style="gap: 0.5rem;">
+            <div class="widget-section">
+                <h4>Per Categoria</h4>
+                <div class="category-list">
                     @foreach (var category in _statistics.DocumentsByCategory.Take(5))
                     {
-                        <FluentStack Orientation="Orientation.Horizontal" HorizontalAlignment="HorizontalAlignment.SpaceBetween">
-                            <FluentLabel>@category.Key</FluentLabel>
-                            <FluentBadge Appearance="Appearance.Neutral">@category.Value</FluentBadge>
-                        </FluentStack>
+                        <div class="category-row">
+                            <span>@category.Key</span>
+                            <span class="badge">@category.Value</span>
+                        </div>
                     }
-                </FluentStack>
-            }
+                </div>
+            </div>
         }
-    </FluentStack>
-</FluentCard>
+    }
+</div>
 
 @code {
     [Parameter]
-    public string Title { get; set; } = "Document Statistics";
+    public string Title { get; set; } = "Statistiche Documenti";
 
     [Parameter]
     public int WidgetId { get; set; }
@@ -98,11 +84,11 @@
             _error = null;
             
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-            var userId = authState.User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier);
+            var userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             
             if (string.IsNullOrEmpty(userId))
             {
-                _error = "User not authenticated";
+                _error = "Utente non autenticato";
                 return;
             }
             
@@ -111,7 +97,7 @@
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error loading statistics");
-            _error = "Failed to load statistics";
+            _error = "Errore nel caricamento statistiche";
         }
         finally
         {
@@ -135,11 +121,98 @@
 
 <style>
     .widget-card {
+        background: white;
+        border-radius: 10px;
         padding: 1.5rem;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         height: 100%;
     }
 
-    .statistics-widget {
-        min-height: 300px;
+    .widget-header h3 {
+        margin: 0 0 1.5rem 0;
+        font-size: 1.2rem;
+        color: #333;
+    }
+
+    .widget-loading {
+        text-align: center;
+        padding: 2rem;
+        color: #666;
+    }
+
+    .widget-error {
+        padding: 1rem;
+        background: #f8d7da;
+        color: #721c24;
+        border-radius: 5px;
+    }
+
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .stat-item {
+        padding: 1rem;
+        background: #f8f9fa;
+        border-radius: 8px;
+    }
+
+    .stat-label {
+        font-size: 0.85rem;
+        color: #666;
+        margin-bottom: 0.5rem;
+    }
+
+    .stat-value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #2563eb;
+    }
+
+    .stat-value.success {
+        color: #198754;
+    }
+
+    .stat-value.warning {
+        color: #ffc107;
+    }
+
+    .widget-section {
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid #e9ecef;
+    }
+
+    .widget-section h4 {
+        margin: 0 0 0.75rem 0;
+        font-size: 0.95rem;
+        color: #666;
+    }
+
+    .category-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .category-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.5rem;
+        background: #f8f9fa;
+        border-radius: 4px;
+    }
+
+    .badge {
+        background: #2563eb;
+        color: white;
+        padding: 0.25rem 0.75rem;
+        border-radius: 12px;
+        font-size: 0.85rem;
+        font-weight: 600;
     }
 </style>
