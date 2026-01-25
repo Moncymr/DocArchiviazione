@@ -48,6 +48,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<DashboardWidget> DashboardWidgets { get; set; } = null!;
     public DbSet<SavedSearch> SavedSearches { get; set; } = null!;
     public DbSet<UserActivity> UserActivities { get; set; } = null!;
+    
+    // Response feedback for RAG quality improvement
+    public DbSet<ResponseFeedback> ResponseFeedbacks { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

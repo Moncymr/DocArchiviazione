@@ -1,0 +1,140 @@
+.search-results-container {
+    max-width: 900px;
+    margin: 20px auto;
+    padding: 20px;
+}
+
+.main-response {
+    background-color: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+}
+
+.main-response h3 {
+    margin-top: 0;
+    color: #333;
+    font-size: 20px;
+}
+
+.response-content {
+    line-height: 1.6;
+    color: #555;
+}
+
+.source-documents {
+    background-color: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin: 20px 0;
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+}
+
+.section-header h4 {
+    margin: 0;
+    color: #333;
+}
+
+.toggle-icon {
+    font-size: 12px;
+    color: #666;
+}
+
+.documents-list {
+    margin-top: 15px;
+}
+
+.document-item {
+    padding: 15px;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.document-item:hover {
+    background-color: #f8f9fa;
+    border-color: #007bff;
+    transform: translateX(5px);
+}
+
+.document-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.document-title {
+    font-weight: 600;
+    color: #333;
+    flex: 1;
+}
+
+.similarity-score {
+    background-color: #e7f3ff;
+    color: #0066cc;
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.document-meta {
+    font-size: 13px;
+    color: #666;
+    margin-bottom: 8px;
+}
+
+.chunk-preview {
+    font-size: 14px;
+    color: #777;
+    font-style: italic;
+    padding: 8px;
+    background-color: #f8f9fa;
+    border-left: 3px solid #007bff;
+    margin-top: 8px;
+}
+
+.alternative-suggestions {
+    background-color: #fff3cd;
+    padding: 20px;
+    border-radius: 8px;
+    border: 1px solid #ffeaa7;
+    margin: 20px 0;
+}
+
+.alternative-suggestions h4 {
+    margin-top: 0;
+    color: #856404;
+}
+
+.suggestions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.suggestion-item {
+    padding: 12px;
+    background-color: white;
+    border: 1px solid #ffeaa7;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.suggestion-item:hover {
+    background-color: #ffeaa7;
+    transform: translateX(5px);
+}

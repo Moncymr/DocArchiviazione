@@ -1,0 +1,156 @@
+@using Microsoft.AspNetCore.Components
+@inject IJSRuntime JS
+
+<div class="chunk-highlighter" @ref="containerRef">
+    <div class="document-text">
+        @foreach (var segment in TextSegments)
+        {
+            if (segment.IsHighlighted)
+            {
+                <span class="highlighted-chunk @(segment.IsFirst ? "first-chunk" : "")" 
+                      title="Similarity Score: @segment.Score?.ToString("F2")"
+                      @onmouseenter="() => ShowTooltip(segment)"
+                      @onmouseleave="HideTooltip">
+                    @segment.Text
+                </span>
+            }
+            else
+            {
+                <span>@segment.Text</span>
+            }
+        }
+    </div>
+    
+    @if (showTooltip && currentSegment != null)
+    {
+        <div class="chunk-tooltip">
+            <div><strong>Score di Similarità:</strong> @currentSegment.Score?.ToString("F2")</div>
+            <div><strong>Chunk ID:</strong> @currentSegment.ChunkId</div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string DocumentText { get; set; } = string.Empty;
+    
+    [Parameter]
+    public List<ChunkInfo>? UsedChunks { get; set; }
+    
+    private List<TextSegment> TextSegments { get; set; } = new();
+    private ElementReference containerRef;
+    private bool showTooltip = false;
+    private TextSegment? currentSegment;
+    
+    protected override void OnParametersSet()
+    {
+        BuildTextSegments();
+    }
+    
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Scroll to first highlighted chunk using CSS class
+            try
+            {
+                await JS.InvokeVoidAsync("eval", @"
+                    setTimeout(() => {
+                        const el = document.querySelector('.first-chunk');
+                        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }, 100);
+                ");
+            }
+            catch
+            {
+                // Silently ignore if JS interop fails
+            }
+        }
+    }
+    
+    private void BuildTextSegments()
+    {
+        TextSegments.Clear();
+        
+        if (string.IsNullOrEmpty(DocumentText) || UsedChunks == null || !UsedChunks.Any())
+        {
+            TextSegments.Add(new TextSegment { Text = DocumentText, IsHighlighted = false });
+            return;
+        }
+        
+        // Sort chunks by position
+        var sortedChunks = UsedChunks
+            .Where(c => !string.IsNullOrEmpty(c.Text))
+            .OrderBy(c => DocumentText.IndexOf(c.Text!, StringComparison.Ordinal))
+            .ToList();
+        
+        int lastIndex = 0;
+        bool isFirst = true;
+        
+        foreach (var chunk in sortedChunks)
+        {
+            int startIndex = DocumentText.IndexOf(chunk.Text!, lastIndex, StringComparison.Ordinal);
+            if (startIndex == -1) continue;
+            
+            // Add non-highlighted text before chunk
+            if (startIndex > lastIndex)
+            {
+                TextSegments.Add(new TextSegment 
+                { 
+                    Text = DocumentText.Substring(lastIndex, startIndex - lastIndex),
+                    IsHighlighted = false
+                });
+            }
+            
+            // Add highlighted chunk
+            TextSegments.Add(new TextSegment
+            {
+                Text = chunk.Text!,
+                IsHighlighted = true,
+                ChunkId = chunk.Id,
+                Score = chunk.SimilarityScore,
+                IsFirst = isFirst
+            });
+            
+            isFirst = false;
+            lastIndex = startIndex + chunk.Text!.Length;
+        }
+        
+        // Add remaining text
+        if (lastIndex < DocumentText.Length)
+        {
+            TextSegments.Add(new TextSegment
+            {
+                Text = DocumentText.Substring(lastIndex),
+                IsHighlighted = false
+            });
+        }
+    }
+    
+    private void ShowTooltip(TextSegment segment)
+    {
+        currentSegment = segment;
+        showTooltip = true;
+    }
+    
+    private void HideTooltip()
+    {
+        showTooltip = false;
+    }
+    
+    public class ChunkInfo
+    {
+        public int Id { get; set; }
+        public string? Text { get; set; }
+        public double SimilarityScore { get; set; }
+    }
+    
+    private class TextSegment
+    {
+        public string Text { get; set; } = string.Empty;
+        public bool IsHighlighted { get; set; }
+        public int? ChunkId { get; set; }
+        public double? Score { get; set; }
+        public bool IsFirst { get; set; }
+    }
+}

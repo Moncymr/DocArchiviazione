@@ -1,0 +1,111 @@
+.feedback-widget {
+    margin: 20px 0;
+    padding: 15px;
+    background-color: #f8f9fa;
+    border-radius: 8px;
+}
+
+.feedback-buttons {
+    display: flex;
+    gap: 10px;
+}
+
+.feedback-btn {
+    padding: 8px 20px;
+    border: 1px solid #ddd;
+    background-color: white;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.3s;
+}
+
+.feedback-btn:hover:not(:disabled) {
+    background-color: #e9ecef;
+    transform: translateY(-2px);
+}
+
+.feedback-btn.active {
+    background-color: #007bff;
+    color: white;
+    border-color: #007bff;
+}
+
+.feedback-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.feedback-comment {
+    margin-top: 10px;
+}
+
+.comment-box {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    font-family: inherit;
+    resize: vertical;
+}
+
+.comment-box:focus {
+    outline: none;
+    border-color: #007bff;
+}
+
+.comment-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.btn-submit,
+.btn-cancel {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.3s;
+}
+
+.btn-submit {
+    background-color: #007bff;
+    color: white;
+}
+
+.btn-submit:hover:not(:disabled) {
+    background-color: #0056b3;
+}
+
+.btn-cancel {
+    background-color: #6c757d;
+    color: white;
+}
+
+.btn-cancel:hover:not(:disabled) {
+    background-color: #545b62;
+}
+
+.btn-submit:disabled,
+.btn-cancel:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.feedback-success {
+    margin-top: 10px;
+    padding: 10px;
+    background-color: #d4edda;
+    color: #155724;
+    border-radius: 4px;
+    text-align: center;
+    animation: fadeIn 0.3s;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
