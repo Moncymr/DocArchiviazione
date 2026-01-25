@@ -225,7 +225,7 @@ builder.Services.AddCors(options =>
         policy.WithOrigins("http://localhost:5210", "https://localhost:5211", "http://localhost:5036", "https://localhost:7114")
               .AllowAnyMethod()
               .AllowAnyHeader()
-              .AllowCredentials();
+              .AllowCredentials(); // Required for SignalR
     });
 });
 
@@ -483,6 +483,9 @@ builder.Services.AddScoped<ISavedSearchService, SavedSearchService>();
 builder.Services.AddScoped<ISearchSuggestionService, SearchSuggestionService>();
 builder.Services.AddScoped<IUserActivityService, UserActivityService>();
 
+// Register Notification Service for real-time updates
+builder.Services.AddScoped<INotificationService, NotificationService>();
+
 // Register Distributed Cache Service (works with both Redis and in-memory cache)
 builder.Services.AddSingleton<IDistributedCacheService, DistributedCacheService>();
 
@@ -585,6 +588,15 @@ if (!string.IsNullOrEmpty(redisConnectionString))
 {
     healthChecksBuilder.AddRedis(redisConnectionString, "redis_cache", tags: new[] { "ready", "cache" });
 }
+
+// Add SignalR for real-time notifications
+builder.Services.AddSignalR(options =>
+{
+    options.EnableDetailedErrors = builder.Environment.IsDevelopment();
+    options.MaximumReceiveMessageSize = 102400; // 100 KB
+    options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+    options.ClientTimeoutInterval = TimeSpan.FromSeconds(30);
+});
 
 var app = builder.Build();
 
@@ -689,6 +701,9 @@ if (!string.IsNullOrEmpty(hangfireConnectionString))
 }
 
 app.MapControllers();
+
+// Map SignalR hubs
+app.MapHub<DocN.Server.Hubs.NotificationHub>("/hubs/notifications");
 
 // Add Prometheus-compatible metrics endpoint via OpenTelemetry
 app.UseOpenTelemetryPrometheusScrapingEndpoint();
