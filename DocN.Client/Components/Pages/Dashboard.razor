@@ -198,6 +198,7 @@
     private void ToggleWidgetManagement()
     {
         _isManagingWidgets = !_isManagingWidgets;
+        StateHasChanged();
     }
 
     private async Task ToggleWidgetVisibility(DashboardWidget widget, bool isVisible)
