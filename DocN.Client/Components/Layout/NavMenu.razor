@@ -125,12 +125,14 @@
                             </NavLink>
                         </div>
 
-                        <AuthorizeView Roles="SuperAdmin,TenantAdmin">
-                            <div class="nav-item px-3">
-                                <NavLink class="nav-link" href="admin/users">
-                                    <span class="nav-emoji">👥</span> Gestione Utenti
-                                </NavLink>
-                            </div>
+                        <AuthorizeView Roles="SuperAdmin,TenantAdmin" Context="adminAuth">
+                            <Authorized>
+                                <div class="nav-item px-3">
+                                    <NavLink class="nav-link" href="admin/users">
+                                        <span class="nav-emoji">👥</span> Gestione Utenti
+                                    </NavLink>
+                                </div>
+                            </Authorized>
                         </AuthorizeView>
                     </div>
                 </div>

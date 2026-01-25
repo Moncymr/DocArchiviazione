@@ -257,7 +257,7 @@
 
     private void ApplyFilters()
     {
-        _filteredUsers = _users.AsEnumerable();
+        _filteredUsers = _users.AsEnumerable().ToList();
 
         // Apply search filter
         if (!string.IsNullOrWhiteSpace(_searchQuery))
@@ -763,7 +763,7 @@
         margin: 0 auto 1rem;
     }
 
-    @keyframes spin {
+    @@keyframes spin {
         0% { transform: rotate(0deg); }
         100% { transform: rotate(360deg); }
     }
@@ -780,7 +780,7 @@
         border-left: 5px solid #dc3545;
     }
 
-    @media (max-width: 768px) {
+    @@media (max-width: 768px) {
         .header {
             flex-direction: column;
             align-items: flex-start;
