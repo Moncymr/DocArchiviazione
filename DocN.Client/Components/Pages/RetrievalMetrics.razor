@@ -1,6 +1,6 @@
 @page "/retrieval-metrics"
 @using System.Net.Http.Json
-@inject HttpClient Http
+@inject IHttpClientFactory HttpClientFactory
 
 <PageTitle>Metriche di Retrieval - DocN</PageTitle>
 
@@ -221,7 +221,8 @@
                 TotalRelevant = totalRelevant
             };
 
-            metricsResult = await Http.PostAsJsonAsync("/api/retrieval-metrics/summary", request)
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+            metricsResult = await httpClient.PostAsJsonAsync("api/retrieval-metrics/summary", request)
                 .ContinueWith(t => t.Result.Content.ReadFromJsonAsync<MetricsSummary>())
                 .Unwrap();
         }

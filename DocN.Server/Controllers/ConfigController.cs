@@ -759,7 +759,7 @@ public class ConfigController : ControllerBase
     /// <returns>Diagnostic information about all configurations</returns>
     [HttpGet("diagnostics")]
     [HttpGet("diagnostica")] // Italian alias
-    [RequirePermission(Permissions.RagConfig)]
+    [Microsoft.AspNetCore.Authorization.AllowAnonymous] // Allow anonymous access for diagnostics
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<ActionResult> GetConfigurationDiagnostics()
     {
