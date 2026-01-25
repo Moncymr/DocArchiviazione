@@ -104,8 +104,9 @@ public class UserActivityController : ControllerBase
             
             var statistics = new
             {
-                totalActivities = activities.Count,
+                analyzedActivities = activities.Count,
                 limitedTo = limit,
+                note = activities.Count == limit ? "Results limited. Increase maxActivities parameter for more data." : "All recent activities analyzed.",
                 activityTypeBreakdown = activities
                     .GroupBy(a => a.ActivityType)
                     .Select(g => new { activityType = g.Key, count = g.Count() })

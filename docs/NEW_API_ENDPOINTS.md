@@ -85,8 +85,9 @@ Get activity statistics for a user.
 **Response:**
 ```json
 {
-  "totalActivities": 150,
+  "analyzedActivities": 150,
   "limitedTo": 500,
+  "note": "All recent activities analyzed.",
   "activityTypeBreakdown": [
     { "activityType": "search", "count": 45 },
     { "activityType": "document_view", "count": 80 },
@@ -101,7 +102,10 @@ Get activity statistics for a user.
 }
 ```
 
-**Note:** Statistics are calculated from the most recent activities up to the limit to prevent performance issues with high-activity users.
+**Note:** 
+- Statistics are calculated from the most recent activities up to the limit to prevent performance issues with high-activity users.
+- `analyzedActivities` reflects the number of activities analyzed (up to `limitedTo`), not necessarily the user's total activity count.
+- If `analyzedActivities` equals `limitedTo`, there may be more activities not included in the analysis.
 
 ---
 
