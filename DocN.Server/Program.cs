@@ -230,6 +230,10 @@ builder.Services.AddCors(options =>
 });
 
 // Configure Authentication with Cookie scheme (compatible with Blazor Client using Identity)
+// Note: This API is designed to work with a separate Blazor Client that handles its own authentication.
+// The Server API accepts user identity from the Client via request payloads (e.g., UserId in body).
+// Cookie authentication is configured here primarily to support the [Authorize] attribute without errors,
+// but most endpoints are designed to work without authentication challenges.
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultScheme = Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationDefaults.AuthenticationScheme;
@@ -246,10 +250,32 @@ builder.Services.AddAuthentication(options =>
     options.Cookie.SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Lax;
     options.ExpireTimeSpan = TimeSpan.FromHours(24);
     options.SlidingExpiration = true;
+    // Don't redirect API requests to login page - return 401 instead
+    options.Events.OnRedirectToLogin = context =>
+    {
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        return Task.CompletedTask;
+    };
+    options.Events.OnRedirectToAccessDenied = context =>
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        return Task.CompletedTask;
+    };
 });
 
 // Configure Authorization with granular permission-based access control
-builder.Services.AddAuthorization();
+// ⚠️ SECURITY NOTE: This API is designed to be called by a trusted Blazor Client application.
+// By default, this API allows anonymous access to most endpoints. The Client application handles
+// user authentication and passes user identity via request payloads (e.g., UserId in body).
+// This design assumes the Server API is not directly exposed to the internet and is only
+// accessible by the trusted Client application. If this API needs to be publicly accessible,
+// implement proper authentication (JWT tokens, API keys, etc.) instead of anonymous access.
+builder.Services.AddAuthorization(options =>
+{
+    // Don't require authentication by default for API endpoints
+    // Individual endpoints can opt-in to requiring authentication with [Authorize] or [RequirePermission]
+    options.FallbackPolicy = null; // Allow anonymous by default
+});
 builder.Services.AddSingleton<IAuthorizationHandler, PermissionAuthorizationHandler>();
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
