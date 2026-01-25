@@ -4,9 +4,34 @@ This directory contains SQL scripts for database setup and management.
 
 ## Scripts
 
+### CheckVersion.sql
+
+**Database version check script** - Quick script to verify which version of the database is currently installed and whether it needs updating.
+
+```bash
+sqlcmd -S your_server -d DocN -i Database/CheckVersion.sql
+```
+
+This script will show:
+- ✅ Current database version
+- ✅ List of applied migrations
+- ✅ Whether Dashboard tables exist
+- ⚠️  Whether an update is needed
+
 ### CreateDatabase_Complete_V3.sql
 
 **Complete database creation script** - This is an idempotent script that creates the entire DocN database schema including all tables, indexes, and constraints.
+
+**This script can also be used to update an existing database** - it's idempotent and will only apply missing migrations.
+
+### UPDATE_GUIDE.md
+
+**Database update guide** - Comprehensive guide explaining how to update an existing database to the current version using different methods:
+- Entity Framework Migrations (recommended)
+- Idempotent SQL script
+- Custom incremental scripts
+
+See [UPDATE_GUIDE.md](UPDATE_GUIDE.md) for detailed instructions on updating from previous versions.
 
 **Features:**
 - ✅ Idempotent - Can be run multiple times safely
