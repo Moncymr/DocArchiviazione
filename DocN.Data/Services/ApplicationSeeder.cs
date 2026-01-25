@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using DocN.Data.Models;
+using DocN.Data.Constants;
 
 namespace DocN.Data.Services;
 
@@ -106,7 +107,8 @@ public class ApplicationSeeder
 
     private async Task SeedRolesAsync()
     {
-        var roles = new[] { "Admin", "User", "Manager" };
+        // Use the standard roles from the Roles constants class
+        var roles = Roles.All;
         
         foreach (var roleName in roles)
         {
@@ -151,10 +153,10 @@ public class ApplicationSeeder
             
             if (result.Succeeded)
             {
-                // Assign Admin role
-                await _userManager.AddToRoleAsync(user, "Admin");
+                // Assign SuperAdmin role to the default admin user
+                await _userManager.AddToRoleAsync(user, Roles.SuperAdmin);
                 
-                _logger.LogInformation("Created default admin user: {Email}", defaultEmail);
+                _logger.LogInformation("Created default admin user: {Email} with role: {Role}", defaultEmail, Roles.SuperAdmin);
                 _logger.LogWarning("⚠️  IMPORTANT: Change the default admin password after first login!");
             }
             else
