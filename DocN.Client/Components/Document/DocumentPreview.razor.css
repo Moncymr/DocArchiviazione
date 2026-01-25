@@ -1,0 +1,243 @@
+.document-preview-dialog {
+    --dialog-width: 900px;
+    --dialog-height: 80vh;
+}
+
+.preview-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--neutral-stroke-divider-rest);
+}
+
+.preview-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.preview-title h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--neutral-foreground-rest);
+}
+
+.close-button {
+    padding: 8px;
+}
+
+.preview-content {
+    padding: 24px;
+    max-height: calc(80vh - 200px);
+    overflow-y: auto;
+}
+
+.preview-loading,
+.preview-error,
+.unsupported-preview {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px 24px;
+    text-align: center;
+    gap: 16px;
+}
+
+.preview-loading p,
+.preview-error p,
+.unsupported-preview p {
+    margin: 0;
+    color: var(--neutral-foreground-hint);
+}
+
+.preview-hint {
+    font-size: 14px;
+    color: var(--neutral-foreground-hint);
+}
+
+.preview-body {
+    display: flex;
+    flex-direction: column;
+}
+
+.preview-note {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: var(--accent-fill-secondary);
+    border-radius: 6px;
+    margin-bottom: 16px;
+    font-size: 14px;
+    color: var(--neutral-foreground-rest);
+}
+
+.text-preview {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.text-content {
+    background: var(--neutral-layer-2);
+    border: 1px solid var(--neutral-stroke-divider-rest);
+    border-radius: 6px;
+    padding: 16px;
+    overflow: auto;
+}
+
+.text-content pre {
+    margin: 0;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    color: var(--neutral-foreground-rest);
+}
+
+.text-content mark {
+    background-color: var(--accent-fill-secondary);
+    color: var(--accent-foreground-rest);
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-weight: 600;
+}
+
+.preview-truncated {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: var(--neutral-layer-2);
+    border-radius: 6px;
+    font-size: 14px;
+    color: var(--neutral-foreground-hint);
+    margin: 0;
+}
+
+.image-preview {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 16px;
+}
+
+.preview-image {
+    max-width: 100%;
+    max-height: 60vh;
+    object-fit: contain;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.pdf-preview {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.pdf-viewer {
+    background: var(--neutral-layer-2);
+    border: 1px solid var(--neutral-stroke-divider-rest);
+    border-radius: 6px;
+    padding: 48px 24px;
+    text-align: center;
+    color: var(--neutral-foreground-hint);
+}
+
+.preview-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 24px;
+    border-top: 1px solid var(--neutral-stroke-divider-rest);
+    gap: 16px;
+}
+
+.preview-metadata {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.metadata-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 13px;
+    color: var(--neutral-foreground-hint);
+}
+
+.preview-actions {
+    display: flex;
+    gap: 8px;
+}
+
+/* Scrollbar styling */
+.preview-content::-webkit-scrollbar {
+    width: 8px;
+}
+
+.preview-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.preview-content::-webkit-scrollbar-thumb {
+    background: var(--neutral-fill-stealth-rest);
+    border-radius: 4px;
+}
+
+.preview-content::-webkit-scrollbar-thumb:hover {
+    background: var(--neutral-fill-stealth-hover);
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+    .document-preview-dialog {
+        --dialog-width: 100vw;
+        --dialog-height: 100vh;
+    }
+
+    .preview-header {
+        padding: 16px;
+    }
+
+    .preview-title h3 {
+        font-size: 16px;
+    }
+
+    .preview-content {
+        padding: 16px;
+    }
+
+    .preview-footer {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .preview-metadata {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    .preview-actions {
+        width: 100%;
+    }
+
+    .preview-actions fluent-button {
+        width: 100%;
+    }
+}
+
+/* Dark mode adjustments */
+@media (prefers-color-scheme: dark) {
+    .text-content {
+        background: var(--neutral-layer-3);
+    }
+}

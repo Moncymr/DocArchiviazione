@@ -1,0 +1,169 @@
+@using DocN.Data.Models
+@using Microsoft.FluentUI.AspNetCore.Components
+
+<div class="search-result-card" @onclick="@(() => OnOpen.InvokeAsync(Document))">
+    <div class="card-icon">
+        <FluentIcon Value="@GetFileTypeIcon()" Color="@GetFileTypeColor()" class="file-icon" />
+    </div>
+    
+    <div class="card-content">
+        <div class="card-header">
+            <h4 class="card-title" @onclick:stopPropagation="true">
+                @if (!string.IsNullOrEmpty(SearchQuery))
+                {
+                    @((MarkupString)HighlightText(Document.FileName, SearchQuery))
+                }
+                else
+                {
+                    @Document.FileName
+                }
+            </h4>
+            <FluentBadge Appearance="Appearance.Neutral" class="relevance-badge">
+                @($"{RelevanceScore:P0}")
+            </FluentBadge>
+        </div>
+        
+        @if (!string.IsNullOrEmpty(Snippet))
+        {
+            <div class="card-snippet">
+                @if (!string.IsNullOrEmpty(SearchQuery))
+                {
+                    @((MarkupString)HighlightText(Snippet, SearchQuery))
+                }
+                else
+                {
+                    @Snippet
+                }
+            </div>
+        }
+        
+        <div class="card-metadata">
+            <span class="metadata-item">
+                <FluentIcon Value="@(new Icons.Regular.Size16.Person())" />
+                @(Document.Owner?.UserName ?? "Sconosciuto")
+            </span>
+            <span class="metadata-item">
+                <FluentIcon Value="@(new Icons.Regular.Size16.Calendar())" />
+                @Document.UploadedAt.ToString("dd/MM/yyyy")
+            </span>
+            <span class="metadata-item">
+                <FluentIcon Value="@(new Icons.Regular.Size16.DocumentDatabase())" />
+                @FormatFileSize(Document.FileSize)
+            </span>
+            @if (!string.IsNullOrEmpty(Document.ActualCategory))
+            {
+                <FluentBadge Appearance="Appearance.Accent" class="category-badge">
+                    @Document.ActualCategory
+                </FluentBadge>
+            }
+        </div>
+    </div>
+    
+    <div class="card-actions" @onclick:stopPropagation="true">
+        <FluentButton Appearance="Appearance.Lightweight" 
+                    OnClick="@(() => OnOpen.InvokeAsync(Document))"
+                    Title="Apri documento">
+            <FluentIcon Value="@(new Icons.Regular.Size20.Open())" />
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Lightweight" 
+                    OnClick="@(() => OnPreview.InvokeAsync(Document))"
+                    Title="Anteprima">
+            <FluentIcon Value="@(new Icons.Regular.Size20.Eye())" />
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Lightweight" 
+                    OnClick="@(() => OnAddToWorkspace.InvokeAsync(Document))"
+                    Title="Aggiungi a workspace">
+            <FluentIcon Value="@(new Icons.Regular.Size20.AddSquare())" />
+        </FluentButton>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public Document Document { get; set; } = null!;
+
+    [Parameter]
+    public string? SearchQuery { get; set; }
+
+    [Parameter]
+    public string? Snippet { get; set; }
+
+    [Parameter]
+    public double RelevanceScore { get; set; } = 0.0;
+
+    [Parameter]
+    public EventCallback<Document> OnOpen { get; set; }
+
+    [Parameter]
+    public EventCallback<Document> OnPreview { get; set; }
+
+    [Parameter]
+    public EventCallback<Document> OnAddToWorkspace { get; set; }
+
+    private Icon GetFileTypeIcon()
+    {
+        var extension = Path.GetExtension(Document.FileName).ToLower();
+        return extension switch
+        {
+            ".pdf" => new Icons.Regular.Size24.DocumentPdf(),
+            ".doc" or ".docx" => new Icons.Regular.Size24.DocumentText(),
+            ".xls" or ".xlsx" => new Icons.Regular.Size24.DocumentTable(),
+            ".ppt" or ".pptx" => new Icons.Regular.Size24.SlideText(),
+            ".txt" => new Icons.Regular.Size24.DocumentText(),
+            ".jpg" or ".jpeg" or ".png" or ".gif" or ".bmp" => new Icons.Regular.Size24.Image(),
+            _ => new Icons.Regular.Size24.Document()
+        };
+    }
+
+    private Color GetFileTypeColor()
+    {
+        var extension = Path.GetExtension(Document.FileName).ToLower();
+        return extension switch
+        {
+            ".pdf" => Color.Error,
+            ".doc" or ".docx" => Color.Info,
+            ".xls" or ".xlsx" => Color.Success,
+            ".ppt" or ".pptx" => Color.Warning,
+            ".txt" => Color.Neutral,
+            ".jpg" or ".jpeg" or ".png" or ".gif" or ".bmp" => Color.Accent,
+            _ => Color.Neutral
+        };
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+
+    private string HighlightText(string text, string query)
+    {
+        if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(query))
+            return text;
+
+        var words = query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var highlighted = text;
+
+        foreach (var word in words)
+        {
+            if (string.IsNullOrWhiteSpace(word)) continue;
+            
+            var pattern = System.Text.RegularExpressions.Regex.Escape(word);
+            highlighted = System.Text.RegularExpressions.Regex.Replace(
+                highlighted,
+                pattern,
+                match => $"<mark>{match.Value}</mark>",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase
+            );
+        }
+
+        return highlighted;
+    }
+}

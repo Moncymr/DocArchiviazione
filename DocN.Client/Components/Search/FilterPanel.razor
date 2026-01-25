@@ -1,0 +1,287 @@
+@using DocN.Data.DTOs
+@using Microsoft.FluentUI.AspNetCore.Components
+
+<div class="filter-panel">
+    <div class="filter-panel-header">
+        <h3>Filtri Avanzati</h3>
+        <FluentButton Appearance="Appearance.Lightweight" 
+                    OnClick="@ResetFilters"
+                    class="reset-button">
+            <FluentIcon Value="@(new Icons.Regular.Size16.ArrowReset())" />
+            Reset
+        </FluentButton>
+    </div>
+
+    <div class="filter-panel-content">
+        <!-- File Type Filter -->
+        <div class="filter-section">
+            <label class="filter-section-title">Tipo di File</label>
+            <div class="filter-checkboxes">
+                <FluentCheckbox Label="PDF" 
+                              @bind-Value="@_isPdfSelected" 
+                              @onchange="@(() => ToggleFileType(FileTypeFilters.PDF))"/>
+                <FluentCheckbox Label="Word" 
+                              @bind-Value="@_isWordSelected" 
+                              @onchange="@(() => ToggleFileType(FileTypeFilters.Word))"/>
+                <FluentCheckbox Label="Excel" 
+                              @bind-Value="@_isExcelSelected" 
+                              @onchange="@(() => ToggleFileType(FileTypeFilters.Excel))"/>
+                <FluentCheckbox Label="PowerPoint" 
+                              @bind-Value="@_isPowerPointSelected" 
+                              @onchange="@(() => ToggleFileType(FileTypeFilters.PowerPoint))"/>
+                <FluentCheckbox Label="Testo" 
+                              @bind-Value="@_isTextSelected" 
+                              @onchange="@(() => ToggleFileType(FileTypeFilters.Text))"/>
+                <FluentCheckbox Label="Immagini" 
+                              @bind-Value="@_isImageSelected" 
+                              @onchange="@(() => ToggleFileType(FileTypeFilters.Image))"/>
+            </div>
+        </div>
+
+        <!-- Date Range Filter -->
+        <div class="filter-section">
+            <label class="filter-section-title">Periodo</label>
+            <FluentSelect @bind-Value="@_datePreset" 
+                         @onchange="@OnDatePresetChange"
+                         class="filter-select">
+                <FluentOption Value="">Tutti i periodi</FluentOption>
+                <FluentOption Value="@DateRangePresets.Last7Days">Ultimi 7 giorni</FluentOption>
+                <FluentOption Value="@DateRangePresets.Last30Days">Ultimi 30 giorni</FluentOption>
+                <FluentOption Value="@DateRangePresets.Last3Months">Ultimi 3 mesi</FluentOption>
+                <FluentOption Value="@DateRangePresets.LastYear">Ultimo anno</FluentOption>
+                <FluentOption Value="@DateRangePresets.Custom">Personalizzato</FluentOption>
+            </FluentSelect>
+            
+            @if (_datePreset == DateRangePresets.Custom)
+            {
+                <div class="date-range-inputs">
+                    <FluentDatePicker Label="Da" 
+                                    @bind-Value="@Filters.DateFrom"
+                                    @onchange="@OnFilterChanged"
+                                    class="date-picker"/>
+                    <FluentDatePicker Label="A" 
+                                    @bind-Value="@Filters.DateTo"
+                                    @onchange="@OnFilterChanged"
+                                    class="date-picker"/>
+                </div>
+            }
+        </div>
+
+        <!-- File Size Filter -->
+        <div class="filter-section">
+            <label class="filter-section-title">Dimensione File (MB)</label>
+            <div class="size-inputs">
+                <FluentNumberField Label="Min" 
+                                 @bind-Value="@Filters.MinSizeMB"
+                                 @onchange="@OnFilterChanged"
+                                 Min="0"
+                                 Step="0.1"
+                                 class="size-input"/>
+                <FluentNumberField Label="Max" 
+                                 @bind-Value="@Filters.MaxSizeMB"
+                                 @onchange="@OnFilterChanged"
+                                 Min="0"
+                                 Step="0.1"
+                                 class="size-input"/>
+            </div>
+        </div>
+
+        <!-- Author Filter -->
+        <div class="filter-section">
+            <label class="filter-section-title">Autore</label>
+            <FluentSelect @bind-Value="@_selectedAuthor"
+                         @onchange="@OnAuthorChange"
+                         class="filter-select">
+                <FluentOption Value="">Tutti gli autori</FluentOption>
+                @foreach (var author in AvailableAuthors)
+                {
+                    <FluentOption Value="@author">@author</FluentOption>
+                }
+            </FluentSelect>
+        </div>
+
+        <!-- Tags Filter -->
+        <div class="filter-section">
+            <label class="filter-section-title">Tag</label>
+            <FluentSelect @bind-Value="@_selectedTag"
+                         @onchange="@OnTagChange"
+                         class="filter-select">
+                <FluentOption Value="">Tutti i tag</FluentOption>
+                @foreach (var tag in AvailableTags)
+                {
+                    <FluentOption Value="@tag">@tag</FluentOption>
+                }
+            </FluentSelect>
+            @if (Filters.Tags?.Any() == true)
+            {
+                <div class="selected-tags">
+                    @foreach (var tag in Filters.Tags)
+                    {
+                        <FluentBadge Appearance="Appearance.Neutral" class="tag-chip">
+                            @tag
+                            <FluentButton Appearance="Appearance.Stealth" 
+                                        OnClick="@(() => RemoveTag(tag))"
+                                        class="tag-remove">
+                                <FluentIcon Value="@(new Icons.Regular.Size12.Dismiss())" />
+                            </FluentButton>
+                        </FluentBadge>
+                    }
+                </div>
+            }
+        </div>
+
+        <!-- Status Filter -->
+        <div class="filter-section">
+            <label class="filter-section-title">Stato</label>
+            <FluentSelect @bind-Value="@Filters.Status"
+                         @onchange="@OnFilterChanged"
+                         class="filter-select">
+                <FluentOption Value="">Tutti gli stati</FluentOption>
+                <FluentOption Value="draft">Bozza</FluentOption>
+                <FluentOption Value="published">Pubblicato</FluentOption>
+                <FluentOption Value="archived">Archiviato</FluentOption>
+            </FluentSelect>
+        </div>
+
+        <!-- Category Filter -->
+        <div class="filter-section">
+            <label class="filter-section-title">Categoria</label>
+            <FluentSelect @bind-Value="@Filters.Category"
+                         @onchange="@OnFilterChanged"
+                         class="filter-select">
+                <FluentOption Value="">Tutte le categorie</FluentOption>
+                @foreach (var category in AvailableCategories)
+                {
+                    <FluentOption Value="@category">@category</FluentOption>
+                }
+            </FluentSelect>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public SearchFilterDto Filters { get; set; } = new();
+
+    [Parameter]
+    public EventCallback<SearchFilterDto> OnFilterChange { get; set; }
+
+    [Parameter]
+    public List<string> AvailableAuthors { get; set; } = new();
+
+    [Parameter]
+    public List<string> AvailableTags { get; set; } = new();
+
+    [Parameter]
+    public List<string> AvailableCategories { get; set; } = new();
+
+    private bool _isPdfSelected;
+    private bool _isWordSelected;
+    private bool _isExcelSelected;
+    private bool _isPowerPointSelected;
+    private bool _isTextSelected;
+    private bool _isImageSelected;
+    private string _datePreset = "";
+    private string _selectedAuthor = "";
+    private string _selectedTag = "";
+
+    protected override void OnParametersSet()
+    {
+        if (Filters.FileTypes != null)
+        {
+            _isPdfSelected = Filters.FileTypes.Contains(FileTypeFilters.PDF);
+            _isWordSelected = Filters.FileTypes.Contains(FileTypeFilters.Word);
+            _isExcelSelected = Filters.FileTypes.Contains(FileTypeFilters.Excel);
+            _isPowerPointSelected = Filters.FileTypes.Contains(FileTypeFilters.PowerPoint);
+            _isTextSelected = Filters.FileTypes.Contains(FileTypeFilters.Text);
+            _isImageSelected = Filters.FileTypes.Contains(FileTypeFilters.Image);
+        }
+    }
+
+    private void ToggleFileType(string fileType)
+    {
+        Filters.FileTypes ??= new List<string>();
+        
+        if (Filters.FileTypes.Contains(fileType))
+        {
+            Filters.FileTypes.Remove(fileType);
+        }
+        else
+        {
+            Filters.FileTypes.Add(fileType);
+        }
+        
+        OnFilterChanged();
+    }
+
+    private void OnDatePresetChange(ChangeEventArgs e)
+    {
+        _datePreset = e.Value?.ToString() ?? "";
+        
+        if (_datePreset != DateRangePresets.Custom)
+        {
+            Filters.DateFrom = DateRangePresets.GetStartDate(_datePreset);
+            Filters.DateTo = _datePreset != "" ? DateTime.UtcNow : null;
+            OnFilterChanged();
+        }
+    }
+
+    private void OnAuthorChange(ChangeEventArgs e)
+    {
+        _selectedAuthor = e.Value?.ToString() ?? "";
+        
+        if (!string.IsNullOrEmpty(_selectedAuthor))
+        {
+            Filters.Authors ??= new List<string>();
+            if (!Filters.Authors.Contains(_selectedAuthor))
+            {
+                Filters.Authors.Add(_selectedAuthor);
+            }
+        }
+        
+        OnFilterChanged();
+    }
+
+    private void OnTagChange(ChangeEventArgs e)
+    {
+        _selectedTag = e.Value?.ToString() ?? "";
+        
+        if (!string.IsNullOrEmpty(_selectedTag))
+        {
+            Filters.Tags ??= new List<string>();
+            if (!Filters.Tags.Contains(_selectedTag))
+            {
+                Filters.Tags.Add(_selectedTag);
+            }
+            _selectedTag = "";
+        }
+        
+        OnFilterChanged();
+    }
+
+    private void RemoveTag(string tag)
+    {
+        Filters.Tags?.Remove(tag);
+        OnFilterChanged();
+    }
+
+    private void OnFilterChanged()
+    {
+        OnFilterChange.InvokeAsync(Filters);
+    }
+
+    private void ResetFilters()
+    {
+        Filters = new SearchFilterDto();
+        _isPdfSelected = false;
+        _isWordSelected = false;
+        _isExcelSelected = false;
+        _isPowerPointSelected = false;
+        _isTextSelected = false;
+        _isImageSelected = false;
+        _datePreset = "";
+        _selectedAuthor = "";
+        _selectedTag = "";
+        OnFilterChanged();
+    }
+}

@@ -54,7 +54,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     
     // Notifications for real-time updates
     public DbSet<Notification> Notifications { get; set; } = null!;
-    public DbSet<NotificationPreference> NotificationPreferences { get; set; } = null!
+    public DbSet<NotificationPreference> NotificationPreferences { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

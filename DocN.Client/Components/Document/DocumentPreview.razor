@@ -1,0 +1,293 @@
+@using DocN.Data.Models
+@using Microsoft.FluentUI.AspNetCore.Components
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+@if (IsOpen)
+{
+    <FluentDialog @bind-Hidden="@_isHidden"
+                 Modal="true"
+                 TrapFocus="true"
+                 class="document-preview-dialog">
+        <div class="preview-header">
+            <div class="preview-title">
+                <FluentIcon Value="@GetFileTypeIcon()" Color="@GetFileTypeColor()" />
+                <h3>@DocumentFileName</h3>
+            </div>
+            <FluentButton Appearance="Appearance.Stealth" 
+                        OnClick="@Close"
+                        class="close-button">
+                <FluentIcon Value="@(new Icons.Regular.Size20.Dismiss())" />
+            </FluentButton>
+        </div>
+
+        <div class="preview-content">
+            @if (_isLoading)
+            {
+                <div class="preview-loading">
+                    <FluentProgressRing />
+                    <p>Caricamento anteprima...</p>
+                </div>
+            }
+            else if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <div class="preview-error">
+                    <FluentIcon Value="@(new Icons.Regular.Size48.Warning())" Color="Color.Error" />
+                    <p>@_errorMessage</p>
+                </div>
+            }
+            else
+            {
+                <div class="preview-body">
+                    @if (IsPdfDocument())
+                    {
+                        <div class="pdf-preview">
+                            <p class="preview-note">
+                                <FluentIcon Value="@(new Icons.Regular.Size16.Info())" />
+                                Visualizzazione delle prime 3 pagine del documento PDF
+                            </p>
+                            <div class="pdf-viewer" id="pdf-viewer-@DocumentId">
+                                <!-- PDF rendering would be handled by JavaScript -->
+                                <p>Anteprima PDF non disponibile. Apri il documento completo per visualizzarlo.</p>
+                            </div>
+                        </div>
+                    }
+                    else if (IsTextDocument())
+                    {
+                        <div class="text-preview">
+                            <p class="preview-note">
+                                <FluentIcon Value="@(new Icons.Regular.Size16.Info())" />
+                                Visualizzazione dei primi 500 caratteri
+                            </p>
+                            <div class="text-content">
+                                @if (!string.IsNullOrEmpty(SearchQuery))
+                                {
+                                    @((MarkupString)HighlightText(_previewContent, SearchQuery))
+                                }
+                                else
+                                {
+                                    <pre>@_previewContent</pre>
+                                }
+                            </div>
+                            @if (_hasMoreContent)
+                            {
+                                <p class="preview-truncated">
+                                    <FluentIcon Value="@(new Icons.Regular.Size16.MoreHorizontal())" />
+                                    Contenuto troncato. Apri il documento completo per vedere tutto.
+                                </p>
+                            }
+                        </div>
+                    }
+                    else if (IsImageDocument())
+                    {
+                        <div class="image-preview">
+                            <img src="@_imageUrl" alt="@DocumentFileName" class="preview-image" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="unsupported-preview">
+                            <FluentIcon Value="@(new Icons.Regular.Size48.DocumentError())" Color="Color.Neutral" />
+                            <p>Anteprima non disponibile per questo tipo di file</p>
+                            <p class="preview-hint">Apri il documento completo per visualizzarlo</p>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="preview-footer">
+            <div class="preview-metadata">
+                <span class="metadata-item">
+                    <FluentIcon Value="@(new Icons.Regular.Size16.Calendar())" />
+                    @_uploadDate
+                </span>
+                <span class="metadata-item">
+                    <FluentIcon Value="@(new Icons.Regular.Size16.DocumentDatabase())" />
+                    @_fileSize
+                </span>
+                @if (!string.IsNullOrEmpty(_category))
+                {
+                    <FluentBadge Appearance="Appearance.Accent">@_category</FluentBadge>
+                }
+            </div>
+            <div class="preview-actions">
+                <FluentButton Appearance="Appearance.Accent" 
+                            OnClick="@OpenFullDocument">
+                    <FluentIcon Value="@(new Icons.Regular.Size20.Open())" />
+                    Apri Documento Completo
+                </FluentButton>
+            </div>
+        </div>
+    </FluentDialog>
+}
+
+@code {
+    [Parameter]
+    public int DocumentId { get; set; }
+
+    [Parameter]
+    public string? SearchQuery { get; set; }
+
+    [Parameter]
+    public bool IsOpen { get; set; }
+
+    [Parameter]
+    public EventCallback<bool> IsOpenChanged { get; set; }
+
+    [Parameter]
+    public EventCallback<int> OnOpenFullDocument { get; set; }
+
+    private bool _isHidden = false;
+    private bool _isLoading = false;
+    private string? _errorMessage;
+    private string _previewContent = "";
+    private bool _hasMoreContent = false;
+    private string DocumentFileName = "";
+    private string _uploadDate = "";
+    private string _fileSize = "";
+    private string? _category;
+    private string? _imageUrl;
+    private string _fileExtension = "";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsOpen && DocumentId > 0)
+        {
+            _isHidden = false;
+            await LoadDocumentPreviewAsync();
+        }
+    }
+
+    private async Task LoadDocumentPreviewAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var response = await Http.GetFromJsonAsync<Document>($"api/documents/{DocumentId}");
+            
+            if (response != null)
+            {
+                DocumentFileName = response.FileName;
+                _fileExtension = Path.GetExtension(response.FileName).ToLower();
+                _uploadDate = response.UploadedAt.ToString("dd/MM/yyyy HH:mm");
+                _fileSize = FormatFileSize(response.FileSize);
+                _category = response.ActualCategory;
+
+                if (IsTextDocument())
+                {
+                    var extractedText = response.ExtractedText ?? "";
+                    if (extractedText.Length > 500)
+                    {
+                        _previewContent = extractedText.Substring(0, 500);
+                        _hasMoreContent = true;
+                    }
+                    else
+                    {
+                        _previewContent = extractedText;
+                        _hasMoreContent = false;
+                    }
+                }
+                else if (IsImageDocument())
+                {
+                    _imageUrl = $"api/documents/{DocumentId}/download";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Errore durante il caricamento dell'anteprima: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private bool IsPdfDocument() => _fileExtension == ".pdf";
+    
+    private bool IsTextDocument() => _fileExtension is ".txt" or ".doc" or ".docx" or ".xml" or ".json";
+    
+    private bool IsImageDocument() => _fileExtension is ".jpg" or ".jpeg" or ".png" or ".gif" or ".bmp";
+
+    private Icon GetFileTypeIcon()
+    {
+        return _fileExtension switch
+        {
+            ".pdf" => new Icons.Regular.Size24.DocumentPdf(),
+            ".doc" or ".docx" => new Icons.Regular.Size24.DocumentText(),
+            ".xls" or ".xlsx" => new Icons.Regular.Size24.DocumentTable(),
+            ".ppt" or ".pptx" => new Icons.Regular.Size24.SlideText(),
+            ".txt" => new Icons.Regular.Size24.DocumentText(),
+            ".jpg" or ".jpeg" or ".png" or ".gif" or ".bmp" => new Icons.Regular.Size24.Image(),
+            _ => new Icons.Regular.Size24.Document()
+        };
+    }
+
+    private Color GetFileTypeColor()
+    {
+        return _fileExtension switch
+        {
+            ".pdf" => Color.Error,
+            ".doc" or ".docx" => Color.Info,
+            ".xls" or ".xlsx" => Color.Success,
+            ".ppt" or ".pptx" => Color.Warning,
+            ".txt" => Color.Neutral,
+            ".jpg" or ".jpeg" or ".png" or ".gif" or ".bmp" => Color.Accent,
+            _ => Color.Neutral
+        };
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+
+    private string HighlightText(string text, string query)
+    {
+        if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(query))
+            return $"<pre>{text}</pre>";
+
+        var words = query.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var highlighted = text;
+
+        foreach (var word in words)
+        {
+            if (string.IsNullOrWhiteSpace(word)) continue;
+            
+            var pattern = System.Text.RegularExpressions.Regex.Escape(word);
+            highlighted = System.Text.RegularExpressions.Regex.Replace(
+                highlighted,
+                pattern,
+                match => $"<mark>{match.Value}</mark>",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase
+            );
+        }
+
+        return $"<pre>{highlighted}</pre>";
+    }
+
+    private async Task OpenFullDocument()
+    {
+        await OnOpenFullDocument.InvokeAsync(DocumentId);
+        await Close();
+    }
+
+    private async Task Close()
+    {
+        _isHidden = true;
+        await IsOpenChanged.InvokeAsync(false);
+    }
+}
