@@ -224,8 +224,28 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins("http://localhost:5210", "https://localhost:5211", "http://localhost:5036", "https://localhost:7114")
               .AllowAnyMethod()
-              .AllowAnyHeader();
+              .AllowAnyHeader()
+              .AllowCredentials();
     });
+});
+
+// Configure Authentication with Cookie scheme (compatible with Blazor Client using Identity)
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultScheme = Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationDefaults.AuthenticationScheme;
+})
+.AddCookie(options =>
+{
+    options.LoginPath = "/login";
+    options.LogoutPath = "/logout";
+    options.AccessDeniedPath = "/access-denied";
+    options.Cookie.Name = "DocN.Auth";
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SecurePolicy = Microsoft.AspNetCore.Http.CookieSecurePolicy.SameAsRequest;
+    options.Cookie.SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Lax;
+    options.ExpireTimeSpan = TimeSpan.FromHours(24);
+    options.SlidingExpiration = true;
 });
 
 // Configure Authorization with granular permission-based access control
@@ -621,6 +641,9 @@ app.UseRateLimiter();
 
 app.UseCors();
 app.UseHttpsRedirection();
+
+// Authentication must be called before Authorization
+app.UseAuthentication();
 app.UseAuthorization();
 
 // Add Hangfire Dashboard (if configured)
