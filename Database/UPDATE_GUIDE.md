@@ -43,7 +43,39 @@ dotnet ef database update --project DocN.Data --startup-project DocN.Server --co
 - ✅ Applica solo le migrazioni mancanti / Applies only missing migrations
 - ✅ Supporta rollback se necessario / Supports rollback if needed
 
-### Metodo 2: Script SQL Idempotente (CreateDatabase_Complete_V3.sql)
+### Metodo 2: Script SQL Manuale con Controlli (NUOVO / NEW)
+
+Script SQL che controlla manualmente l'esistenza di tabelle e campi prima di crearli/aggiungerli.
+SQL script that manually checks for existence of tables and fields before creating/adding them.
+
+```bash
+# Usando sqlcmd / Using sqlcmd
+sqlcmd -S your_server -d DocN -i Database/ManualUpdate_To_V3.sql
+```
+
+**Come funziona / How it works:**
+- Controlla se ogni tabella esiste prima di crearla
+- Controlla se ogni campo esiste prima di aggiungerlo
+- Usa transazioni con rollback automatico in caso di errore
+- Output dettagliato in italiano e inglese
+
+- Checks if each table exists before creating it
+- Checks if each field exists before adding it
+- Uses transactions with automatic rollback on error
+- Detailed output in Italian and English
+
+**Vantaggi / Advantages:**
+- ✅ Non richiede .NET installato / Doesn't require .NET installed
+- ✅ Controlli espliciti su ogni elemento / Explicit checks on each element
+- ✅ Sicuro anche su database parzialmente aggiornati / Safe even on partially updated databases
+- ✅ Output chiaro e dettagliato / Clear and detailed output
+
+**Quando usarlo / When to use:**
+- Database parzialmente aggiornato / Partially updated database
+- Necessità di vedere cosa viene aggiunto / Need to see what's being added
+- Ambiente senza .NET / Environment without .NET
+
+### Metodo 3: Script SQL Idempotente (CreateDatabase_Complete_V3.sql)
 
 Lo script completo V3 è **idempotente** - può essere eseguito su un database esistente.
 The complete V3 script is **idempotent** - it can be run on an existing database.
@@ -71,7 +103,7 @@ sqlcmd -S your_server -d DocN -i Database/CreateDatabase_Complete_V3.sql
 - ⚠️ Esegue l'intero script ogni volta (ma controlla le migrazioni già applicate)
 - ⚠️ Runs the entire script each time (but checks for already applied migrations)
 
-### Metodo 3: Script Incrementale Personalizzato
+### Metodo 4: Script Incrementale Personalizzato
 
 Se hai bisogno di uno script che aggiorna solo da una versione specifica:
 If you need a script that updates only from a specific version:
@@ -102,7 +134,10 @@ sqlcmd -S your_server -d DocN -i Database/CreateDatabase_Complete_V3.sql
 # Metodo A: EF Migrations (RACCOMANDATO / RECOMMENDED)
 dotnet ef database update --project DocN.Data --startup-project DocN.Server --context ApplicationDbContext
 
-# Metodo B: Script SQL idempotente
+# Metodo B: Script SQL manuale con controlli (NUOVO / NEW)
+sqlcmd -S your_server -d DocN -i Database/ManualUpdate_To_V3.sql
+
+# Metodo C: Script SQL idempotente
 sqlcmd -S your_server -d DocN -i Database/CreateDatabase_Complete_V3.sql
 ```
 

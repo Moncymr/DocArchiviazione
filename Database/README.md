@@ -18,6 +18,28 @@ This script will show:
 - ✅ Whether Dashboard tables exist
 - ⚠️  Whether an update is needed
 
+### ManualUpdate_To_V3.sql
+
+**Manual update script with existence checks** - SQL script that manually checks for the existence of tables and columns before creating/adding them.
+
+```bash
+sqlcmd -S your_server -d DocN -i Database/ManualUpdate_To_V3.sql
+```
+
+**Features:**
+- ✅ Checks if tables exist before creating them
+- ✅ Checks if columns exist before adding them
+- ✅ Safe to run multiple times (idempotent)
+- ✅ Transaction-based with automatic rollback on error
+- ✅ Detailed progress output in Italian/English
+- ✅ Updates `__EFMigrationsHistory` table
+
+**What it adds:**
+- Dashboard tables: `DashboardWidgets`, `SavedSearches`, `UserActivities`
+- Workflow fields on `Documents` table
+- Enhanced fields on `DocumentChunks` table
+- Golden Dataset tables (if not already present)
+
 ### CreateDatabase_Complete_V3.sql
 
 **Complete database creation script** - This is an idempotent script that creates the entire DocN database schema including all tables, indexes, and constraints.
