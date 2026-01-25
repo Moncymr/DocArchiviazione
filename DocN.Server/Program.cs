@@ -492,8 +492,9 @@ builder.Services.AddScoped<IMultiProviderAIService, MultiProviderAIService>();
 // Register Audit Service for GDPR/SOC2 compliance
 builder.Services.AddScoped<IAuditService, AuditService>();
 
-// Register User Management Service
-builder.Services.AddScoped<UserManagementService>();
+// Note: UserManagementService is not registered here because it requires UserManager<ApplicationUser>
+// which is only available in the Client project where Identity is configured.
+// The RoleManagement UI is accessed through the Client, not the Server API.
 
 // Register Alerting and Monitoring Services
 builder.Services.AddScoped<IAlertingService, AlertingService>();
