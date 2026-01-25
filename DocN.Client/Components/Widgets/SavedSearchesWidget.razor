@@ -114,7 +114,19 @@
     private void ExecuteSearch(SavedSearch search)
     {
         NavigationManager.NavigateTo($"/search?q={Uri.EscapeDataString(search.Query)}&type={search.SearchType}");
-        _ = SavedSearchService.RecordSearchUseAsync(search.Id, _userId!);
+        
+        // Record search use asynchronously
+        _ = Task.Run(async () => {
+            try
+            {
+                await SavedSearchService.RecordSearchUseAsync(search.Id, _userId!);
+            }
+            catch (Exception ex)
+            {
+                // Log but don't fail the UI
+                Logger.LogError(ex, "Error recording search use");
+            }
+        });
     }
 
     private void NavigateToSearch()

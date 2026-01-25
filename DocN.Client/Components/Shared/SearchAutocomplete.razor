@@ -1,0 +1,242 @@
+@using DocN.Data.Services
+@using System.Security.Claims
+@inject ISearchSuggestionService SearchSuggestionService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<div class="search-autocomplete">
+    <div class="search-input-wrapper">
+        <input type="text" 
+               class="search-input"
+               placeholder="@Placeholder"
+               value="@SearchQuery"
+               @oninput="OnInputChanged"
+               @onkeydown="HandleKeyDown" />
+        
+        @if (ShowVoiceButton)
+        {
+            @if (isListening)
+            {
+                <button class="voice-btn listening" @onclick="StopVoiceInput" title="Stop recording">
+                    🎙️
+                </button>
+            }
+            else
+            {
+                <button class="voice-btn" @onclick="StartVoiceInput" title="Voice input">
+                    🎤
+                </button>
+            }
+        }
+    </div>
+
+    @if (showSuggestions && suggestions.Any())
+    {
+        <div class="suggestions-dropdown">
+            @foreach (var (suggestion, index) in suggestions.Select((s, i) => (s, i)))
+            {
+                <div class="suggestion-item @(selectedIndex == index ? "selected" : "")"
+                     @onclick="() => SelectSuggestion(suggestion)"
+                     @onmouseover="() => selectedIndex = index">
+                    <span class="icon">🔍</span>
+                    <span>@suggestion</span>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string SearchQuery { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> SearchQueryChanged { get; set; }
+    [Parameter] public EventCallback<string> OnSearch { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "Cerca documenti...";
+    [Parameter] public bool ShowVoiceButton { get; set; } = true;
+
+    private List<string> suggestions = new();
+    private bool showSuggestions = false;
+    private int selectedIndex = -1;
+    private string? currentUserId;
+    private bool isListening = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        currentUserId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+    }
+
+    private async Task OnInputChanged(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString() ?? string.Empty;
+        SearchQuery = value;
+        await SearchQueryChanged.InvokeAsync(SearchQuery);
+
+        if (string.IsNullOrWhiteSpace(value) || value.Length < 2)
+        {
+            showSuggestions = false;
+            suggestions.Clear();
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(currentUserId))
+        {
+            try
+            {
+                suggestions = await SearchSuggestionService.GetAutocompleteSuggestionsAsync(value, currentUserId, 8);
+                showSuggestions = suggestions.Any();
+                selectedIndex = -1;
+            }
+            catch
+            {
+                suggestions.Clear();
+                showSuggestions = false;
+            }
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (!showSuggestions || !suggestions.Any())
+        {
+            if (e.Key == "Enter")
+            {
+                await OnSearch.InvokeAsync(SearchQuery);
+            }
+            return;
+        }
+
+        switch (e.Key)
+        {
+            case "ArrowDown":
+                selectedIndex = Math.Min(selectedIndex + 1, suggestions.Count - 1);
+                break;
+            case "ArrowUp":
+                selectedIndex = Math.Max(selectedIndex - 1, 0);
+                break;
+            case "Enter":
+                if (selectedIndex >= 0 && selectedIndex < suggestions.Count)
+                {
+                    await SelectSuggestion(suggestions[selectedIndex]);
+                }
+                else
+                {
+                    await OnSearch.InvokeAsync(SearchQuery);
+                }
+                break;
+            case "Escape":
+                showSuggestions = false;
+                break;
+        }
+    }
+
+    private async Task SelectSuggestion(string suggestion)
+    {
+        SearchQuery = suggestion;
+        await SearchQueryChanged.InvokeAsync(SearchQuery);
+        showSuggestions = false;
+        await OnSearch.InvokeAsync(SearchQuery);
+    }
+
+    private async Task StartVoiceInput()
+    {
+        isListening = true;
+        // This will be handled by JavaScript interop in a real implementation
+        await Task.Delay(100);
+    }
+
+    private async Task StopVoiceInput()
+    {
+        isListening = false;
+        await Task.Delay(100);
+    }
+}
+
+<style>
+    .search-autocomplete {
+        position: relative;
+        width: 100%;
+    }
+
+    .search-input-wrapper {
+        position: relative;
+        display: flex;
+        align-items: center;
+    }
+
+    .search-input {
+        width: 100%;
+        padding: 1rem 3rem 1rem 1rem;
+        font-size: 1.1rem;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        transition: border-color 0.2s;
+    }
+
+    .search-input:focus {
+        outline: none;
+        border-color: #2563eb;
+    }
+
+    .voice-btn {
+        position: absolute;
+        right: 0.5rem;
+        padding: 0.5rem;
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 1.25rem;
+        opacity: 0.6;
+        transition: opacity 0.2s;
+    }
+
+    .voice-btn:hover {
+        opacity: 1;
+    }
+
+    .voice-btn.listening {
+        opacity: 1;
+        animation: pulse 1.5s infinite;
+    }
+
+    @@keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+
+    .suggestions-dropdown {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: white;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+        max-height: 300px;
+        overflow-y: auto;
+        z-index: 1000;
+        margin-top: 4px;
+    }
+
+    .suggestion-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 16px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+        border-bottom: 1px solid #f0f0f0;
+    }
+
+    .suggestion-item:last-child {
+        border-bottom: none;
+    }
+
+    .suggestion-item:hover,
+    .suggestion-item.selected {
+        background-color: #f5f5f5;
+    }
+
+    .suggestion-item .icon {
+        opacity: 0.6;
+    }
+</style>
