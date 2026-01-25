@@ -647,6 +647,39 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
             entity.HasIndex(e => e.CreatedAt);
             entity.HasIndex(e => new { e.UserId, e.CreatedAt });
         });
+        
+        // ResponseFeedback configuration
+        modelBuilder.Entity<ResponseFeedback>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Query).IsRequired().HasMaxLength(2000);
+            entity.Property(e => e.Response).IsRequired().HasColumnType("nvarchar(max)");
+            entity.Property(e => e.ConfidenceScore).IsRequired();
+            entity.Property(e => e.IsHelpful).IsRequired();
+            entity.Property(e => e.Comment).HasMaxLength(1000);
+            entity.Property(e => e.SourceDocumentIds).HasColumnType("nvarchar(max)");
+            entity.Property(e => e.SourceChunkIds).HasColumnType("nvarchar(max)");
+            entity.Property(e => e.CreatedAt).IsRequired();
+            
+            // Relationship with User
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+            
+            // Relationship with Tenant
+            entity.HasOne(e => e.Tenant)
+                .WithMany()
+                .HasForeignKey(e => e.TenantId)
+                .OnDelete(DeleteBehavior.SetNull);
+            
+            // Indexes for analytics and querying
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => e.TenantId);
+            entity.HasIndex(e => e.CreatedAt);
+            entity.HasIndex(e => new { e.UserId, e.CreatedAt });
+            entity.HasIndex(e => new { e.IsHelpful, e.CreatedAt });
+        });
     }
     
     // Helper methods for VECTOR type conversion using JSON serialization
