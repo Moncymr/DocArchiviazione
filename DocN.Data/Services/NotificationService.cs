@@ -1,7 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using DocN.Data.Models;
-using Microsoft.AspNetCore.SignalR;
 
 namespace DocN.Data.Services;
 
@@ -9,16 +8,13 @@ public class NotificationService : INotificationService
 {
     private readonly ApplicationDbContext _context;
     private readonly ILogger<NotificationService> _logger;
-    private readonly IHubContext<DocN.Server.Hubs.NotificationHub>? _hubContext;
 
     public NotificationService(
         ApplicationDbContext context,
-        ILogger<NotificationService> logger,
-        IHubContext<DocN.Server.Hubs.NotificationHub>? hubContext = null)
+        ILogger<NotificationService> logger)
     {
         _context = context;
         _logger = logger;
-        _hubContext = hubContext;
     }
 
     public async Task<Notification> CreateNotificationAsync(
@@ -79,31 +75,6 @@ public class NotificationService : INotificationService
 
             _logger.LogInformation("Created notification {Id} for user {UserId}: {Title}", 
                 notification.Id, userId, title);
-
-            // Send real-time notification via SignalR if hub context is available
-            if (_hubContext != null)
-            {
-                try
-                {
-                    await _hubContext.Clients.Group($"user_{userId}")
-                        .SendAsync("ReceiveNotification", new
-                        {
-                            notification.Id,
-                            notification.Type,
-                            notification.Title,
-                            notification.Message,
-                            notification.Link,
-                            notification.Icon,
-                            notification.IsImportant,
-                            notification.CreatedAt
-                        });
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Failed to send real-time notification via SignalR");
-                    // Don't fail the whole operation if SignalR fails
-                }
-            }
 
             return notification;
         }

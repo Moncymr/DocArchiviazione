@@ -484,7 +484,10 @@ builder.Services.AddScoped<ISearchSuggestionService, SearchSuggestionService>();
 builder.Services.AddScoped<IUserActivityService, UserActivityService>();
 
 // Register Notification Service for real-time updates
-builder.Services.AddScoped<INotificationService, NotificationService>();
+// Register the base service first
+builder.Services.AddScoped<NotificationService>();
+// Then register the SignalR wrapper as the interface implementation
+builder.Services.AddScoped<INotificationService, DocN.Server.Services.SignalRNotificationService>();
 
 // Register Distributed Cache Service (works with both Redis and in-memory cache)
 builder.Services.AddSingleton<IDistributedCacheService, DistributedCacheService>();
