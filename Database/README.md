@@ -47,11 +47,13 @@ This directory contains SQL scripts for database setup and management.
 
 **After running the script:**
 
-The database will be created with the default admin user:
+The database schema will be created. When you start the application for the first time, the `ApplicationSeeder` service will automatically create the default admin user:
 - **Email:** `admin@docn.local`
 - **Password:** `Admin@123`
 
 See [CREDENZIALI_LOGIN.md](../CREDENZIALI_LOGIN.md) for more details.
+
+**Note:** The SQL script only creates the database schema (tables, indexes, constraints). Initial data seeding (like the admin user) is performed automatically by the application when it starts for the first time.
 
 ## Updating the Script
 
