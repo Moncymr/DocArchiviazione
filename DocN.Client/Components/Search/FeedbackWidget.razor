@@ -91,7 +91,7 @@
             var user = authState.User;
             var userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "";
             
-            var httpClient = HttpClientFactory.CreateClient("ServerAPI");
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
             var feedback = new
             {
                 userId = userId,

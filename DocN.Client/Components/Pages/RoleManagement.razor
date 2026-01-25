@@ -193,7 +193,7 @@
     {
         try
         {
-            var httpClient = HttpClientFactory.CreateClient("ServerAPI");
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
             var response = await httpClient.GetFromJsonAsync<StatsResponse>("/api/usermanagement/role-stats");
             
             if (response != null)
@@ -218,7 +218,7 @@
         isLoading = true;
         try
         {
-            var httpClient = HttpClientFactory.CreateClient("ServerAPI");
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
             var url = $"/api/usermanagement?page={currentPage}&pageSize={pageSize}";
             
             if (!string.IsNullOrWhiteSpace(searchTerm))
@@ -294,7 +294,7 @@
         
         try
         {
-            var httpClient = HttpClientFactory.CreateClient("ServerAPI");
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
             
             if (selectedUserIds.Count > 1 && selectedUserIds.Contains(selectedUser.Id))
             {
