@@ -10,7 +10,7 @@
 <FluentCard Class="widget-card activity-feed-widget">
     <FluentStack Orientation="Orientation.Vertical" Style="gap: 1rem;">
         <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center">
-            <FluentIcon Value="@(new string.Timeline())" Color="Color.Accent" />
+            <FluentIcon Value="@(new Icons.Regular.Size20.Timeline())" Color="Color.Accent" />
             <FluentLabel Typo="Typography.H6">@Title</FluentLabel>
         </FluentStack>
 
@@ -29,11 +29,11 @@
             <FluentStack Orientation="Orientation.Vertical" Style="gap: 0.75rem;">
                 @foreach (var activity in _activities)
                 {
-                    <FluentStack Orientation="Orientation.Horizontal" Style="gap: 0.75rem;" VerticalAlignment="VerticalAlignment.Start">
+                    <FluentStack Orientation="Orientation.Horizontal" Style="gap: 0.75rem; align-items: flex-start;">
                         <FluentIcon Value="@GetActivityIcon(activity.ActivityType)" Color="@GetActivityColor(activity.ActivityType)" />
                         <FluentStack Orientation="Orientation.Vertical" Style="gap: 0.25rem; flex: 1;">
                             <FluentLabel Typo="Typography.Body">@activity.Description</FluentLabel>
-                            <FluentLabel Typo="Typography.Caption" Color="Color.Neutral">
+                            <FluentLabel Typo="Typography.Body" Color="Color.Neutral" Style="font-size: 0.875rem;">
                                 @GetRelativeTime(activity.CreatedAt)
                             </FluentLabel>
                         </FluentStack>
@@ -48,7 +48,7 @@
         else
         {
             <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center" Style="padding: 2rem;">
-                <FluentIcon Value="@(new string.Timeline())" Color="Color.Neutral" />
+                <FluentIcon Value="@(new Icons.Regular.Size20.Timeline())" Color="Color.Neutral" />
                 <FluentLabel Typo="Typography.Body" Color="Color.Neutral">No recent activity</FluentLabel>
             </FluentStack>
         }
@@ -105,18 +105,18 @@
         }
     }
 
-    private string GetActivityIcon(string activityType)
+    private Icon GetActivityIcon(string activityType)
     {
         return activityType.ToLower() switch
         {
-            "upload" => new string.ArrowUpload(),
-            "download" => new string.ArrowDownload(),
-            "view" => new string.Eye(),
-            "edit" => new string.Edit(),
-            "delete" => new string.Delete(),
-            "share" => new string.Share(),
-            "search" => new string.Search(),
-            _ => new string.Circle()
+            "upload" => new Icons.Regular.Size20.ArrowUpload(),
+            "download" => new Icons.Regular.Size20.ArrowDownload(),
+            "view" => new Icons.Regular.Size20.Eye(),
+            "edit" => new Icons.Regular.Size20.Edit(),
+            "delete" => new Icons.Regular.Size20.Delete(),
+            "share" => new Icons.Regular.Size20.Share(),
+            "search" => new Icons.Regular.Size20.Search(),
+            _ => new Icons.Regular.Size20.Circle()
         };
     }
 

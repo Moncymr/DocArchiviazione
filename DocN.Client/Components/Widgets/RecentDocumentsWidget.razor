@@ -11,7 +11,7 @@
 <FluentCard Class="widget-card recent-documents-widget">
     <FluentStack Orientation="Orientation.Vertical" Style="gap: 1rem;">
         <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center">
-            <FluentIcon Value="@(new string.DocumentMultiple())" Color="Color.Accent" />
+            <FluentIcon Value="@(new Icons.Regular.Size20.DocumentMultiple())" Color="Color.Accent" />
             <FluentLabel Typo="Typography.H6">@Title</FluentLabel>
         </FluentStack>
 
@@ -35,7 +35,7 @@
                             <FluentIcon Value="@GetDocumentIcon(document.ContentType ?? "")" Color="Color.Neutral" />
                             <FluentStack Orientation="Orientation.Vertical" Style="gap: 0.25rem; flex: 1;">
                                 <FluentLabel Typo="Typography.Body" Style="font-weight: 500;">@document.FileName</FluentLabel>
-                                <FluentLabel Typo="Typography.Caption" Color="Color.Neutral">
+                                <FluentLabel Typo="Typography.Body" Color="Color.Neutral" Style="font-size: 0.875rem;">
                                     @document.UploadedAt.ToString("MMM dd, yyyy HH:mm")
                                     @if (!string.IsNullOrEmpty(document.ActualCategory))
                                     {
@@ -55,7 +55,7 @@
         else
         {
             <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center" Style="padding: 2rem;">
-                <FluentIcon Value="@(new string.DocumentMultiple())" Color="Color.Neutral" />
+                <FluentIcon Value="@(new Icons.Regular.Size20.DocumentMultiple())" Color="Color.Neutral" />
                 <FluentLabel Typo="Typography.Body" Color="Color.Neutral">No recent documents</FluentLabel>
             </FluentStack>
         }
@@ -118,16 +118,16 @@
         NavigationManager.NavigateTo($"/documents/{documentId}");
     }
 
-    private string GetDocumentIcon(string contentType)
+    private Icon GetDocumentIcon(string contentType)
     {
         return contentType.ToLower() switch
         {
-            var ct when ct.Contains("pdf") => new string.DocumentPdf(),
-            var ct when ct.Contains("word") || ct.Contains("docx") => new string.DocumentText(),
-            var ct when ct.Contains("excel") || ct.Contains("spreadsheet") => new string.DocumentTable(),
-            var ct when ct.Contains("image") => new string.Image(),
-            var ct when ct.Contains("text") => new string.DocumentText(),
-            _ => new string.Document()
+            var ct when ct.Contains("pdf") => new Icons.Regular.Size20.DocumentPdf(),
+            var ct when ct.Contains("word") || ct.Contains("docx") => new Icons.Regular.Size20.DocumentText(),
+            var ct when ct.Contains("excel") || ct.Contains("spreadsheet") => new Icons.Regular.Size20.DocumentTable(),
+            var ct when ct.Contains("image") => new Icons.Regular.Size20.Image(),
+            var ct when ct.Contains("text") => new Icons.Regular.Size20.DocumentText(),
+            _ => new Icons.Regular.Size20.Document()
         };
     }
 

@@ -10,7 +10,7 @@
 <FluentCard Class="widget-card statistics-widget">
     <FluentStack Orientation="Orientation.Vertical" Style="gap: 1rem;">
         <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center">
-            <FluentIcon Value="@(new string.ChartMultiple())" Color="Color.Accent" />
+            <FluentIcon Value="@(new Icons.Regular.Size20.ChartMultiple())" Color="Color.Accent" />
             <FluentLabel Typo="Typography.H6">@Title</FluentLabel>
         </FluentStack>
 
@@ -59,11 +59,11 @@
             @if (_statistics.DocumentsByCategory?.Any() == true)
             {
                 <FluentDivider />
-                <FluentLabel Typo="Typography.Subtitle">By Category</FluentLabel>
+                <FluentLabel Typo="Typography.Body" Style="font-weight: 600;">By Category</FluentLabel>
                 <FluentStack Orientation="Orientation.Vertical" Style="gap: 0.5rem;">
                     @foreach (var category in _statistics.DocumentsByCategory.Take(5))
                     {
-                        <FluentStack Orientation="Orientation.Horizontal" HorizontalAlignment="HorizontalAlignment.SpaceBetween">
+                        <FluentStack Orientation="Orientation.Horizontal" Style="justify-content: space-between;">
                             <FluentLabel>@category.Key</FluentLabel>
                             <FluentBadge Appearance="Appearance.Neutral">@category.Value</FluentBadge>
                         </FluentStack>

@@ -4,11 +4,12 @@
 @using Microsoft.FluentUI.AspNetCore.Components
 @inject IDocumentService DocumentService
 @inject ILogger<SystemHealthWidget> Logger
+@inject AuthenticationStateProvider AuthenticationStateProvider
 
 <FluentCard Class="widget-card system-health-widget">
     <FluentStack Orientation="Orientation.Vertical" Style="gap: 1rem;">
         <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center">
-            <FluentIcon Value="@(new string.HeartPulse())" Color="@GetHealthColor()" />
+            <FluentIcon Value="@(new Icons.Regular.Size20.HeartPulse())" Color="@GetHealthColor()" />
             <FluentLabel Typo="Typography.H6">@Title</FluentLabel>
         </FluentStack>
 
@@ -29,18 +30,18 @@
                 <FluentCard Appearance="Appearance.Filled" Style="padding: 1rem;">
                     <FluentStack Orientation="Orientation.Vertical" Style="gap: 0.5rem;">
                         <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center">
-                            <FluentIcon Value="@(new Icons.Regular.Size20.Queue())" Color="Color.Neutral" />
-                            <FluentLabel Typo="Typography.Subtitle">Processing Queue</FluentLabel>
+                            <FluentIcon Value="@(new Icons.Regular.Size20.CalendarLtr())" Color="Color.Neutral" />
+                            <FluentLabel Typo="Typography.Body" Style="font-weight: 600;">Processing Queue</FluentLabel>
                         </FluentStack>
-                        <FluentStack Orientation="Orientation.Horizontal" HorizontalAlignment="HorizontalAlignment.SpaceBetween">
+                        <FluentStack Orientation="Orientation.Horizontal" Style="justify-content: space-between;">
                             <FluentLabel Typo="Typography.Body">Pending</FluentLabel>
                             <FluentBadge Appearance="Appearance.Neutral">@_healthStatus.PendingDocuments</FluentBadge>
                         </FluentStack>
-                        <FluentStack Orientation="Orientation.Horizontal" HorizontalAlignment="HorizontalAlignment.SpaceBetween">
+                        <FluentStack Orientation="Orientation.Horizontal" Style="justify-content: space-between;">
                             <FluentLabel Typo="Typography.Body">Processing</FluentLabel>
                             <FluentBadge Appearance="Appearance.Accent">@_healthStatus.ProcessingDocuments</FluentBadge>
                         </FluentStack>
-                        <FluentStack Orientation="Orientation.Horizontal" HorizontalAlignment="HorizontalAlignment.SpaceBetween">
+                        <FluentStack Orientation="Orientation.Horizontal" Style="justify-content: space-between;">
                             <FluentLabel Typo="Typography.Body">Failed</FluentLabel>
                             <FluentBadge Appearance="@(_healthStatus.FailedDocuments > 0 ? Appearance.Lightweight : Appearance.Neutral)">
                                 @_healthStatus.FailedDocuments
@@ -54,21 +55,21 @@
                     <FluentStack Orientation="Orientation.Vertical" Style="gap: 0.5rem;">
                         <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center">
                             <FluentIcon Value="@(new Icons.Regular.Size20.Server())" Color="Color.Neutral" />
-                            <FluentLabel Typo="Typography.Subtitle">System Status</FluentLabel>
+                            <FluentLabel Typo="Typography.Body" Style="font-weight: 600;">System Status</FluentLabel>
                         </FluentStack>
-                        <FluentStack Orientation="Orientation.Horizontal" HorizontalAlignment="HorizontalAlignment.SpaceBetween">
+                        <FluentStack Orientation="Orientation.Horizontal" Style="justify-content: space-between;">
                             <FluentLabel Typo="Typography.Body">Database</FluentLabel>
                             <FluentBadge Appearance="Appearance.Accent" BackgroundColor="@GetStatusColor(_healthStatus.DatabaseStatus)">
                                 @_healthStatus.DatabaseStatus
                             </FluentBadge>
                         </FluentStack>
-                        <FluentStack Orientation="Orientation.Horizontal" HorizontalAlignment="HorizontalAlignment.SpaceBetween">
+                        <FluentStack Orientation="Orientation.Horizontal" Style="justify-content: space-between;">
                             <FluentLabel Typo="Typography.Body">AI Service</FluentLabel>
                             <FluentBadge Appearance="Appearance.Accent" BackgroundColor="@GetStatusColor(_healthStatus.AIServiceStatus)">
                                 @_healthStatus.AIServiceStatus
                             </FluentBadge>
                         </FluentStack>
-                        <FluentStack Orientation="Orientation.Horizontal" HorizontalAlignment="HorizontalAlignment.SpaceBetween">
+                        <FluentStack Orientation="Orientation.Horizontal" Style="justify-content: space-between;">
                             <FluentLabel Typo="Typography.Body">Storage</FluentLabel>
                             <FluentBadge Appearance="Appearance.Accent" BackgroundColor="@GetStatusColor(_healthStatus.StorageStatus)">
                                 @_healthStatus.StorageStatus
@@ -80,7 +81,7 @@
                 <!-- Quick Stats -->
                 <FluentGrid Spacing="2">
                     <FluentGridItem xs="12">
-                        <FluentLabel Typo="Typography.Caption" Color="Color.Neutral">
+                        <FluentLabel Typo="Typography.Body" Color="Color.Neutral" Style="font-size: 0.875rem;">
                             Last updated: @_lastUpdate.ToString("HH:mm:ss")
                         </FluentLabel>
                     </FluentGridItem>
@@ -106,9 +107,12 @@
     private bool _loading = true;
     private string? _error;
     private DateTime _lastUpdate = DateTime.Now;
+    private string? _userId;
 
     protected override async Task OnInitializedAsync()
     {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        _userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
         await LoadHealthStatusAsync();
     }
 
@@ -119,9 +123,15 @@
             _loading = true;
             _error = null;
 
+            if (string.IsNullOrEmpty(_userId))
+            {
+                _error = "User not authenticated";
+                return;
+            }
+
             // Get health status from various sources
             // For now, we'll use document counts as a proxy for system health
-            var allDocuments = await DocumentService.GetAllDocumentsAsync(1, 1000);
+            var allDocuments = await DocumentService.GetUserDocumentsAsync(_userId, 1, 1000);
             
             _healthStatus = new SystemHealthStatus
             {
