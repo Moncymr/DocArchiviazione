@@ -207,7 +207,7 @@
     private string userId = "user123";
     private bool isLoading = false;
     private string? errorMessage;
-    private List<UserActivity>? activities;
+    private List<UserActivityDto>? activities;
     private UserActivityStatistics? statistics;
 
     protected override async Task OnInitializedAsync()
@@ -229,7 +229,7 @@
         try
         {
             // Load activities
-            activities = await Http.GetFromJsonAsync<List<UserActivity>>($"/api/user-activity/{userId}?count=50");
+            activities = await Http.GetFromJsonAsync<List<UserActivityDto>>($"/api/user-activity/{userId}?count=50");
             
             // Load statistics
             statistics = await Http.GetFromJsonAsync<UserActivityStatistics>($"/api/user-activity/{userId}/statistics");
@@ -246,7 +246,7 @@
         }
     }
 
-    public class UserActivity
+    public class UserActivityDto
     {
         public int id { get; set; }
         public string userId { get; set; } = "";
