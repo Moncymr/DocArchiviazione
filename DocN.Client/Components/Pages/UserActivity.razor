@@ -1,6 +1,6 @@
 @page "/user-activity"
 @using System.Net.Http.Json
-@inject IHttpClientFactory HttpClientFactory
+@inject HttpClient Http
 @inject NavigationManager Navigation
 
 <PageTitle>Attività Utente - DocN</PageTitle>
@@ -228,13 +228,11 @@
         
         try
         {
-            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
-            
             // Load activities
-            activities = await httpClient.GetFromJsonAsync<List<UserActivityDto>>($"api/user-activity/{userId}?count=50");
+            activities = await Http.GetFromJsonAsync<List<UserActivityDto>>($"/api/user-activity/{userId}?count=50");
             
             // Load statistics
-            statistics = await httpClient.GetFromJsonAsync<UserActivityStatistics>($"api/user-activity/{userId}/statistics");
+            statistics = await Http.GetFromJsonAsync<UserActivityStatistics>($"/api/user-activity/{userId}/statistics");
         }
         catch (Exception ex)
         {
