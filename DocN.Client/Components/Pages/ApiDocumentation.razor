@@ -1,0 +1,205 @@
+@page "/api-documentation"
+
+<PageTitle>Documentazione API - DocN</PageTitle>
+
+<div class="container-fluid mt-4">
+    <div class="row mb-4">
+        <div class="col">
+            <h2>📚 Documentazione API</h2>
+            <p class="text-muted">Documentazione completa delle API disponibili nel sistema</p>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">Nuovi Endpoint API Esposti</h5>
+                </div>
+                <div class="card-body">
+                    <p class="lead">
+                        Recentemente sono stati esposti nuovi endpoint API per servizi precedentemente non accessibili.
+                    </p>
+                    
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i>
+                        <strong>Documentazione Completa:</strong> 
+                        Per la documentazione dettagliata con esempi di richieste e risposte, consulta:
+                        <ul class="mb-0 mt-2">
+                            <li>
+                                <a href="/docs/NEW_API_ENDPOINTS.md" target="_blank" class="fw-bold">
+                                    NEW_API_ENDPOINTS.md
+                                </a> - Riferimento completo dei nuovi endpoint
+                            </li>
+                            <li>
+                                <a href="/docs/IMPLEMENTATION_SUMMARY.md" target="_blank" class="fw-bold">
+                                    IMPLEMENTATION_SUMMARY.md
+                                </a> - Riepilogo dell'implementazione
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- User Activity API -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">👤 API Attività Utente</h5>
+                </div>
+                <div class="card-body">
+                    <p>Traccia e recupera le attività degli utenti nel sistema.</p>
+                    
+                    <h6 class="mt-3">Endpoint Disponibili:</h6>
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item">
+                            <span class="badge bg-success">GET</span>
+                            <code>/api/user-activity/{userId}</code>
+                            <p class="mb-0 mt-1 text-muted small">Recupera le attività di un utente specifico</p>
+                        </li>
+                        <li class="list-group-item">
+                            <span class="badge bg-primary">POST</span>
+                            <code>/api/user-activity/record</code>
+                            <p class="mb-0 mt-1 text-muted small">Registra una nuova attività utente</p>
+                        </li>
+                        <li class="list-group-item">
+                            <span class="badge bg-success">GET</span>
+                            <code>/api/user-activity/{userId}/documents</code>
+                            <p class="mb-0 mt-1 text-muted small">Recupera attività relative ai documenti</p>
+                        </li>
+                        <li class="list-group-item">
+                            <span class="badge bg-success">GET</span>
+                            <code>/api/user-activity/{userId}/statistics</code>
+                            <p class="mb-0 mt-1 text-muted small">Statistiche aggregate delle attività</p>
+                        </li>
+                    </ul>
+
+                    <div class="mt-3">
+                        <a href="/user-activity" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-box-arrow-up-right"></i> Visualizza Interfaccia Utente
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Retrieval Metrics API -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">📊 API Metriche di Retrieval</h5>
+                </div>
+                <div class="card-body">
+                    <p>Calcola metriche di qualità standard del settore per i sistemi di recupero informazioni.</p>
+                    
+                    <h6 class="mt-3">Metriche Supportate:</h6>
+                    <ul>
+                        <li><strong>MRR (Mean Reciprocal Rank)</strong> - Posizione del primo risultato rilevante</li>
+                        <li><strong>NDCG (Normalized Discounted Cumulative Gain)</strong> - Qualità del ranking</li>
+                        <li><strong>Precision@K</strong> - Precisione nei primi K risultati</li>
+                        <li><strong>Recall@K</strong> - Copertura dei documenti rilevanti</li>
+                        <li><strong>F1@K</strong> - Media armonica di Precision e Recall</li>
+                    </ul>
+
+                    <h6 class="mt-3">Endpoint Disponibili:</h6>
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item">
+                            <span class="badge bg-primary">POST</span>
+                            <code>/api/retrieval-metrics/calculate</code>
+                            <p class="mb-0 mt-1 text-muted small">Calcola tutte le metriche</p>
+                        </li>
+                        <li class="list-group-item">
+                            <span class="badge bg-primary">POST</span>
+                            <code>/api/retrieval-metrics/summary</code>
+                            <p class="mb-0 mt-1 text-muted small">Riepilogo formattato delle metriche</p>
+                        </li>
+                        <li class="list-group-item">
+                            <span class="badge bg-primary">POST</span>
+                            <code>/api/retrieval-metrics/mrr</code>,
+                            <code>/ndcg</code>,
+                            <code>/precision</code>,
+                            <code>/recall</code>,
+                            <code>/f1</code>
+                            <p class="mb-0 mt-1 text-muted small">Endpoint per metriche individuali</p>
+                        </li>
+                    </ul>
+
+                    <div class="mt-3">
+                        <a href="/retrieval-metrics" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-box-arrow-up-right"></i> Visualizza Interfaccia Utente
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RAG Quality API Extensions -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">✅ Estensioni API Qualità RAG</h5>
+                </div>
+                <div class="card-body">
+                    <p>Metriche individuali RAGAS per analisi dettagliata della qualità RAG.</p>
+                    
+                    <h6 class="mt-3">Nuovi Endpoint RAGAS:</h6>
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item">
+                            <span class="badge bg-primary">POST</span>
+                            <code>/api/rag-quality/ragas/faithfulness</code>
+                            <p class="mb-0 mt-1 text-muted small">Verifica se la risposta è basata sui contesti forniti</p>
+                        </li>
+                        <li class="list-group-item">
+                            <span class="badge bg-primary">POST</span>
+                            <code>/api/rag-quality/ragas/relevancy</code>
+                            <p class="mb-0 mt-1 text-muted small">Misura la rilevanza della risposta alla query</p>
+                        </li>
+                        <li class="list-group-item">
+                            <span class="badge bg-primary">POST</span>
+                            <code>/api/rag-quality/ragas/context-precision</code>
+                            <p class="mb-0 mt-1 text-muted small">Valuta la precisione dei contesti recuperati</p>
+                        </li>
+                        <li class="list-group-item">
+                            <span class="badge bg-primary">POST</span>
+                            <code>/api/rag-quality/ragas/context-recall</code>
+                            <p class="mb-0 mt-1 text-muted small">Misura la copertura dei contesti rilevanti</p>
+                        </li>
+                        <li class="list-group-item">
+                            <span class="badge bg-primary">POST</span>
+                            <code>/api/rag-quality/ragas/evaluate-dataset</code>
+                            <p class="mb-0 mt-1 text-muted small">Valuta un golden dataset completo</p>
+                        </li>
+                    </ul>
+
+                    <div class="mt-3">
+                        <a href="/monitoring/rag-quality" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-box-arrow-up-right"></i> Visualizza Interfaccia Qualità RAG
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Additional Resources -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">🔗 Risorse Aggiuntive</h5>
+                </div>
+                <div class="card-body">
+                    <ul class="list-unstyled">
+                        <li class="mb-2">
+                            <i class="bi bi-shield-check text-success"></i>
+                            <strong>Rate Limiting:</strong> Tutti gli endpoint utilizzano i limiter esistenti (<code>api</code> o <code>ai</code>)
+                        </li>
+                        <li class="mb-2">
+                            <i class="bi bi-lock text-warning"></i>
+                            <strong>Autenticazione:</strong> Richiesta autenticazione per accedere agli endpoint
+                        </li>
+                        <li class="mb-2">
+                            <i class="bi bi-code-square text-primary"></i>
+                            <strong>Formato Risposta:</strong> Tutte le risposte sono in formato JSON
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    // No code-behind needed for documentation page
+}

@@ -1,0 +1,282 @@
+@page "/user-activity"
+@using System.Net.Http.Json
+@inject HttpClient Http
+@inject NavigationManager Navigation
+
+<PageTitle>Attività Utente - DocN</PageTitle>
+
+<div class="container-fluid mt-4">
+    <div class="row mb-4">
+        <div class="col">
+            <h2>📊 Attività Utente</h2>
+            <p class="text-muted">Traccia e analizza le attività degli utenti nel sistema</p>
+        </div>
+    </div>
+
+    @if (isLoading)
+    {
+        <div class="text-center p-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Caricamento...</span>
+            </div>
+            <p class="mt-3">Caricamento attività...</p>
+        </div>
+    }
+    else if (errorMessage != null)
+    {
+        <div class="alert alert-danger" role="alert">
+            <strong>Errore:</strong> @errorMessage
+        </div>
+    }
+    else
+    {
+        <!-- Statistics Summary -->
+        @if (statistics != null)
+        {
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5 class="card-title">@statistics.analyzedActivities</h5>
+                            <p class="card-text text-muted">Attività Analizzate</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card text-center">
+                        <div class="card-body">
+                            <h5 class="card-title">@statistics.documentActivities</h5>
+                            <p class="card-text text-muted">Attività Documenti</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-body">
+                            <h6 class="card-title">Documenti Più Acceduti</h6>
+                            @if (statistics.mostAccessedDocuments?.Any() == true)
+                            {
+                                <ul class="list-unstyled mb-0">
+                                    @foreach (var doc in statistics.mostAccessedDocuments.Take(3))
+                                    {
+                                        <li class="mb-1">
+                                            <span class="badge bg-primary">@doc.count</span>
+                                            Documento #@doc.documentId
+                                        </li>
+                                    }
+                                </ul>
+                            }
+                            else
+                            {
+                                <p class="text-muted mb-0">Nessun dato disponibile</p>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Activity Type Breakdown -->
+            <div class="row mb-4">
+                <div class="col-md-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">Distribuzione per Tipo di Attività</h5>
+                        </div>
+                        <div class="card-body">
+                            @if (statistics.activityTypeBreakdown?.Any() == true)
+                            {
+                                <div class="table-responsive">
+                                    <table class="table table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th>Tipo Attività</th>
+                                                <th>Conteggio</th>
+                                                <th>Percentuale</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var activity in statistics.activityTypeBreakdown)
+                                            {
+                                                var percentage = statistics.analyzedActivities > 0 
+                                                    ? (activity.count * 100.0 / statistics.analyzedActivities).ToString("F1") 
+                                                    : "0.0";
+                                                <tr>
+                                                    <td>@activity.activityType</td>
+                                                    <td>@activity.count</td>
+                                                    <td>
+                                                        <div class="progress" style="height: 20px;">
+                                                            <div class="progress-bar" role="progressbar" 
+                                                                 style="width: @percentage%" 
+                                                                 aria-valuenow="@percentage" 
+                                                                 aria-valuemin="0" 
+                                                                 aria-valuemax="100">
+                                                                @percentage%
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                            else
+                            {
+                                <p class="text-muted">Nessuna attività disponibile</p>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @if (statistics.note != null)
+            {
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> @statistics.note
+                </div>
+            }
+        }
+
+        <!-- Recent Activities -->
+        <div class="row">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Attività Recenti</h5>
+                        <div>
+                            <label for="userIdInput" class="form-label me-2 mb-0">User ID:</label>
+                            <input type="text" id="userIdInput" class="form-control form-control-sm d-inline-block" 
+                                   style="width: 200px;" @bind="userId" @bind:event="oninput" />
+                            <button class="btn btn-sm btn-primary ms-2" @onclick="LoadActivities">
+                                <i class="bi bi-search"></i> Cerca
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        @if (activities?.Any() == true)
+                        {
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Data</th>
+                                            <th>Tipo</th>
+                                            <th>Descrizione</th>
+                                            <th>Documento</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var activity in activities)
+                                        {
+                                            <tr>
+                                                <td>@activity.createdAt.ToString("dd/MM/yyyy HH:mm")</td>
+                                                <td>
+                                                    <span class="badge bg-secondary">@activity.activityType</span>
+                                                </td>
+                                                <td>@activity.description</td>
+                                                <td>
+                                                    @if (activity.documentId.HasValue)
+                                                    {
+                                                        <span class="badge bg-info">#@activity.documentId</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="text-muted">-</span>
+                                                    }
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="text-muted text-center py-4">
+                                Nessuna attività trovata. Inserisci un User ID e clicca su Cerca.
+                            </p>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private string userId = "user123";
+    private bool isLoading = false;
+    private string? errorMessage;
+    private List<UserActivity>? activities;
+    private UserActivityStatistics? statistics;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadActivities();
+    }
+
+    private async Task LoadActivities()
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            errorMessage = "Inserisci un User ID valido";
+            return;
+        }
+
+        isLoading = true;
+        errorMessage = null;
+        
+        try
+        {
+            // Load activities
+            activities = await Http.GetFromJsonAsync<List<UserActivity>>($"/api/user-activity/{userId}?count=50");
+            
+            // Load statistics
+            statistics = await Http.GetFromJsonAsync<UserActivityStatistics>($"/api/user-activity/{userId}/statistics");
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Errore nel caricamento delle attività: {ex.Message}";
+            activities = null;
+            statistics = null;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    public class UserActivity
+    {
+        public int id { get; set; }
+        public string userId { get; set; } = "";
+        public string activityType { get; set; } = "";
+        public string description { get; set; } = "";
+        public int? documentId { get; set; }
+        public string? metadata { get; set; }
+        public DateTime createdAt { get; set; }
+    }
+
+    public class UserActivityStatistics
+    {
+        public int analyzedActivities { get; set; }
+        public int limitedTo { get; set; }
+        public string? note { get; set; }
+        public List<ActivityTypeCount>? activityTypeBreakdown { get; set; }
+        public int documentActivities { get; set; }
+        public DateTime? recentActivity { get; set; }
+        public List<DocumentCount>? mostAccessedDocuments { get; set; }
+    }
+
+    public class ActivityTypeCount
+    {
+        public string activityType { get; set; } = "";
+        public int count { get; set; }
+    }
+
+    public class DocumentCount
+    {
+        public int? documentId { get; set; }
+        public int count { get; set; }
+    }
+}
