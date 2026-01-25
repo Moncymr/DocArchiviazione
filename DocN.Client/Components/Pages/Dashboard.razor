@@ -29,40 +29,43 @@
             <p>@_errorMessage</p>
         </div>
     }
-    else if (_widgets?.Any() == true)
+    else
     {
         @if (_isManagingWidgets)
         {
             <div class="widget-management">
                 <h3>Gestione Widget</h3>
                 
-                <div class="widget-list">
-                    @foreach (var widget in _widgets.OrderBy(w => w.Position))
-                    {
-                        <div class="widget-control-item">
-                            <span class="widget-type-icon">@GetWidgetIcon(widget.WidgetType)</span>
-                            <span class="widget-title">@widget.Title</span>
-                            
-                            <div class="widget-actions">
-                                <button class="btn-icon" @onclick="async () => await MoveWidgetUp(widget)" disabled="@(widget.Position == 0)" title="Sposta su">
-                                    ⬆️
-                                </button>
-                                <button class="btn-icon" @onclick="async () => await MoveWidgetDown(widget)" disabled="@(widget.Position == _widgets.Count - 1)" title="Sposta giù">
-                                    ⬇️
-                                </button>
+                @if (_widgets?.Any() == true)
+                {
+                    <div class="widget-list">
+                        @foreach (var widget in _widgets.OrderBy(w => w.Position))
+                        {
+                            <div class="widget-control-item">
+                                <span class="widget-type-icon">@GetWidgetIcon(widget.WidgetType)</span>
+                                <span class="widget-title">@widget.Title</span>
                                 
-                                <label class="switch">
-                                    <input type="checkbox" checked="@widget.IsVisible" @onchange="async (e) => await ToggleWidgetVisibility(widget, (bool)e.Value!)" />
-                                    <span class="slider"></span>
-                                </label>
-                                
-                                <button class="btn-icon btn-delete" @onclick="async () => await DeleteWidget(widget)" title="Elimina">
-                                    🗑️
-                                </button>
+                                <div class="widget-actions">
+                                    <button class="btn-icon" @onclick="async () => await MoveWidgetUp(widget)" disabled="@(widget.Position == 0)" title="Sposta su">
+                                        ⬆️
+                                    </button>
+                                    <button class="btn-icon" @onclick="async () => await MoveWidgetDown(widget)" disabled="@(widget.Position == _widgets.Count - 1)" title="Sposta giù">
+                                        ⬇️
+                                    </button>
+                                    
+                                    <label class="switch">
+                                        <input type="checkbox" checked="@widget.IsVisible" @onchange="async (e) => await ToggleWidgetVisibility(widget, (bool)e.Value!)" />
+                                        <span class="slider"></span>
+                                    </label>
+                                    
+                                    <button class="btn-icon btn-delete" @onclick="async () => await DeleteWidget(widget)" title="Elimina">
+                                        🗑️
+                                    </button>
+                                </div>
                             </div>
-                        </div>
-                    }
-                </div>
+                        }
+                    </div>
+                }
 
                 <div class="add-widget-section">
                     <select class="select-widget-type" @bind="_selectedWidgetType">
@@ -83,43 +86,46 @@
             </div>
         }
 
-        <div class="widgets-grid">
-            @foreach (var widget in _widgets.Where(w => w.IsVisible).OrderBy(w => w.Position))
-            {
-                <div class="widget-container">
-                    @switch (widget.WidgetType)
-                    {
-                        case "Statistics":
-                            <StatisticsWidget WidgetId="@widget.Id" Title="@widget.Title" />
-                            break;
-                        case "RecentDocuments":
-                            <RecentDocumentsWidget WidgetId="@widget.Id" Title="@widget.Title" />
-                            break;
-                        case "ActivityFeed":
-                            <ActivityFeedWidget WidgetId="@widget.Id" Title="@widget.Title" />
-                            break;
-                        case "SavedSearches":
-                            <SavedSearchesWidget WidgetId="@widget.Id" Title="@widget.Title" />
-                            break;
-                        case "SystemHealth":
-                            <SystemHealthWidget WidgetId="@widget.Id" Title="@widget.Title" />
-                            break;
-                        default:
-                            <div class="alert alert-warning">
-                                Widget type '@widget.WidgetType' non riconosciuto
-                            </div>
-                            break;
-                    }
-                </div>
-            }
-        </div>
-    }
-    else
-    {
-        <div class="alert alert-info">
-            <strong>ℹ️ Benvenuto</strong>
-            <p>Nessun widget configurato. Clicca su "Gestisci Widget" per aggiungere widget personalizzati alla tua dashboard.</p>
-        </div>
+        @if (_widgets?.Any() == true)
+        {
+            <div class="widgets-grid">
+                @foreach (var widget in _widgets.Where(w => w.IsVisible).OrderBy(w => w.Position))
+                {
+                    <div class="widget-container">
+                        @switch (widget.WidgetType)
+                        {
+                            case "Statistics":
+                                <StatisticsWidget WidgetId="@widget.Id" Title="@widget.Title" />
+                                break;
+                            case "RecentDocuments":
+                                <RecentDocumentsWidget WidgetId="@widget.Id" Title="@widget.Title" />
+                                break;
+                            case "ActivityFeed":
+                                <ActivityFeedWidget WidgetId="@widget.Id" Title="@widget.Title" />
+                                break;
+                            case "SavedSearches":
+                                <SavedSearchesWidget WidgetId="@widget.Id" Title="@widget.Title" />
+                                break;
+                            case "SystemHealth":
+                                <SystemHealthWidget WidgetId="@widget.Id" Title="@widget.Title" />
+                                break;
+                            default:
+                                <div class="alert alert-warning">
+                                    Widget type '@widget.WidgetType' non riconosciuto
+                                </div>
+                                break;
+                        }
+                    </div>
+                }
+            </div>
+        }
+        else if (!_isManagingWidgets)
+        {
+            <div class="alert alert-info">
+                <strong>ℹ️ Benvenuto</strong>
+                <p>Nessun widget configurato. Clicca su "Gestisci Widget" per aggiungere widget personalizzati alla tua dashboard.</p>
+            </div>
+        }
     }
 </div>
 
