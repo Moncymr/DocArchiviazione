@@ -1,5 +1,9 @@
 @page "/dashboard"
-@inject IDocumentStatisticsService StatisticsService
+@using DocN.Data.Services
+@using DocN.Data.Models
+@using DocN.Data.Constants
+@using System.Security.Claims
+@inject IDashboardWidgetService WidgetService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ILogger<Dashboard> Logger
 @rendermode InteractiveServer
@@ -7,448 +11,371 @@
 <PageTitle>Dashboard - DocN</PageTitle>
 
 <div class="dashboard-container">
-    <h2>📊 Dashboard Documenti</h2>
+    <div class="dashboard-header">
+        <h2>📊 Dashboard Documenti</h2>
+        <button class="btn-manage" @onclick="ToggleWidgetManagement">
+            ⚙️ @(_isManagingWidgets ? "Chiudi" : "Gestisci Widget")
+        </button>
+    </div>
 
-    @if (isLoading)
+    @if (_isLoading)
     {
-        <div class="loading">Caricamento statistiche...</div>
+        <div class="loading">Caricamento dashboard...</div>
     }
-    else if (!string.IsNullOrEmpty(errorMessage))
+    else if (!string.IsNullOrEmpty(_errorMessage))
     {
         <div class="alert alert-error">
             <strong>⚠️ Errore</strong>
-            <p>@errorMessage</p>
+            <p>@_errorMessage</p>
         </div>
     }
-    else if (!string.IsNullOrEmpty(infoMessage))
+    else if (_widgets?.Any() == true)
     {
-        <div class="alert alert-info">
-            <strong>ℹ️ Informazione</strong>
-            <p>@infoMessage</p>
-        </div>
-    }
-    else if (stats != null && stats.TotalDocuments > 0)
-    {
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-icon">📄</div>
-                <div class="stat-info">
-                    <h3>@stats.TotalDocuments</h3>
-                    <p>Documenti Totali</p>
-                </div>
-            </div>
-
-            <div class="stat-card">
-                <div class="stat-icon">💾</div>
-                <div class="stat-info">
-                    <h3>@FormatBytes(stats.TotalStorageBytes)</h3>
-                    <p>Spazio Totale</p>
-                </div>
-            </div>
-
-            <div class="stat-card">
-                <div class="stat-icon">📅</div>
-                <div class="stat-info">
-                    <h3>@stats.DocumentsUploadedToday</h3>
-                    <p>Caricati Oggi</p>
-                </div>
-            </div>
-
-            <div class="stat-card">
-                <div class="stat-icon">📈</div>
-                <div class="stat-info">
-                    <h3>@stats.DocumentsUploadedThisWeek</h3>
-                    <p>Questa Settimana</p>
-                </div>
-            </div>
-        </div>
-
-        @* Embedding Queue Status Card *@
-        <div class="embedding-queue-card">
-            <div class="card-header">
-                <h3>⚙️ Stato Elaborazione Embeddings</h3>
-                <button class="btn-refresh" @onclick="RefreshStats" disabled="@isLoading">
-                    🔄 Aggiorna
-                </button>
-            </div>
-            
-            <div class="queue-stats">
-                @if (stats.PendingEmbeddingsCount > 0 || stats.ProcessingEmbeddingsCount > 0)
-                {
-                    <div class="queue-info-box queue-pending">
-                        <div class="queue-icon">⏳</div>
-                        <div class="queue-details">
-                            <div class="queue-count">@stats.PendingEmbeddingsCount</div>
-                            <div class="queue-label">Documenti in Coda</div>
-                        </div>
-                    </div>
-                    
-                    @if (stats.ProcessingEmbeddingsCount > 0)
-                    {
-                        <div class="queue-info-box queue-processing">
-                            <div class="queue-icon">⚙️</div>
-                            <div class="queue-details">
-                                <div class="queue-count">@stats.ProcessingEmbeddingsCount</div>
-                                <div class="queue-label">In Elaborazione</div>
-                            </div>
-                        </div>
-                    }
-                    
-                    <div class="queue-info-box queue-chunks">
-                        <div class="queue-icon">📦</div>
-                        <div class="queue-details">
-                            <div class="queue-count">@stats.PendingChunksCount</div>
-                            <div class="queue-label">Chunks da Processare</div>
-                        </div>
-                    </div>
-                    
-                    <div class="queue-info-box queue-time">
-                        <div class="queue-icon">⏱️</div>
-                        <div class="queue-details">
-                            <div class="queue-count">@FormatEstimatedTime(stats.EstimatedProcessingTimeMinutes)</div>
-                            <div class="queue-label">Tempo Stimato</div>
-                        </div>
-                    </div>
-                }
-                else if (stats.CompletedEmbeddingsCount > 0)
-                {
-                    <div class="queue-info-box queue-completed">
-                        <div class="queue-icon">✅</div>
-                        <div class="queue-details">
-                            <div class="queue-count">@stats.CompletedEmbeddingsCount</div>
-                            <div class="queue-label">Documenti Completati</div>
-                            <div class="queue-message">Tutti i documenti hanno embeddings pronti!</div>
-                        </div>
-                    </div>
-                }
-                else
-                {
-                    <div class="queue-empty">
-                        <div class="empty-icon">🎉</div>
-                        <p>Nessun documento in attesa di elaborazione</p>
-                    </div>
-                }
-            </div>
-            
-            <div class="queue-info-text">
-                <p>
-                    <strong>ℹ️ Informazioni:</strong>
-                    Il sistema elabora automaticamente gli embeddings in background ogni 30 secondi.
-                    Un PDF semplice richiede tipicamente <strong>2-5 minuti</strong> per completare l'elaborazione con Gemini.
-                </p>
-            </div>
-        </div>
-
-        <div class="charts-grid">
-            <div class="chart-card">
-                <h3>Documenti per Categoria</h3>
-                @if (stats.DocumentsByCategory.Any())
-                {
-                    <div class="category-list">
-                        @foreach (var category in stats.DocumentsByCategory.OrderByDescending(x => x.Value))
-                        {
-                            <div class="category-item">
-                                <span class="category-name">@category.Key</span>
-                                <div class="category-bar">
-                                    <div class="category-fill" style="width: @(GetPercentage(category.Value, stats.TotalDocuments))%"></div>
-                                </div>
-                                <span class="category-count">@category.Value</span>
-                            </div>
-                        }
-                    </div>
-                }
-                else
-                {
-                    <p class="empty-message">Nessuna categoria ancora</p>
-                }
-            </div>
-
-            <div class="chart-card">
-                <h3>Documenti per Tipo</h3>
-                @if (stats.DocumentsByType.Any())
-                {
-                    <div class="type-list">
-                        @foreach (var type in stats.DocumentsByType.OrderByDescending(x => x.Value))
-                        {
-                            <div class="type-item">
-                                <span class="type-icon">@GetFileIcon(type.Key)</span>
-                                <span class="type-name">@type.Key</span>
-                                <span class="type-count">@type.Value</span>
-                            </div>
-                        }
-                    </div>
-                }
-                else
-                {
-                    <p class="empty-message">Nessun documento ancora</p>
-                }
-            </div>
-        </div>
-
-        @if (stats.MostAccessedDocuments.Any())
+        @if (_isManagingWidgets)
         {
-            <div class="section">
-                <h3>🔥 Documenti Più Consultati</h3>
-                <div class="table-container">
-                    <table class="documents-table">
-                        <thead>
-                            <tr>
-                                <th>Documento</th>
-                                <th>Visualizzazioni</th>
-                                <th>Ultimo Accesso</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var doc in stats.MostAccessedDocuments)
-                            {
-                                <tr>
-                                    <td>@doc.FileName</td>
-                                    <td>@doc.AccessCount</td>
-                                    <td>@doc.LastAccessedAt.ToString("dd MMM yyyy HH:mm")</td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        }
-
-        @if (stats.OptimizationSuggestions.Any())
-        {
-            <div class="section">
-                <h3>💡 Suggerimenti di Ottimizzazione</h3>
-                <div class="suggestions-list">
-                    @foreach (var suggestion in stats.OptimizationSuggestions)
+            <div class="widget-management">
+                <h3>Gestione Widget</h3>
+                
+                <div class="widget-list">
+                    @foreach (var widget in _widgets.OrderBy(w => w.Position))
                     {
-                        <div class="suggestion-card">
-                            <div class="suggestion-header">
-                                <strong>@suggestion.Category</strong>
-                                <span class="doc-count">@suggestion.DocumentCount documenti</span>
-                            </div>
-                            <div class="suggestion-body">
-                                <p class="suggestion-text">💡 @suggestion.Suggestion</p>
-                                <p class="suggestion-reason">@suggestion.Reason</p>
+                        <div class="widget-control-item">
+                            <span class="widget-type-icon">@GetWidgetIcon(widget.WidgetType)</span>
+                            <span class="widget-title">@widget.Title</span>
+                            
+                            <div class="widget-actions">
+                                <button class="btn-icon" @onclick="async () => await MoveWidgetUp(widget)" disabled="@(widget.Position == 0)" title="Sposta su">
+                                    ⬆️
+                                </button>
+                                <button class="btn-icon" @onclick="async () => await MoveWidgetDown(widget)" disabled="@(widget.Position == _widgets.Count - 1)" title="Sposta giù">
+                                    ⬇️
+                                </button>
+                                
+                                <label class="switch">
+                                    <input type="checkbox" checked="@widget.IsVisible" @onchange="async (e) => await ToggleWidgetVisibility(widget, (bool)e.Value!)" />
+                                    <span class="slider"></span>
+                                </label>
+                                
+                                <button class="btn-icon btn-delete" @onclick="async () => await DeleteWidget(widget)" title="Elimina">
+                                    🗑️
+                                </button>
                             </div>
                         </div>
                     }
                 </div>
+
+                <div class="add-widget-section">
+                    <select class="select-widget-type" @bind="_selectedWidgetType">
+                        <option value="">-- Seleziona tipo widget --</option>
+                        <option value="Statistics">📊 Statistiche</option>
+                        <option value="RecentDocuments">📄 Documenti Recenti</option>
+                        <option value="ActivityFeed">📈 Feed Attività</option>
+                        <option value="SavedSearches">🔖 Ricerche Salvate</option>
+                        @if (_isAdmin)
+                        {
+                            <option value="SystemHealth">💚 Stato Sistema</option>
+                        }
+                    </select>
+                    <button class="btn-add" @onclick="AddWidget" disabled="@string.IsNullOrEmpty(_selectedWidgetType)">
+                        ➕ Aggiungi Widget
+                    </button>
+                </div>
             </div>
         }
+
+        <div class="widgets-grid">
+            @foreach (var widget in _widgets.Where(w => w.IsVisible).OrderBy(w => w.Position))
+            {
+                <div class="widget-container">
+                    @switch (widget.WidgetType)
+                    {
+                        case "Statistics":
+                            <StatisticsWidget WidgetId="@widget.Id" Title="@widget.Title" />
+                            break;
+                        case "RecentDocuments":
+                            <RecentDocumentsWidget WidgetId="@widget.Id" Title="@widget.Title" />
+                            break;
+                        case "ActivityFeed":
+                            <ActivityFeedWidget WidgetId="@widget.Id" Title="@widget.Title" />
+                            break;
+                        case "SavedSearches":
+                            <SavedSearchesWidget WidgetId="@widget.Id" Title="@widget.Title" />
+                            break;
+                        case "SystemHealth":
+                            <SystemHealthWidget WidgetId="@widget.Id" Title="@widget.Title" />
+                            break;
+                        default:
+                            <div class="alert alert-warning">
+                                Widget type '@widget.WidgetType' non riconosciuto
+                            </div>
+                            break;
+                    }
+                </div>
+            }
+        </div>
     }
     else
     {
         <div class="alert alert-info">
             <strong>ℹ️ Benvenuto</strong>
-            <p>Inizia caricando alcuni documenti per visualizzare le statistiche del dashboard.</p>
+            <p>Nessun widget configurato. Clicca su "Gestisci Widget" per aggiungere widget personalizzati alla tua dashboard.</p>
         </div>
     }
 </div>
 
+@code {
+    private List<DashboardWidget>? _widgets;
+    private bool _isLoading = true;
+    private string? _userId;
+    private string? _userRole;
+    private string? _errorMessage;
+    private bool _isManagingWidgets = false;
+    private bool _isAdmin = false;
+    private string _selectedWidgetType = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        _userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        _userRole = authState.User.FindFirstValue(ClaimTypes.Role);
+        _isAdmin = _userRole == Roles.SuperAdmin || _userRole == Roles.TenantAdmin;
+
+        await LoadWidgetsAsync();
+    }
+
+    private async Task LoadWidgetsAsync()
+    {
+        try
+        {
+            _isLoading = true;
+            _errorMessage = null;
+
+            if (string.IsNullOrEmpty(_userId))
+            {
+                _errorMessage = "Utente non autenticato";
+                return;
+            }
+
+            _widgets = await WidgetService.GetUserWidgetsAsync(_userId);
+
+            // If user has no widgets, initialize with defaults based on role
+            if (!_widgets.Any() && !string.IsNullOrEmpty(_userRole))
+            {
+                await InitializeDefaultWidgets();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading dashboard widgets for user {UserId}", _userId);
+            _errorMessage = "Si è verificato un errore durante il caricamento della dashboard.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task InitializeDefaultWidgets()
+    {
+        try
+        {
+            var defaultWidgets = await WidgetService.GetDefaultWidgetsForRole(_userRole!);
+            
+            foreach (var widget in defaultWidgets)
+            {
+                widget.UserId = _userId!;
+                await WidgetService.CreateWidgetAsync(widget);
+            }
+
+            _widgets = await WidgetService.GetUserWidgetsAsync(_userId!);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error initializing default widgets for user {UserId}", _userId);
+        }
+    }
+
+    private void ToggleWidgetManagement()
+    {
+        _isManagingWidgets = !_isManagingWidgets;
+    }
+
+    private async Task ToggleWidgetVisibility(DashboardWidget widget, bool isVisible)
+    {
+        try
+        {
+            widget.IsVisible = isVisible;
+            await WidgetService.UpdateWidgetAsync(widget);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error toggling widget visibility");
+            _errorMessage = "Errore nell'aggiornamento del widget";
+        }
+    }
+
+    private async Task MoveWidgetUp(DashboardWidget widget)
+    {
+        if (widget.Position == 0 || _widgets == null) return;
+
+        var otherWidget = _widgets.FirstOrDefault(w => w.Position == widget.Position - 1);
+        if (otherWidget != null)
+        {
+            widget.Position--;
+            otherWidget.Position++;
+
+            try
+            {
+                await WidgetService.UpdateWidgetAsync(widget);
+                await WidgetService.UpdateWidgetAsync(otherWidget);
+                await LoadWidgetsAsync();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error moving widget up");
+                _errorMessage = "Errore nello spostamento del widget";
+            }
+        }
+    }
+
+    private async Task MoveWidgetDown(DashboardWidget widget)
+    {
+        if (_widgets == null || widget.Position == _widgets.Count - 1) return;
+
+        var otherWidget = _widgets.FirstOrDefault(w => w.Position == widget.Position + 1);
+        if (otherWidget != null)
+        {
+            widget.Position++;
+            otherWidget.Position--;
+
+            try
+            {
+                await WidgetService.UpdateWidgetAsync(widget);
+                await WidgetService.UpdateWidgetAsync(otherWidget);
+                await LoadWidgetsAsync();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error moving widget down");
+                _errorMessage = "Errore nello spostamento del widget";
+            }
+        }
+    }
+
+    private async Task DeleteWidget(DashboardWidget widget)
+    {
+        try
+        {
+            await WidgetService.DeleteWidgetAsync(widget.Id, _userId!);
+            await LoadWidgetsAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error deleting widget");
+            _errorMessage = "Errore nell'eliminazione del widget";
+        }
+    }
+
+    private async Task AddWidget()
+    {
+        if (string.IsNullOrEmpty(_selectedWidgetType) || string.IsNullOrEmpty(_userId) || _widgets == null)
+            return;
+
+        try
+        {
+            var newWidget = new DashboardWidget
+            {
+                UserId = _userId,
+                WidgetType = _selectedWidgetType,
+                Title = GetWidgetTitle(_selectedWidgetType),
+                Position = _widgets.Count,
+                IsVisible = true
+            };
+
+            await WidgetService.CreateWidgetAsync(newWidget);
+            _selectedWidgetType = "";
+            await LoadWidgetsAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error adding widget");
+            _errorMessage = "Errore nell'aggiunta del widget";
+        }
+    }
+
+    private string GetWidgetTitle(string widgetType)
+    {
+        return widgetType switch
+        {
+            "Statistics" => "Statistiche Documenti",
+            "RecentDocuments" => "Documenti Recenti",
+            "ActivityFeed" => "Attività Recenti",
+            "SavedSearches" => "Ricerche Salvate",
+            "SystemHealth" => "Stato Sistema",
+            _ => widgetType
+        };
+    }
+
+    private string GetWidgetIcon(string widgetType)
+    {
+        return widgetType switch
+        {
+            "Statistics" => "📊",
+            "RecentDocuments" => "📄",
+            "ActivityFeed" => "📈",
+            "SavedSearches" => "🔖",
+            "SystemHealth" => "💚",
+            _ => "📦"
+        };
+    }
+}
+
 <style>
     .dashboard-container {
         padding: 2rem;
-        max-width: 1400px;
+        max-width: 1600px;
         margin: 0 auto;
     }
 
-    .dashboard-container h2 {
-        font-size: 2rem;
-        margin-bottom: 2rem;
-    }
-
-    .stats-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-        gap: 1.5rem;
-        margin-bottom: 2rem;
-    }
-
-    .stat-card {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-        padding: 1.5rem;
-        background: white;
-        border-radius: 10px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    }
-
-    .stat-icon {
-        font-size: 3rem;
-    }
-
-    .stat-info h3 {
-        margin: 0;
-        font-size: 2rem;
-        color: #2563eb;
-    }
-
-    .stat-info p {
-        margin: 0.25rem 0 0 0;
-        color: #666;
-    }
-
-    .charts-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-        gap: 2rem;
-        margin-bottom: 2rem;
-    }
-
-    .chart-card {
-        background: white;
-        padding: 1.5rem;
-        border-radius: 10px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    }
-
-    .chart-card h3 {
-        margin: 0 0 1rem 0;
-    }
-
-    .category-list, .type-list {
-        display: flex;
-        flex-direction: column;
-        gap: 1rem;
-    }
-
-    .category-item {
-        display: grid;
-        grid-template-columns: 120px 1fr 50px;
-        align-items: center;
-        gap: 1rem;
-    }
-
-    .category-name {
-        font-weight: 600;
-        font-size: 0.9rem;
-    }
-
-    .category-bar {
-        height: 24px;
-        background: #e9ecef;
-        border-radius: 12px;
-        overflow: hidden;
-    }
-
-    .category-fill {
-        height: 100%;
-        background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
-        transition: width 0.3s ease;
-    }
-
-    .category-count {
-        text-align: right;
-        font-weight: 600;
-        color: #2563eb;
-    }
-
-    .type-item {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.5rem;
-        background: #f8f9fa;
-        border-radius: 5px;
-    }
-
-    .type-icon {
-        font-size: 1.5rem;
-    }
-
-    .type-name {
-        flex: 1;
-        font-size: 0.9rem;
-    }
-
-    .type-count {
-        font-weight: 600;
-        color: #2563eb;
-    }
-
-    .section {
-        background: white;
-        padding: 1.5rem;
-        border-radius: 10px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        margin-bottom: 2rem;
-    }
-
-    .section h3 {
-        margin: 0 0 1rem 0;
-    }
-
-    .table-container {
-        overflow-x: auto;
-    }
-
-    .documents-table {
-        width: 100%;
-        border-collapse: collapse;
-    }
-
-    .documents-table th,
-    .documents-table td {
-        padding: 0.75rem;
-        text-align: left;
-        border-bottom: 1px solid #dee2e6;
-    }
-
-    .documents-table th {
-        background: #f8f9fa;
-        font-weight: 600;
-    }
-
-    .suggestions-list {
-        display: flex;
-        flex-direction: column;
-        gap: 1rem;
-    }
-
-    .suggestion-card {
-        padding: 1rem;
-        background: #f8f9fa;
-        border-left: 4px solid #2563eb;
-        border-radius: 5px;
-    }
-
-    .suggestion-header {
+    .dashboard-header {
         display: flex;
         justify-content: space-between;
-        margin-bottom: 0.5rem;
+        align-items: center;
+        margin-bottom: 2rem;
     }
 
-    .doc-count {
-        color: #666;
-        font-size: 0.9rem;
-    }
-
-    .suggestion-text {
-        font-weight: 600;
-        margin: 0.5rem 0;
-    }
-
-    .suggestion-reason {
-        color: #666;
-        font-size: 0.9rem;
+    .dashboard-header h2 {
         margin: 0;
+        font-size: 2rem;
     }
 
-    .empty-message {
-        text-align: center;
-        color: #999;
-        padding: 2rem;
+    .btn-manage {
+        padding: 0.75rem 1.5rem;
+        background: #2563eb;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 1rem;
+        transition: all 0.2s ease;
+    }
+
+    .btn-manage:hover {
+        background: #1d4ed8;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
     }
 
     .loading {
         text-align: center;
         padding: 3rem;
         color: #666;
+        font-size: 1.1rem;
     }
 
     .alert {
         padding: 1.5rem;
-        border-radius: 8px;
+        border-radius: 10px;
         margin-bottom: 2rem;
     }
 
@@ -466,264 +393,194 @@
         border-left: 5px solid #17a2b8;
     }
 
+    .alert-warning {
+        background: linear-gradient(135deg, #fff3cd 0%, #ffeeba 100%);
+        color: #856404;
+        border: 2px solid #ffc107;
+        border-left: 5px solid #ffc107;
+    }
+
     .alert strong {
         display: block;
         margin-bottom: 0.5rem;
     }
-    
-    /* Embedding Queue Styles */
-    .embedding-queue-card {
+
+    .widget-management {
         background: white;
-        border-radius: 12px;
-        padding: 2rem;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        border-radius: 10px;
+        padding: 1.5rem;
         margin-bottom: 2rem;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     }
-    
-    .embedding-queue-card .card-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 1.5rem;
-        padding-bottom: 1rem;
-        border-bottom: 2px solid #f0f0f0;
-    }
-    
-    .embedding-queue-card h3 {
-        margin: 0;
+
+    .widget-management h3 {
+        margin: 0 0 1.5rem 0;
         font-size: 1.3rem;
         color: #333;
     }
-    
-    .btn-refresh {
-        padding: 0.5rem 1rem;
-        background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+
+    .widget-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .widget-control-item {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 1rem;
+        background: #f8f9fa;
+        border-radius: 8px;
+    }
+
+    .widget-type-icon {
+        font-size: 1.5rem;
+    }
+
+    .widget-title {
+        flex: 1;
+        font-weight: 500;
+        color: #333;
+    }
+
+    .widget-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .btn-icon {
+        padding: 0.5rem;
+        background: none;
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 1rem;
+        transition: all 0.2s ease;
+    }
+
+    .btn-icon:hover:not(:disabled) {
+        background: #e9ecef;
+    }
+
+    .btn-icon:disabled {
+        opacity: 0.3;
+        cursor: not-allowed;
+    }
+
+    .btn-delete {
+        border-color: #dc3545;
+    }
+
+    .btn-delete:hover:not(:disabled) {
+        background: #f8d7da;
+    }
+
+    .switch {
+        position: relative;
+        display: inline-block;
+        width: 50px;
+        height: 24px;
+    }
+
+    .switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+
+    .slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: #ccc;
+        transition: .4s;
+        border-radius: 24px;
+    }
+
+    .slider:before {
+        position: absolute;
+        content: "";
+        height: 18px;
+        width: 18px;
+        left: 3px;
+        bottom: 3px;
+        background-color: white;
+        transition: .4s;
+        border-radius: 50%;
+    }
+
+    input:checked + .slider {
+        background-color: #2563eb;
+    }
+
+    input:checked + .slider:before {
+        transform: translateX(26px);
+    }
+
+    .add-widget-section {
+        display: flex;
+        gap: 1rem;
+        padding-top: 1rem;
+        border-top: 2px solid #e9ecef;
+    }
+
+    .select-widget-type {
+        flex: 1;
+        padding: 0.75rem;
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        font-size: 1rem;
+    }
+
+    .btn-add {
+        padding: 0.75rem 1.5rem;
+        background: #198754;
         color: white;
         border: none;
         border-radius: 6px;
         cursor: pointer;
-        font-size: 0.9rem;
-        transition: all 0.3s;
+        font-size: 1rem;
+        transition: all 0.2s ease;
     }
-    
-    .btn-refresh:hover:not(:disabled) {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+
+    .btn-add:hover:not(:disabled) {
+        background: #157347;
     }
-    
-    .btn-refresh:disabled {
-        opacity: 0.6;
+
+    .btn-add:disabled {
+        opacity: 0.5;
         cursor: not-allowed;
     }
-    
-    .queue-stats {
+
+    .widgets-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 1rem;
-        margin-bottom: 1.5rem;
+        grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+        gap: 1.5rem;
     }
-    
-    .queue-info-box {
-        padding: 1.5rem;
-        border-radius: 10px;
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-        transition: transform 0.2s;
+
+    .widget-container {
+        min-height: 300px;
     }
-    
-    .queue-info-box:hover {
-        transform: translateY(-2px);
-    }
-    
-    .queue-pending {
-        background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
-        border-left: 4px solid #ffc107;
-    }
-    
-    .queue-processing {
-        background: linear-gradient(135deg, #cfe2ff 0%, #9ec5fe 100%);
-        border-left: 4px solid #0d6efd;
-    }
-    
-    .queue-chunks {
-        background: linear-gradient(135deg, #e7f3ff 0%, #c3e0ff 100%);
-        border-left: 4px solid #0dcaf0;
-    }
-    
-    .queue-time {
-        background: linear-gradient(135deg, #d1e7dd 0%, #a3cfbb 100%);
-        border-left: 4px solid #198754;
-    }
-    
-    .queue-completed {
-        background: linear-gradient(135deg, #d1e7dd 0%, #badbcc 100%);
-        border-left: 4px solid #198754;
-        grid-column: 1 / -1;
-    }
-    
-    .queue-icon {
-        font-size: 2rem;
-        line-height: 1;
-    }
-    
-    .queue-details {
-        flex: 1;
-    }
-    
-    .queue-count {
-        font-size: 1.8rem;
-        font-weight: 700;
-        color: #333;
-        line-height: 1;
-        margin-bottom: 0.3rem;
-    }
-    
-    .queue-label {
-        font-size: 0.85rem;
-        color: #666;
-        font-weight: 500;
-    }
-    
-    .queue-message {
-        font-size: 0.9rem;
-        color: #198754;
-        margin-top: 0.5rem;
-        font-weight: 500;
-    }
-    
-    .queue-empty {
-        grid-column: 1 / -1;
-        text-align: center;
-        padding: 3rem 2rem;
-        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-        border-radius: 10px;
-    }
-    
-    .queue-empty .empty-icon {
-        font-size: 3rem;
-        margin-bottom: 1rem;
-    }
-    
-    .queue-empty p {
-        color: #666;
-        font-size: 1.1rem;
-        margin: 0;
-    }
-    
-    .queue-info-text {
-        background: linear-gradient(135deg, #e7f3ff 0%, #d4e9ff 100%);
-        padding: 1rem 1.5rem;
-        border-radius: 8px;
-        border-left: 4px solid #0dcaf0;
-    }
-    
-    .queue-info-text p {
-        margin: 0;
-        color: #0c5460;
-        font-size: 0.95rem;
-        line-height: 1.6;
-    }
-    
-    .queue-info-text strong {
-        color: #084c61;
+
+    @@media (max-width: 768px) {
+        .dashboard-header {
+            flex-direction: column;
+            gap: 1rem;
+            align-items: flex-start;
+        }
+
+        .widgets-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .widget-actions {
+            flex-wrap: wrap;
+        }
     }
 </style>
-
-@code {
-    private DocumentStatistics? stats;
-    private bool isLoading = true;
-    private string currentUserId = string.Empty;
-    private string errorMessage = string.Empty;
-    private string infoMessage = string.Empty;
-
-    protected override async Task OnInitializedAsync()
-    {
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        currentUserId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
-        
-        await LoadStatistics();
-    }
-
-    private async Task LoadStatistics()
-    {
-        isLoading = true;
-        errorMessage = string.Empty;
-        infoMessage = string.Empty;
-        
-        try
-        {
-            stats = await StatisticsService.GetStatisticsAsync(currentUserId);
-            
-            // Check if we got valid stats but no documents
-            if (stats != null && stats.TotalDocuments == 0)
-            {
-                infoMessage = "Nessun documento trovato. Carica alcuni documenti per vedere le statistiche.";
-            }
-        }
-        catch (Exception ex)
-        {
-            errorMessage = "Si è verificato un errore durante il caricamento delle statistiche. Riprova più tardi o contatta l'amministratore.";
-            Logger.LogError(ex, "Error loading dashboard statistics for user {UserId}", currentUserId);
-        }
-        finally
-        {
-            isLoading = false;
-        }
-    }
-
-    private double GetPercentage(int count, int total)
-    {
-        return total > 0 ? (count * 100.0) / total : 0;
-    }
-
-    private string FormatBytes(long bytes)
-    {
-        string[] sizes = { "B", "KB", "MB", "GB", "TB" };
-        double len = bytes;
-        int order = 0;
-        while (len >= 1024 && order < sizes.Length - 1)
-        {
-            order++;
-            len /= 1024;
-        }
-        return $"{len:0.##} {sizes[order]}";
-    }
-
-    private string GetFileIcon(string contentType)
-    {
-        return contentType.ToLower() switch
-        {
-            var t when t.Contains("pdf") => "📕",
-            var t when t.Contains("word") || t.Contains("document") => "📘",
-            var t when t.Contains("excel") || t.Contains("spreadsheet") => "📗",
-            var t when t.Contains("image") => "🖼️",
-            var t when t.Contains("text") => "📄",
-            _ => "📎"
-        };
-    }
-    
-    private async Task RefreshStats()
-    {
-        await LoadStatistics();
-    }
-    
-    private string FormatEstimatedTime(double minutes)
-    {
-        if (minutes < 1)
-        {
-            var seconds = (int)(minutes * 60);
-            return $"~{seconds}s";
-        }
-        else if (minutes < 60)
-        {
-            return $"~{Math.Ceiling(minutes)} min";
-        }
-        else
-        {
-            var hours = Math.Floor(minutes / 60);
-            var remainingMinutes = Math.Ceiling(minutes % 60);
-            return $"~{hours}h {remainingMinutes}min";
-        }
-    }
-}
