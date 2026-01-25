@@ -10,7 +10,7 @@ This directory contains SQL scripts for database setup and management.
 
 **Features:**
 - ✅ Idempotent - Can be run multiple times safely
-- ✅ Includes all migrations up to `20260124115302_AddDashboardAndRBACFeatures`
+- ✅ Includes all migrations up to `20250124115302_AddDashboardAndRBACFeatures`
 - ✅ Creates all necessary tables for:
   - User management (ASP.NET Identity)
   - Document management
@@ -72,7 +72,7 @@ dotnet ef migrations script --project DocN.Data --context ApplicationDbContext -
 
 ## Version History
 
-- **V3** (2026-01-25): Includes all migrations up to AddDashboardAndRBACFeatures
+- **V3** (2025-01-25): Includes all migrations up to AddDashboardAndRBACFeatures
   - Added DashboardWidgets table
   - Added SavedSearches table
   - Added UserActivities table
