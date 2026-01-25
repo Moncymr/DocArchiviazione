@@ -104,7 +104,7 @@ public class RetrievalMetricsController : ControllerBase
     /// </summary>
     [HttpPost("recall")]
     public IActionResult CalculateRecall(
-        [FromBody] RecallRequest request)
+        [FromBody] MetricsWithTotalRequest request)
     {
         try
         {
@@ -123,7 +123,7 @@ public class RetrievalMetricsController : ControllerBase
     /// </summary>
     [HttpPost("f1")]
     public IActionResult CalculateF1(
-        [FromBody] RecallRequest request)
+        [FromBody] MetricsWithTotalRequest request)
     {
         try
         {
@@ -189,7 +189,7 @@ public record CalculateMetricsRequest(
     List<RetrievalResult> Results,
     int TotalRelevant);
 
-public record RecallRequest(
+public record MetricsWithTotalRequest(
     List<RetrievalResult> Results,
     int K,
     int TotalRelevant);

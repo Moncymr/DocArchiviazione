@@ -92,15 +92,20 @@ public class UserActivityController : ControllerBase
     /// Get activity statistics for a user
     /// </summary>
     [HttpGet("{userId}/statistics")]
-    public async Task<IActionResult> GetActivityStatistics(string userId)
+    public async Task<IActionResult> GetActivityStatistics(
+        string userId,
+        [FromQuery] int maxActivities = 500)
     {
         try
         {
-            var activities = await _activityService.GetUserActivitiesAsync(userId, 1000);
+            // Limit to prevent performance issues
+            var limit = Math.Min(maxActivities, 1000);
+            var activities = await _activityService.GetUserActivitiesAsync(userId, limit);
             
             var statistics = new
             {
                 totalActivities = activities.Count,
+                limitedTo = limit,
                 activityTypeBreakdown = activities
                     .GroupBy(a => a.ActivityType)
                     .Select(g => new { activityType = g.Key, count = g.Count() })
