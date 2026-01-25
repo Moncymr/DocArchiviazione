@@ -301,9 +301,13 @@ dump.rdb
 .cache/
 **/.cache/
 
+# Roslyn / MSBuild BuildHost
+**/BuildHost-*/
+
 # ============================================
 # License and Compliance
 # ============================================
 
 # License files that shouldn't be public
 **/licenses/private/
+
