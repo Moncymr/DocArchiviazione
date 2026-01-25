@@ -311,3 +311,4 @@ dump.rdb
 # License files that shouldn't be public
 **/licenses/private/
 
+fullpath.xml
