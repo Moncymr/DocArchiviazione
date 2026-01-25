@@ -410,6 +410,40 @@ public class SemanticChatController : ControllerBase
             return StatusCode(500, new { error = "An error occurred" });
         }
     }
+
+    /// <summary>
+    /// Submit feedback for a message
+    /// </summary>
+    [HttpPost("feedback")]
+    [ProducesResponseType(200)]
+    [ProducesResponseType(404)]
+    public async Task<IActionResult> SubmitFeedback([FromBody] MessageFeedbackRequest request)
+    {
+        try
+        {
+            var message = await _context.Messages.FindAsync(request.MessageId);
+            if (message == null)
+            {
+                return NotFound(new { error = "Message not found" });
+            }
+
+            message.UserRating = request.Rating;
+            message.UserFeedback = request.Feedback;
+
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation(
+                "Feedback submitted for message {MessageId}: Rating={Rating}",
+                request.MessageId, request.Rating);
+
+            return Ok(new { message = "Feedback submitted successfully" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error submitting feedback");
+            return StatusCode(500, new { error = "An error occurred" });
+        }
+    }
 }
 
 #region Request/Response Models
@@ -511,6 +545,16 @@ public class ConversationMessagesResponse
     public int ConversationId { get; set; }
     public string Title { get; set; } = string.Empty;
     public List<ConversationMessage> Messages { get; set; } = new();
+}
+
+/// <summary>
+/// Request model for message feedback
+/// </summary>
+public class MessageFeedbackRequest
+{
+    public int MessageId { get; set; }
+    public int? Rating { get; set; }
+    public string? Feedback { get; set; }
 }
 
 #endregion

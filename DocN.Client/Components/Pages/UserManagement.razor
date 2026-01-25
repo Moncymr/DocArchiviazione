@@ -1,0 +1,802 @@
+@page "/admin/users"
+@using System.Net.Http.Json
+@using DocN.Data.Constants
+@inject IHttpClientFactory HttpClientFactory
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ILogger<UserManagement> Logger
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "SuperAdmin,TenantAdmin")]
+@rendermode InteractiveServer
+
+<PageTitle>Gestione Utenti - DocN</PageTitle>
+
+<div class="user-management-container">
+    <div class="header">
+        <div class="header-left">
+            <h2>👥 Gestione Utenti</h2>
+            <p class="subtitle">Gestisci utenti e assegna ruoli</p>
+        </div>
+        <div class="header-right">
+            <div class="search-box">
+                <input type="text" 
+                       placeholder="🔍 Cerca utenti..." 
+                       @bind="_searchQuery"
+                       @bind:event="oninput"
+                       @onkeyup="SearchUsers" />
+            </div>
+        </div>
+    </div>
+
+    @if (_isLoading)
+    {
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>Caricamento utenti...</p>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <div class="alert alert-error">
+            <strong>⚠️ Errore</strong>
+            <p>@_errorMessage</p>
+        </div>
+    }
+    else
+    {
+        <!-- Statistics Cards -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon">👥</div>
+                <div class="stat-info">
+                    <h3>@_totalUsers</h3>
+                    <p>Utenti Totali</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">✅</div>
+                <div class="stat-info">
+                    <h3>@_activeUsers</h3>
+                    <p>Utenti Attivi</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">👨‍💼</div>
+                <div class="stat-info">
+                    <h3>@_adminUsers</h3>
+                    <p>Amministratori</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">📊</div>
+                <div class="stat-info">
+                    <h3>@_powerUsers</h3>
+                    <p>Power Users</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Role Filter -->
+        <div class="filter-section">
+            <span class="filter-label">Filtra per ruolo:</span>
+            <div class="filter-buttons">
+                <button class="filter-btn @(_selectedRole == null ? "active" : "")" 
+                        @onclick="() => FilterByRole(null)">
+                    Tutti
+                </button>
+                @foreach (var role in Roles.All)
+                {
+                    <button class="filter-btn @(_selectedRole == role ? "active" : "")" 
+                            @onclick="() => FilterByRole(role)">
+                        @GetRoleIcon(role) @role
+                    </button>
+                }
+            </div>
+        </div>
+
+        <!-- Users Table -->
+        <div class="users-table-container">
+            <table class="users-table">
+                <thead>
+                    <tr>
+                        <th>Utente</th>
+                        <th>Email</th>
+                        <th>Ruolo</th>
+                        <th>Stato</th>
+                        <th>Ultimo Accesso</th>
+                        <th>Azioni</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var user in _filteredUsers)
+                    {
+                        <tr class="@(!user.IsActive ? "inactive" : "")">
+                            <td>
+                                <div class="user-cell">
+                                    <div class="user-avatar">
+                                        @GetInitials(user.FirstName, user.LastName)
+                                    </div>
+                                    <div class="user-info">
+                                        <strong>@(user.FirstName) @(user.LastName)</strong>
+                                        <small>@user.UserName</small>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>@user.Email</td>
+                            <td>
+                                @if (_editingUserId == user.Id)
+                                {
+                                    <select class="role-select" @bind="_selectedNewRole">
+                                        @foreach (var role in Roles.All)
+                                        {
+                                            <option value="@role" selected="@(role == user.Role)">
+                                                @GetRoleIcon(role) @role
+                                            </option>
+                                        }
+                                    </select>
+                                }
+                                else
+                                {
+                                    <span class="role-badge @GetRoleBadgeClass(user.Role)">
+                                        @GetRoleIcon(user.Role) @user.Role
+                                    </span>
+                                }
+                            </td>
+                            <td>
+                                <span class="status-badge @(user.IsActive ? "active" : "inactive")">
+                                    @(user.IsActive ? "✓ Attivo" : "⊗ Inattivo")
+                                </span>
+                            </td>
+                            <td>
+                                @if (user.LastLoginAt.HasValue)
+                                {
+                                    <span>@user.LastLoginAt.Value.ToString("dd/MM/yyyy HH:mm")</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">Mai</span>
+                                }
+                            </td>
+                            <td>
+                                <div class="action-buttons">
+                                    @if (_editingUserId == user.Id)
+                                    {
+                                        <button class="btn-action btn-save" @onclick="async () => await SaveRole(user)" title="Salva">
+                                            💾
+                                        </button>
+                                        <button class="btn-action btn-cancel" @onclick="CancelEdit" title="Annulla">
+                                            ✕
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn-action" @onclick="() => EditRole(user)" title="Modifica ruolo">
+                                            ✏️
+                                        </button>
+                                        <button class="btn-action @(user.IsActive ? "btn-danger" : "btn-success")" 
+                                                @onclick="async () => await ToggleUserStatus(user)" 
+                                                title="@(user.IsActive ? "Disattiva" : "Attiva")">
+                                            @(user.IsActive ? "🔒" : "🔓")
+                                        </button>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            @if (!_filteredUsers.Any())
+            {
+                <div class="empty-state">
+                    <div class="empty-icon">🔍</div>
+                    <h3>Nessun utente trovato</h3>
+                    <p>Prova a modificare i filtri di ricerca</p>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<UserDto> _users = new();
+    private List<UserDto> _filteredUsers = new();
+    private bool _isLoading = true;
+    private string? _errorMessage;
+    private string _searchQuery = string.Empty;
+    private string? _selectedRole = null;
+    private string? _editingUserId = null;
+    private string _selectedNewRole = string.Empty;
+    private HttpClient? _httpClient;
+
+    // Statistics
+    private int _totalUsers => _users.Count;
+    private int _activeUsers => _users.Count(u => u.IsActive);
+    private int _adminUsers => _users.Count(u => u.Role == Roles.SuperAdmin || u.Role == Roles.TenantAdmin);
+    private int _powerUsers => _users.Count(u => u.Role == Roles.PowerUser);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _httpClient = HttpClientFactory.CreateClient("BackendAPI");
+        await LoadUsers();
+    }
+
+    private async Task LoadUsers()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+
+        try
+        {
+            var response = await _httpClient!.GetFromJsonAsync<List<UserDto>>("api/users");
+            if (response != null)
+            {
+                _users = response;
+                ApplyFilters();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading users");
+            _errorMessage = "Errore nel caricamento degli utenti. Verifica che il server sia in esecuzione.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void SearchUsers()
+    {
+        ApplyFilters();
+    }
+
+    private void FilterByRole(string? role)
+    {
+        _selectedRole = role;
+        ApplyFilters();
+    }
+
+    private void ApplyFilters()
+    {
+        _filteredUsers = _users.AsEnumerable();
+
+        // Apply search filter
+        if (!string.IsNullOrWhiteSpace(_searchQuery))
+        {
+            var query = _searchQuery.ToLower();
+            _filteredUsers = _filteredUsers.Where(u =>
+                u.FirstName?.ToLower().Contains(query) == true ||
+                u.LastName?.ToLower().Contains(query) == true ||
+                u.Email?.ToLower().Contains(query) == true ||
+                u.UserName?.ToLower().Contains(query) == true
+            ).ToList();
+        }
+
+        // Apply role filter
+        if (!string.IsNullOrEmpty(_selectedRole))
+        {
+            _filteredUsers = _filteredUsers.Where(u => u.Role == _selectedRole).ToList();
+        }
+
+        StateHasChanged();
+    }
+
+    private void EditRole(UserDto user)
+    {
+        _editingUserId = user.Id;
+        _selectedNewRole = user.Role ?? Roles.User;
+        StateHasChanged();
+    }
+
+    private void CancelEdit()
+    {
+        _editingUserId = null;
+        _selectedNewRole = string.Empty;
+        StateHasChanged();
+    }
+
+    private async Task SaveRole(UserDto user)
+    {
+        if (_httpClient == null) return;
+
+        try
+        {
+            var updateData = new { userId = user.Id, role = _selectedNewRole };
+            var response = await _httpClient.PutAsJsonAsync($"api/users/{user.Id}/role", updateData);
+
+            if (response.IsSuccessStatusCode)
+            {
+                user.Role = _selectedNewRole;
+                _editingUserId = null;
+                _selectedNewRole = string.Empty;
+                StateHasChanged();
+            }
+            else
+            {
+                _errorMessage = "Errore nell'aggiornamento del ruolo";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error updating user role");
+            _errorMessage = "Errore nell'aggiornamento del ruolo";
+        }
+    }
+
+    private async Task ToggleUserStatus(UserDto user)
+    {
+        if (_httpClient == null) return;
+
+        try
+        {
+            var updateData = new { userId = user.Id, isActive = !user.IsActive };
+            var response = await _httpClient.PutAsJsonAsync($"api/users/{user.Id}/status", updateData);
+
+            if (response.IsSuccessStatusCode)
+            {
+                user.IsActive = !user.IsActive;
+                StateHasChanged();
+            }
+            else
+            {
+                _errorMessage = "Errore nell'aggiornamento dello stato utente";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error toggling user status");
+            _errorMessage = "Errore nell'aggiornamento dello stato utente";
+        }
+    }
+
+    private string GetInitials(string? firstName, string? lastName)
+    {
+        var initials = "";
+        if (!string.IsNullOrEmpty(firstName))
+            initials += firstName[0];
+        if (!string.IsNullOrEmpty(lastName))
+            initials += lastName[0];
+        return string.IsNullOrEmpty(initials) ? "?" : initials.ToUpper();
+    }
+
+    private string GetRoleIcon(string? role)
+    {
+        return role switch
+        {
+            Roles.SuperAdmin => "👑",
+            Roles.TenantAdmin => "👨‍💼",
+            Roles.PowerUser => "⚡",
+            Roles.User => "👤",
+            Roles.ReadOnly => "👁️",
+            _ => "❓"
+        };
+    }
+
+    private string GetRoleBadgeClass(string? role)
+    {
+        return role switch
+        {
+            Roles.SuperAdmin => "super-admin",
+            Roles.TenantAdmin => "tenant-admin",
+            Roles.PowerUser => "power-user",
+            Roles.User => "user",
+            Roles.ReadOnly => "read-only",
+            _ => ""
+        };
+    }
+
+    // DTO Classes
+    public class UserDto
+    {
+        public string Id { get; set; } = string.Empty;
+        public string? UserName { get; set; }
+        public string? Email { get; set; }
+        public string? FirstName { get; set; }
+        public string? LastName { get; set; }
+        public string? Role { get; set; }
+        public bool IsActive { get; set; }
+        public DateTime? LastLoginAt { get; set; }
+    }
+}
+
+<style>
+    .user-management-container {
+        padding: 2rem;
+        max-width: 1600px;
+        margin: 0 auto;
+    }
+
+    .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 2rem;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+
+    .header-left h2 {
+        margin: 0;
+        font-size: 2rem;
+        background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+
+    .subtitle {
+        color: #666;
+        margin: 0.5rem 0 0;
+        font-size: 0.95rem;
+    }
+
+    .search-box {
+        position: relative;
+    }
+
+    .search-box input {
+        padding: 0.75rem 1.5rem;
+        border: 2px solid #dee2e6;
+        border-radius: 10px;
+        font-size: 1rem;
+        width: 300px;
+        transition: all 0.2s ease;
+    }
+
+    .search-box input:focus {
+        outline: none;
+        border-color: #2563eb;
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    }
+
+    /* Statistics */
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+
+    .stat-card {
+        background: white;
+        border-radius: 12px;
+        padding: 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        border: 2px solid transparent;
+        transition: all 0.3s ease;
+    }
+
+    .stat-card:hover {
+        border-color: #2563eb;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+    }
+
+    .stat-icon {
+        font-size: 2.5rem;
+    }
+
+    .stat-info h3 {
+        margin: 0;
+        font-size: 2rem;
+        color: #333;
+    }
+
+    .stat-info p {
+        margin: 0.25rem 0 0;
+        color: #666;
+        font-size: 0.9rem;
+    }
+
+    /* Filter Section */
+    .filter-section {
+        background: white;
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    .filter-label {
+        font-weight: 600;
+        color: #333;
+        margin-right: 1rem;
+    }
+
+    .filter-buttons {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin-top: 1rem;
+    }
+
+    .filter-btn {
+        padding: 0.5rem 1rem;
+        background: #f8f9fa;
+        border: 2px solid #dee2e6;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 0.9rem;
+        transition: all 0.2s ease;
+        font-weight: 500;
+    }
+
+    .filter-btn:hover {
+        background: #e9ecef;
+        border-color: #2563eb;
+    }
+
+    .filter-btn.active {
+        background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+        color: white;
+        border-color: transparent;
+    }
+
+    /* Users Table */
+    .users-table-container {
+        background: white;
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    .users-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .users-table thead {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    }
+
+    .users-table th {
+        padding: 1rem;
+        text-align: left;
+        font-weight: 600;
+        color: #333;
+        border-bottom: 2px solid #dee2e6;
+    }
+
+    .users-table td {
+        padding: 1rem;
+        border-bottom: 1px solid #f0f0f0;
+    }
+
+    .users-table tbody tr {
+        transition: all 0.2s ease;
+    }
+
+    .users-table tbody tr:hover {
+        background: #f8f9fa;
+    }
+
+    .users-table tbody tr.inactive {
+        opacity: 0.6;
+    }
+
+    .user-cell {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .user-avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 0.9rem;
+    }
+
+    .user-info {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .user-info strong {
+        color: #333;
+        font-size: 0.95rem;
+    }
+
+    .user-info small {
+        color: #666;
+        font-size: 0.85rem;
+    }
+
+    .role-badge {
+        padding: 0.35rem 0.75rem;
+        border-radius: 12px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        display: inline-block;
+    }
+
+    .role-badge.super-admin {
+        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        color: white;
+    }
+
+    .role-badge.tenant-admin {
+        background: linear-gradient(135deg, #fd7e14 0%, #e8590c 100%);
+        color: white;
+    }
+
+    .role-badge.power-user {
+        background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+        color: white;
+    }
+
+    .role-badge.user {
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        color: white;
+    }
+
+    .role-badge.read-only {
+        background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%);
+        color: white;
+    }
+
+    .role-select {
+        padding: 0.35rem 0.75rem;
+        border: 2px solid #2563eb;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        font-weight: 600;
+        background: white;
+        cursor: pointer;
+    }
+
+    .status-badge {
+        padding: 0.35rem 0.75rem;
+        border-radius: 12px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        display: inline-block;
+    }
+
+    .status-badge.active {
+        background: #d4edda;
+        color: #155724;
+    }
+
+    .status-badge.inactive {
+        background: #f8d7da;
+        color: #721c24;
+    }
+
+    .text-muted {
+        color: #999;
+        font-style: italic;
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .btn-action {
+        padding: 0.5rem;
+        background: white;
+        border: 2px solid #dee2e6;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 1.1rem;
+        transition: all 0.2s ease;
+        min-width: 38px;
+        text-align: center;
+    }
+
+    .btn-action:hover {
+        background: #f8f9fa;
+        transform: translateY(-2px);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .btn-action.btn-save {
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        color: white;
+        border: none;
+    }
+
+    .btn-action.btn-cancel {
+        background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%);
+        color: white;
+        border: none;
+    }
+
+    .btn-action.btn-danger {
+        border-color: #dc3545;
+    }
+
+    .btn-action.btn-danger:hover {
+        background: #f8d7da;
+    }
+
+    .btn-action.btn-success {
+        border-color: #28a745;
+    }
+
+    .btn-action.btn-success:hover {
+        background: #d4edda;
+    }
+
+    /* Empty State */
+    .empty-state {
+        text-align: center;
+        padding: 4rem 2rem;
+    }
+
+    .empty-icon {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+    }
+
+    .empty-state h3 {
+        color: #333;
+        margin-bottom: 0.5rem;
+    }
+
+    .empty-state p {
+        color: #666;
+    }
+
+    /* Loading & Alerts */
+    .loading {
+        text-align: center;
+        padding: 4rem 2rem;
+    }
+
+    .spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #2563eb;
+        border-radius: 50%;
+        width: 50px;
+        height: 50px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 1rem;
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    .alert {
+        padding: 1.5rem;
+        border-radius: 12px;
+        margin-bottom: 2rem;
+    }
+
+    .alert-error {
+        background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+        color: #721c24;
+        border-left: 5px solid #dc3545;
+    }
+
+    @media (max-width: 768px) {
+        .header {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .search-box input {
+            width: 100%;
+        }
+
+        .users-table {
+            font-size: 0.85rem;
+        }
+
+        .users-table th,
+        .users-table td {
+            padding: 0.75rem 0.5rem;
+        }
+    }
+</style>
