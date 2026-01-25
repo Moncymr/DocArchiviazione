@@ -264,8 +264,12 @@ builder.Services.AddAuthentication(options =>
 });
 
 // Configure Authorization with granular permission-based access control
-// Note: By default, this API allows anonymous access. Authorization is checked at the permission level
-// by the PermissionAuthorizationHandler, which gracefully handles unauthenticated users.
+// ⚠️ SECURITY NOTE: This API is designed to be called by a trusted Blazor Client application.
+// By default, this API allows anonymous access to most endpoints. The Client application handles
+// user authentication and passes user identity via request payloads (e.g., UserId in body).
+// This design assumes the Server API is not directly exposed to the internet and is only
+// accessible by the trusted Client application. If this API needs to be publicly accessible,
+// implement proper authentication (JWT tokens, API keys, etc.) instead of anonymous access.
 builder.Services.AddAuthorization(options =>
 {
     // Don't require authentication by default for API endpoints
