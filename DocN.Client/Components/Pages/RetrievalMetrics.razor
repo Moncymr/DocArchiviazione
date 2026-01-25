@@ -1,0 +1,306 @@
+@page "/retrieval-metrics"
+@using System.Net.Http.Json
+@inject HttpClient Http
+
+<PageTitle>Metriche di Retrieval - DocN</PageTitle>
+
+<div class="container-fluid mt-4">
+    <div class="row mb-4">
+        <div class="col">
+            <h2>📈 Metriche di Retrieval</h2>
+            <p class="text-muted">Valuta la qualità del recupero dei documenti con metriche standard del settore</p>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0">Calcola Metriche</h5>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <strong>Info:</strong> Inserisci i risultati di ricerca per calcolare le metriche di qualità del retrieval.
+                        Le metriche includono:
+                        <ul class="mb-0 mt-2">
+                            <li><strong>MRR (Mean Reciprocal Rank):</strong> Quanto velocemente appaiono i risultati rilevanti</li>
+                            <li><strong>NDCG (Normalized Discounted Cumulative Gain):</strong> Qualità del ranking considerando i punteggi di rilevanza</li>
+                            <li><strong>Precision@K:</strong> Percentuale di documenti rilevanti nei primi K risultati</li>
+                            <li><strong>Recall@K:</strong> Percentuale di documenti rilevanti recuperati</li>
+                            <li><strong>F1@K:</strong> Media armonica di precision e recall</li>
+                        </ul>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Numero totale di documenti rilevanti:</label>
+                            <input type="number" class="form-control" @bind="totalRelevant" min="1" />
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Numero di risultati da valutare:</label>
+                            <input type="number" class="form-control" @bind="numberOfResults" min="1" max="20" />
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Risultati (JSON format):</label>
+                        <textarea class="form-control font-monospace" rows="10" @bind="resultsJson" 
+                                  placeholder='[{"documentId":1,"rank":1,"score":0.95,"isRelevant":true,"relevanceGrade":3}]'></textarea>
+                        <small class="text-muted">
+                            Format: documentId (int), rank (int), score (double), isRelevant (bool), relevanceGrade (0-3)
+                        </small>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-primary" @onclick="CalculateMetrics" disabled="@isCalculating">
+                            @if (isCalculating)
+                            {
+                                <span class="spinner-border spinner-border-sm me-2"></span>
+                            }
+                            Calcola Tutte le Metriche
+                        </button>
+                        <button class="btn btn-secondary" @onclick="LoadSampleData">
+                            Carica Dati di Esempio
+                        </button>
+                    </div>
+
+                    @if (errorMessage != null)
+                    {
+                        <div class="alert alert-danger mt-3" role="alert">
+                            <strong>Errore:</strong> @errorMessage
+                        </div>
+                    }
+                </div>
+            </div>
+
+            @if (metricsResult != null)
+            {
+                <div class="card">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0">Risultati Metriche</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <!-- MRR -->
+                            <div class="col-md-6 mb-3">
+                                <div class="card h-100">
+                                    <div class="card-body">
+                                        <h6 class="card-subtitle mb-2 text-muted">Mean Reciprocal Rank (MRR)</h6>
+                                        <h3 class="card-title text-primary">@metricsResult.meanReciprocalRank.ToString("F4")</h3>
+                                        <p class="card-text small">
+                                            Misura quanto velocemente appaiono i risultati rilevanti. 
+                                            Valore ottimale: 1.0 (primo risultato rilevante)
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- NDCG -->
+                            <div class="col-md-6 mb-3">
+                                <div class="card h-100">
+                                    <div class="card-body">
+                                        <h6 class="card-subtitle mb-2 text-muted">NDCG (Normalized DCG)</h6>
+                                        <div class="d-flex justify-content-around">
+                                            <div class="text-center">
+                                                <div class="fs-5 text-primary">@metricsResult.ndcg.at5.ToString("F4")</div>
+                                                <small class="text-muted">@5</small>
+                                            </div>
+                                            <div class="text-center">
+                                                <div class="fs-5 text-primary">@metricsResult.ndcg.at10.ToString("F4")</div>
+                                                <small class="text-muted">@10</small>
+                                            </div>
+                                        </div>
+                                        <p class="card-text small mt-2">
+                                            Qualità del ranking considerando la rilevanza. Range: 0-1
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Precision -->
+                            <div class="col-md-4 mb-3">
+                                <div class="card h-100">
+                                    <div class="card-body">
+                                        <h6 class="card-subtitle mb-2 text-muted">Precision</h6>
+                                        <div class="d-flex justify-content-around">
+                                            <div class="text-center">
+                                                <div class="fs-5 text-success">@metricsResult.precision.at5.ToString("F4")</div>
+                                                <small class="text-muted">@5</small>
+                                            </div>
+                                            <div class="text-center">
+                                                <div class="fs-5 text-success">@metricsResult.precision.at10.ToString("F4")</div>
+                                                <small class="text-muted">@10</small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Recall -->
+                            <div class="col-md-4 mb-3">
+                                <div class="card h-100">
+                                    <div class="card-body">
+                                        <h6 class="card-subtitle mb-2 text-muted">Recall</h6>
+                                        <div class="d-flex justify-content-around">
+                                            <div class="text-center">
+                                                <div class="fs-5 text-info">@metricsResult.recall.at5.ToString("F4")</div>
+                                                <small class="text-muted">@5</small>
+                                            </div>
+                                            <div class="text-center">
+                                                <div class="fs-5 text-info">@metricsResult.recall.at10.ToString("F4")</div>
+                                                <small class="text-muted">@10</small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- F1 -->
+                            <div class="col-md-4 mb-3">
+                                <div class="card h-100">
+                                    <div class="card-body">
+                                        <h6 class="card-subtitle mb-2 text-muted">F1 Score</h6>
+                                        <div class="d-flex justify-content-around">
+                                            <div class="text-center">
+                                                <div class="fs-5 text-warning">@metricsResult.f1.at5.ToString("F4")</div>
+                                                <small class="text-muted">@5</small>
+                                            </div>
+                                            <div class="text-center">
+                                                <div class="fs-5 text-warning">@metricsResult.f1.at10.ToString("F4")</div>
+                                                <small class="text-muted">@10</small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row mt-3">
+                            <div class="col-md-12">
+                                <div class="alert alert-secondary">
+                                    <strong>Riepilogo:</strong> 
+                                    Valutati @metricsResult.totalResults risultati su @metricsResult.totalRelevant documenti rilevanti totali.
+                                    Misurato il @metricsResult.measuredAt.ToString("dd/MM/yyyy HH:mm:ss")
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private int totalRelevant = 5;
+    private int numberOfResults = 10;
+    private string resultsJson = "";
+    private bool isCalculating = false;
+    private string? errorMessage;
+    private MetricsSummary? metricsResult;
+
+    private async Task CalculateMetrics()
+    {
+        isCalculating = true;
+        errorMessage = null;
+        metricsResult = null;
+
+        try
+        {
+            var results = System.Text.Json.JsonSerializer.Deserialize<List<RetrievalResult>>(resultsJson);
+            
+            if (results == null || !results.Any())
+            {
+                errorMessage = "Inserire almeno un risultato valido";
+                return;
+            }
+
+            var request = new CalculateMetricsRequest
+            {
+                Results = results,
+                TotalRelevant = totalRelevant
+            };
+
+            metricsResult = await Http.PostAsJsonAsync("/api/retrieval-metrics/summary", request)
+                .ContinueWith(t => t.Result.Content.ReadFromJsonAsync<MetricsSummary>())
+                .Unwrap();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Errore nel calcolo delle metriche: {ex.Message}";
+        }
+        finally
+        {
+            isCalculating = false;
+        }
+    }
+
+    private void LoadSampleData()
+    {
+        totalRelevant = 5;
+        numberOfResults = 10;
+        resultsJson = @"[
+  {""documentId"":1,""rank"":1,""score"":0.95,""isRelevant"":true,""relevanceGrade"":3},
+  {""documentId"":2,""rank"":2,""score"":0.82,""isRelevant"":true,""relevanceGrade"":2},
+  {""documentId"":3,""rank"":3,""score"":0.75,""isRelevant"":false,""relevanceGrade"":0},
+  {""documentId"":4,""rank"":4,""score"":0.68,""isRelevant"":true,""relevanceGrade"":2},
+  {""documentId"":5,""rank"":5,""score"":0.62,""isRelevant"":true,""relevanceGrade"":1},
+  {""documentId"":6,""rank"":6,""score"":0.55,""isRelevant"":false,""relevanceGrade"":0},
+  {""documentId"":7,""rank"":7,""score"":0.48,""isRelevant"":true,""relevanceGrade"":1},
+  {""documentId"":8,""rank"":8,""score"":0.42,""isRelevant"":false,""relevanceGrade"":0},
+  {""documentId"":9,""rank"":9,""score"":0.35,""isRelevant"":false,""relevanceGrade"":0},
+  {""documentId"":10,""rank"":10,""score"":0.28,""isRelevant"":false,""relevanceGrade"":0}
+]";
+    }
+
+    public class RetrievalResult
+    {
+        public int documentId { get; set; }
+        public int rank { get; set; }
+        public double score { get; set; }
+        public bool isRelevant { get; set; }
+        public int relevanceGrade { get; set; }
+    }
+
+    public class CalculateMetricsRequest
+    {
+        public List<RetrievalResult> Results { get; set; } = new();
+        public int TotalRelevant { get; set; }
+    }
+
+    public class MetricsSummary
+    {
+        public double meanReciprocalRank { get; set; }
+        public NdcgMetrics ndcg { get; set; } = new();
+        public PrecisionMetrics precision { get; set; } = new();
+        public RecallMetrics recall { get; set; } = new();
+        public F1Metrics f1 { get; set; } = new();
+        public int totalResults { get; set; }
+        public int totalRelevant { get; set; }
+        public DateTime measuredAt { get; set; }
+    }
+
+    public class NdcgMetrics
+    {
+        public double at5 { get; set; }
+        public double at10 { get; set; }
+    }
+
+    public class PrecisionMetrics
+    {
+        public double at5 { get; set; }
+        public double at10 { get; set; }
+    }
+
+    public class RecallMetrics
+    {
+        public double at5 { get; set; }
+        public double at10 { get; set; }
+    }
+
+    public class F1Metrics
+    {
+        public double at5 { get; set; }
+        public double at10 { get; set; }
+    }
+}
