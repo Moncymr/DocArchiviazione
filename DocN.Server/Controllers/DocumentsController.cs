@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using DocN.Data;
 using DocN.Data.Models;
 using DocN.Data.Services;
+using DocN.Data.Constants;
+using DocN.Server.Middleware;
 
 namespace DocN.Server.Controllers;
 
@@ -92,6 +94,7 @@ public class DocumentsController : ControllerBase
     /// - Per documenti con testi molto lunghi, considerare endpoint dedicato
     /// </remarks>
     [HttpGet]
+    [RequirePermission(Permissions.DocumentRead)]
     [ProducesResponseType(typeof(IEnumerable<Document>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<IEnumerable<Document>>> GetDocuments(
@@ -162,6 +165,7 @@ public class DocumentsController : ControllerBase
     /// <response code="200">Ritorna il conteggio totale</response>
     /// <response code="500">Errore interno del server</response>
     [HttpGet("count")]
+    [RequirePermission(Permissions.DocumentRead)]
     [ProducesResponseType(typeof(int), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<int>> GetDocumentsCount()
@@ -209,6 +213,7 @@ public class DocumentsController : ControllerBase
     /// - Verifica visibilità documento (private/shared/public)
     /// </remarks>
     [HttpGet("{id}")]
+    [RequirePermission(Permissions.DocumentRead)]
     [ProducesResponseType(typeof(Document), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -313,6 +318,7 @@ public class DocumentsController : ControllerBase
     /// <response code="201">Documento creato con successo</response>
     /// <response code="500">Errore interno del server</response>
     [HttpPost]
+    [RequirePermission(Permissions.DocumentWrite)]
     [ProducesResponseType(typeof(Document), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<Document>> CreateDocument(Document document)
@@ -405,6 +411,7 @@ public class DocumentsController : ControllerBase
     /// <response code="404">Documento non trovato</response>
     /// <response code="500">Errore interno del server</response>
     [HttpPut("{id}")]
+    [RequirePermission(Permissions.DocumentWrite)]
     [ProducesResponseType(typeof(Document), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -502,6 +509,7 @@ public class DocumentsController : ControllerBase
     /// <response code="404">Documento o file non trovato</response>
     /// <response code="500">Errore interno del server</response>
     [HttpGet("{id}/download")]
+    [RequirePermission(Permissions.DocumentRead)]
     [ProducesResponseType(typeof(FileResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
@@ -552,6 +560,7 @@ public class DocumentsController : ControllerBase
     /// Consider: Implement cleanup job for orphaned files
     /// </remarks>
     [HttpDelete("{id}")]
+    [RequirePermission(Permissions.DocumentDelete)]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -649,6 +658,7 @@ public class DocumentsController : ControllerBase
     /// <response code="200">Ritorna la lista delle categorie</response>
     /// <response code="500">Errore interno del server</response>
     [HttpGet("categories")]
+    [RequirePermission(Permissions.DocumentRead)]
     [ProducesResponseType(typeof(IEnumerable<string>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult<IEnumerable<string>>> GetCategories()
@@ -689,6 +699,7 @@ public class DocumentsController : ControllerBase
     /// <response code="200">Operazione completata con successo</response>
     /// <response code="500">Errore interno del server</response>
     [HttpPost("recreate-embeddings")]
+    [RequirePermission(Permissions.AdminSystem)]
     [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<ActionResult> RecreateAllEmbeddings()
@@ -844,6 +855,7 @@ public class DocumentsController : ControllerBase
     /// <param name="request">Richiesta con nuovo livello di visibilità</param>
     /// <returns>Risultato dell'operazione</returns>
     [HttpPatch("{id}/visibility")]
+    [RequirePermission(Permissions.DocumentWrite)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -884,6 +896,7 @@ public class DocumentsController : ControllerBase
     /// <param name="request">Richiesta con ID utente e permesso</param>
     /// <returns>Risultato dell'operazione</returns>
     [HttpPost("{id}/shares/user")]
+    [RequirePermission(Permissions.DocumentShare)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -924,6 +937,7 @@ public class DocumentsController : ControllerBase
     /// <param name="request">Richiesta con ID gruppo e permesso</param>
     /// <returns>Risultato dell'operazione</returns>
     [HttpPost("{id}/shares/group")]
+    [RequirePermission(Permissions.DocumentShare)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -963,6 +977,7 @@ public class DocumentsController : ControllerBase
     /// <param name="id">ID del documento</param>
     /// <returns>Lista delle condivisioni</returns>
     [HttpGet("{id}/shares")]
+    [RequirePermission(Permissions.DocumentRead)]
     [ProducesResponseType(typeof(DocumentShareInfo), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -1000,6 +1015,7 @@ public class DocumentsController : ControllerBase
     /// <param name="userId">ID dell'utente</param>
     /// <returns>Risultato dell'operazione</returns>
     [HttpDelete("{id}/shares/user/{userId}")]
+    [RequirePermission(Permissions.DocumentShare)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -1040,6 +1056,7 @@ public class DocumentsController : ControllerBase
     /// <param name="groupId">ID del gruppo</param>
     /// <returns>Risultato dell'operazione</returns>
     [HttpDelete("{id}/shares/group/{groupId}")]
+    [RequirePermission(Permissions.DocumentShare)]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -1081,6 +1098,7 @@ public class DocumentsController : ControllerBase
     /// <param name="id">Document ID</param>
     /// <returns>Workflow status with history and valid transitions</returns>
     [HttpGet("{id}/workflow/status")]
+    [RequirePermission(Permissions.DocumentRead)]
     [ProducesResponseType(typeof(DocumentWorkflowStatus), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
@@ -1109,6 +1127,7 @@ public class DocumentsController : ControllerBase
     /// <param name="id">Document ID</param>
     /// <returns>Transition result</returns>
     [HttpPost("{id}/workflow/analyze")]
+    [RequirePermission(Permissions.DocumentWrite)]
     [ProducesResponseType(typeof(WorkflowTransitionResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -1151,6 +1170,7 @@ public class DocumentsController : ControllerBase
     /// <param name="request">Confirmation details with optional metadata updates</param>
     /// <returns>Transition result</returns>
     [HttpPost("{id}/workflow/confirm")]
+    [RequirePermission(Permissions.DocumentWrite)]
     [ProducesResponseType(typeof(WorkflowTransitionResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -1204,6 +1224,7 @@ public class DocumentsController : ControllerBase
     /// <param name="id">Document ID</param>
     /// <returns>Transition result</returns>
     [HttpPost("{id}/workflow/retry")]
+    [RequirePermission(Permissions.DocumentWrite)]
     [ProducesResponseType(typeof(WorkflowTransitionResult), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -1249,6 +1270,7 @@ public class DocumentsController : ControllerBase
     /// <param name="maxCount">Maximum number of documents to return</param>
     /// <returns>List of documents ready for retry</returns>
     [HttpGet("workflow/pending-retries")]
+    [RequirePermission(Permissions.DocumentRead)]
     [ProducesResponseType(typeof(IEnumerable<Document>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> GetPendingRetries([FromQuery] int maxCount = 10)

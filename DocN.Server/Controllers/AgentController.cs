@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Authorization;
 using DocN.Data.Models;
 using DocN.Data.Services;
 using System.Security.Claims;
+using DocN.Data.Constants;
+using DocN.Server.Middleware;
 
 namespace DocN.Server.Controllers;
 
@@ -170,6 +172,7 @@ public class AgentController : ControllerBase
     /// Create a new agent from a template
     /// </summary>
     [HttpPost("create-from-template/{templateId}")]
+    [RequirePermission(Permissions.AgentManage)]
     public async Task<ActionResult<AgentConfiguration>> CreateFromTemplate(int templateId)
     {
         try
@@ -195,6 +198,7 @@ public class AgentController : ControllerBase
     /// Create a new custom agent
     /// </summary>
     [HttpPost]
+    [RequirePermission(Permissions.AgentManage)]
     public async Task<ActionResult<AgentConfiguration>> CreateAgent([FromBody] AgentConfiguration agent)
     {
         try
@@ -219,6 +223,7 @@ public class AgentController : ControllerBase
     /// Update an existing agent
     /// </summary>
     [HttpPut("{id}")]
+    [RequirePermission(Permissions.AgentManage)]
     public async Task<ActionResult<AgentConfiguration>> UpdateAgent(int id, [FromBody] AgentConfiguration agent)
     {
         try
@@ -255,6 +260,7 @@ public class AgentController : ControllerBase
     /// Delete an agent
     /// </summary>
     [HttpDelete("{id}")]
+    [RequirePermission(Permissions.AgentManage)]
     public async Task<ActionResult> DeleteAgent(int id)
     {
         try
@@ -291,6 +297,7 @@ public class AgentController : ControllerBase
     /// Test an agent with a sample query
     /// </summary>
     [HttpPost("{id}/test")]
+    [RequirePermission(Permissions.AgentExecute)]
     public async Task<ActionResult<TestAgentResult>> TestAgent(int id, [FromBody] TestAgentRequest request)
     {
         try
