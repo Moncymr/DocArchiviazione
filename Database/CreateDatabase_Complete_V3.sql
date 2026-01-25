@@ -1,3 +1,41 @@
+-- =====================================================
+-- DocN Database Schema - Complete Creation Script V3
+-- =====================================================
+-- Version: V3
+-- Date: 2026-01-25
+-- Description: Complete idempotent database creation/update script
+--
+-- This script creates the entire DocN database schema including:
+--   - ASP.NET Identity tables (users, roles)
+--   - Document management tables
+--   - RAG (Retrieval-Augmented Generation) tables
+--   - AI configuration tables
+--   - Dashboard widgets, saved searches, user activities
+--   - Audit logs and golden datasets
+--   - All indexes and constraints
+--
+-- FEATURES:
+--   ✓ Idempotent - Can be run multiple times safely
+--   ✓ Checks __EFMigrationsHistory table
+--   ✓ Applies only missing migrations
+--   ✓ Can be used for both new installations and updates
+--
+-- USAGE:
+--   New installation:
+--     sqlcmd -S your_server -d DocN -i CreateDatabase_Complete_V3.sql
+--
+--   Update existing database:
+--     sqlcmd -S your_server -d DocN -i CreateDatabase_Complete_V3.sql
+--
+-- NOTES:
+--   - This script only creates the database schema
+--   - Initial data (admin user) is created by ApplicationSeeder at runtime
+--   - See README.md for more information
+--   - See UPDATE_GUIDE.md for detailed update instructions
+--
+-- LATEST MIGRATION: 20260124115302_AddDashboardAndRBACFeatures
+-- =====================================================
+
 IF OBJECT_ID(N'[__EFMigrationsHistory]') IS NULL
 BEGIN
     CREATE TABLE [__EFMigrationsHistory] (

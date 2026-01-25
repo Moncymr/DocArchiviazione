@@ -217,8 +217,8 @@ WITH FORMAT, COMPRESSION, STATS = 10;
 ## Cronologia Versioni / Version History
 
 - **V3** (2026-01-25): Dashboard, RBAC, Saved Searches, User Activities
-- **V2** (2025-12-xx): AI Multi-provider, Similar Documents, Golden Datasets
-- **V1** (2025-01-01): Initial release con Vector support
+- **V2** (2025-12-27): AI Multi-provider, Similar Documents, Golden Datasets  
+- **V1** (2025-01-01): Initial release with Vector support
 
 ## Supporto / Support
 

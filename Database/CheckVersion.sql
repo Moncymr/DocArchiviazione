@@ -9,6 +9,17 @@
 --   sqlcmd -S your_server -d DocN -i CheckVersion.sql
 -- =====================================================
 
+-- =====================================================
+-- CONFIGURAZIONE VERSIONE / VERSION CONFIGURATION
+-- Aggiorna questi valori quando viene rilasciata una nuova versione
+-- Update these values when a new version is released
+-- =====================================================
+DECLARE @CURRENT_VERSION NVARCHAR(10) = 'V3';
+DECLARE @CURRENT_VERSION_DATE NVARCHAR(10) = '2026-01-25';
+DECLARE @LATEST_MIGRATION NVARCHAR(150) = '20260124115302_AddDashboardAndRBACFeatures';
+DECLARE @LATEST_MIGRATION_NAME NVARCHAR(100) = 'AddDashboardAndRBACFeatures';
+-- =====================================================
+
 SET NOCOUNT ON;
 
 PRINT '==================================================';
@@ -57,10 +68,10 @@ BEGIN
     
     -- Verifica la versione corrente
     -- Check current version
-    IF @LastMigration = '20260124115302_AddDashboardAndRBACFeatures'
+    IF @LastMigration = @LATEST_MIGRATION
     BEGIN
-        PRINT '✅ DATABASE AGGIORNATO ALLA VERSIONE CORRENTE V3!';
-        PRINT '✅ DATABASE IS UP TO DATE WITH VERSION V3!';
+        PRINT '✅ DATABASE AGGIORNATO ALLA VERSIONE CORRENTE ' + @CURRENT_VERSION + '!';
+        PRINT '✅ DATABASE IS UP TO DATE WITH VERSION ' + @CURRENT_VERSION + '!';
         PRINT '';
         PRINT '   Include / Includes:';
         PRINT '   - Dashboard Widgets';
@@ -89,9 +100,9 @@ BEGIN
         PRINT '   Versione rilevata / Detected version: V1 o V2 / V1 or V2';
         PRINT '';
         PRINT '   AZIONE RICHIESTA / ACTION REQUIRED:';
-        PRINT '   Aggiorna alla V3 / Update to V3:';
+        PRINT '   Aggiorna alla ' + @CURRENT_VERSION + ' / Update to ' + @CURRENT_VERSION + ':';
         PRINT '   - Metodo 1: dotnet ef database update';
-        PRINT '   - Metodo 2: Esegui / Run CreateDatabase_Complete_V3.sql';
+        PRINT '   - Metodo 2: Esegui / Run CreateDatabase_Complete_' + @CURRENT_VERSION + '.sql';
         PRINT '';
         PRINT '   ⚠️  IMPORTANTE: Fai un backup prima! / IMPORTANT: Backup first!';
         PRINT '   Consulta / See: Database/UPDATE_GUIDE.md';
