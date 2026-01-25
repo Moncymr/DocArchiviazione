@@ -336,6 +336,11 @@ public class IngestionService : IIngestionService
                         TenantId = connector.TenantId,
                         UploadedAt = DateTime.UtcNow,
                         
+                        // Initialize workflow state for document processing
+                        WorkflowState = DocumentProcessingState.Queued,
+                        StateEnteredAt = DateTime.UtcNow,
+                        MaxRetries = 3,
+                        
                         // Source tracking for deduplication
                         SourceConnectorId = connector.Id,
                         SourceFilePath = file.Path,
