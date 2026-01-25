@@ -389,12 +389,12 @@
 
     private void OnDragOver(DragEventArgs e)
     {
-        e.PreventDefault();
+        // Blazor handles preventDefault automatically for drag events
     }
 
     private void OnDrop(DragEventArgs e, DashboardWidget targetWidget)
     {
-        e.PreventDefault();
+        // Blazor handles preventDefault automatically for drag events
         
         if (_draggedWidget == null || _widgets == null || _draggedWidget.Id == targetWidget.Id)
             return;
