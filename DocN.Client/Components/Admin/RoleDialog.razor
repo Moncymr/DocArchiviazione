@@ -1,0 +1,144 @@
+@using DocN.Data.Constants
+
+<div class="role-dialog-overlay @(IsOpen ? "open" : "")" @onclick="OnOverlayClick">
+    <div class="role-dialog" @onclick:stopPropagation="true">
+        <div class="dialog-header">
+            <h3>Cambia Ruolo Utente</h3>
+            <button class="close-btn" @onclick="Close">×</button>
+        </div>
+        
+        <div class="dialog-body">
+            <div class="user-info">
+                <p><strong>Utente:</strong> @UserEmail</p>
+                <p><strong>Ruolo Corrente:</strong> @CurrentRole</p>
+            </div>
+            
+            <div class="role-selection">
+                <label for="newRole">Nuovo Ruolo:</label>
+                <select id="newRole" @bind="selectedRole" class="role-select">
+                    @foreach (var role in AvailableRoles)
+                    {
+                        <option value="@role">@role</option>
+                    }
+                </select>
+            </div>
+            
+            @if (!string.IsNullOrEmpty(selectedRole))
+            {
+                <div class="permissions-preview">
+                    <h5>Permessi del ruolo @selectedRole:</h5>
+                    <div class="permissions-list">
+                        @foreach (var permission in GetPermissionsForRole(selectedRole))
+                        {
+                            <div class="permission-badge">@permission</div>
+                        }
+                    </div>
+                </div>
+            }
+            
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <div class="error-message">
+                    @errorMessage
+                </div>
+            }
+        </div>
+        
+        <div class="dialog-footer">
+            <button class="btn-primary" @onclick="ConfirmChange" disabled="@isSubmitting">
+                @if (isSubmitting)
+                {
+                    <text>Salvataggio...</text>
+                }
+                else
+                {
+                    <text>Conferma Cambio</text>
+                }
+            </button>
+            <button class="btn-secondary" @onclick="Close" disabled="@isSubmitting">
+                Annulla
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public bool IsOpen { get; set; }
+    
+    [Parameter]
+    public string UserId { get; set; } = string.Empty;
+    
+    [Parameter]
+    public string UserEmail { get; set; } = string.Empty;
+    
+    [Parameter]
+    public string CurrentRole { get; set; } = string.Empty;
+    
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+    
+    [Parameter]
+    public EventCallback<string> OnRoleChanged { get; set; }
+    
+    private string selectedRole = string.Empty;
+    private bool isSubmitting = false;
+    private string errorMessage = string.Empty;
+    
+    private string[] AvailableRoles => Roles.All;
+    
+    protected override void OnParametersSet()
+    {
+        if (IsOpen && string.IsNullOrEmpty(selectedRole))
+        {
+            selectedRole = CurrentRole;
+        }
+    }
+    
+    private string[] GetPermissionsForRole(string role)
+    {
+        return DocN.Data.Constants.Permissions.GetPermissionsForRole(role);
+    }
+    
+    private async Task ConfirmChange()
+    {
+        if (string.IsNullOrEmpty(selectedRole) || selectedRole == CurrentRole)
+        {
+            errorMessage = "Seleziona un ruolo diverso da quello corrente";
+            return;
+        }
+        
+        isSubmitting = true;
+        errorMessage = string.Empty;
+        
+        try
+        {
+            await OnRoleChanged.InvokeAsync(selectedRole);
+            await Close();
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Errore durante il cambio ruolo: {ex.Message}";
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+    
+    private async Task Close()
+    {
+        selectedRole = string.Empty;
+        errorMessage = string.Empty;
+        isSubmitting = false;
+        await OnClose.InvokeAsync();
+    }
+    
+    private async Task OnOverlayClick()
+    {
+        if (!isSubmitting)
+        {
+            await Close();
+        }
+    }
+}

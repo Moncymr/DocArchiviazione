@@ -1,0 +1,65 @@
+@using DocN.Data.Constants
+
+<div class="permission-display">
+    <h5>@RoleName</h5>
+    <div class="permissions-grid">
+        @foreach (var permission in Permissions)
+        {
+            <div class="permission-item">
+                <span class="permission-icon">@GetPermissionIcon(permission)</span>
+                <span class="permission-name">@GetPermissionDisplayName(permission)</span>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public string RoleName { get; set; } = string.Empty;
+    
+    [Parameter]
+    public string[] Permissions { get; set; } = Array.Empty<string>();
+    
+    private string GetPermissionIcon(string permission)
+    {
+        return permission switch
+        {
+            var p when p.StartsWith("admin") => "🔒",
+            var p when p.StartsWith("document") => "📄",
+            var p when p.StartsWith("rag") => "🤖",
+            var p when p.StartsWith("agent") => "⚙️",
+            _ => "📌"
+        };
+    }
+    
+    private string GetPermissionDisplayName(string permission)
+    {
+        return permission switch
+        {
+            // Document permissions
+            "document.read" => "Lettura Documenti",
+            "document.write" => "Scrittura Documenti",
+            "document.delete" => "Eliminazione Documenti",
+            "document.share" => "Condivisione Documenti",
+            "document.upload" => "Caricamento Documenti",
+            
+            // Admin permissions
+            "admin.users" => "Gestione Utenti",
+            "admin.roles" => "Gestione Ruoli",
+            "admin.tenants" => "Gestione Tenant",
+            "admin.system" => "Configurazione Sistema",
+            "admin.*" => "Amministrazione Completa",
+            
+            // RAG permissions
+            "rag.config" => "Configurazione RAG",
+            "rag.view" => "Visualizzazione RAG",
+            "rag.execute" => "Esecuzione Query RAG",
+            
+            // Agent permissions
+            "agent.manage" => "Gestione Agenti",
+            "agent.execute" => "Esecuzione Agenti",
+            
+            _ => permission
+        };
+    }
+}

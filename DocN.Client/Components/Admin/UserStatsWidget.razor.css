@@ -1,0 +1,100 @@
+.user-stats-widget {
+    background-color: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+}
+
+.user-stats-widget h4 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    color: #333;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+    margin-bottom: 25px;
+}
+
+.stat-card {
+    padding: 20px;
+    border-radius: 6px;
+    background-color: #f8f9fa;
+    border: 2px solid #dee2e6;
+    text-align: center;
+}
+
+.stat-card.active {
+    background-color: #d4edda;
+    border-color: #28a745;
+}
+
+.stat-card.inactive {
+    background-color: #f8d7da;
+    border-color: #dc3545;
+}
+
+.stat-value {
+    font-size: 32px;
+    font-weight: bold;
+    color: #333;
+    margin-bottom: 5px;
+}
+
+.stat-label {
+    font-size: 14px;
+    color: #666;
+}
+
+.role-distribution {
+    margin-top: 20px;
+}
+
+.role-distribution h5 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: #333;
+}
+
+.role-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.role-bar-item {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.role-bar-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 14px;
+}
+
+.role-name {
+    font-weight: 600;
+    color: #333;
+}
+
+.role-count {
+    color: #666;
+}
+
+.role-bar {
+    height: 25px;
+    background-color: #e9ecef;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.role-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #007bff, #0056b3);
+    transition: width 0.3s ease;
+}
