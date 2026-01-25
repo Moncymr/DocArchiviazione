@@ -492,6 +492,9 @@ builder.Services.AddScoped<IMultiProviderAIService, MultiProviderAIService>();
 // Register Audit Service for GDPR/SOC2 compliance
 builder.Services.AddScoped<IAuditService, AuditService>();
 
+// Register User Management Service
+builder.Services.AddScoped<UserManagementService>();
+
 // Register Alerting and Monitoring Services
 builder.Services.AddScoped<IAlertingService, AlertingService>();
 builder.Services.AddScoped<IRAGQualityService, RAGQualityService>();
