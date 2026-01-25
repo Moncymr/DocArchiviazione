@@ -6,7 +6,7 @@
 @inject IHttpClientFactory HttpClientFactory
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @rendermode InteractiveServer
-@attribute [Authorize(Policy = "AdminUsers")]
+@attribute [Authorize(Roles = "SuperAdmin,TenantAdmin")]
 
 <PageTitle>Gestione Ruoli - DocN</PageTitle>
 
