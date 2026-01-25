@@ -199,6 +199,151 @@ public class RAGQualityController : ControllerBase
             return StatusCode(500, new { error = "Failed to retrieve dashboard data" });
         }
     }
+
+    /// <summary>
+    /// Calculate faithfulness score (response based on given context)
+    /// </summary>
+    [HttpPost("ragas/faithfulness")]
+    [EnableRateLimiting("ai")]
+    public async Task<IActionResult> CalculateFaithfulness(
+        [FromBody] FaithfulnessRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var score = await _ragasService.CalculateFaithfulnessAsync(
+                request.Response,
+                request.Contexts,
+                cancellationToken);
+            
+            return Ok(new
+            {
+                faithfulnessScore = score,
+                description = "Measures if the response is grounded in the provided contexts",
+                timestamp = DateTime.UtcNow
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error calculating faithfulness");
+            return StatusCode(500, new { error = "Failed to calculate faithfulness score" });
+        }
+    }
+
+    /// <summary>
+    /// Calculate answer relevancy score (response relevant to query)
+    /// </summary>
+    [HttpPost("ragas/relevancy")]
+    [EnableRateLimiting("ai")]
+    public async Task<IActionResult> CalculateRelevancy(
+        [FromBody] RelevancyRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var score = await _ragasService.CalculateAnswerRelevancyAsync(
+                request.Query,
+                request.Response,
+                cancellationToken);
+            
+            return Ok(new
+            {
+                relevancyScore = score,
+                description = "Measures if the response is relevant to the query",
+                timestamp = DateTime.UtcNow
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error calculating answer relevancy");
+            return StatusCode(500, new { error = "Failed to calculate relevancy score" });
+        }
+    }
+
+    /// <summary>
+    /// Calculate context precision (relevant context retrieved)
+    /// </summary>
+    [HttpPost("ragas/context-precision")]
+    [EnableRateLimiting("ai")]
+    public async Task<IActionResult> CalculateContextPrecision(
+        [FromBody] ContextPrecisionRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var score = await _ragasService.CalculateContextPrecisionAsync(
+                request.Query,
+                request.Contexts,
+                request.GroundTruth,
+                cancellationToken);
+            
+            return Ok(new
+            {
+                contextPrecisionScore = score,
+                description = "Measures if the retrieved contexts are relevant to the query",
+                timestamp = DateTime.UtcNow
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error calculating context precision");
+            return StatusCode(500, new { error = "Failed to calculate context precision score" });
+        }
+    }
+
+    /// <summary>
+    /// Calculate context recall (all relevant context retrieved)
+    /// </summary>
+    [HttpPost("ragas/context-recall")]
+    [EnableRateLimiting("ai")]
+    public async Task<IActionResult> CalculateContextRecall(
+        [FromBody] ContextRecallRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var score = await _ragasService.CalculateContextRecallAsync(
+                request.Contexts,
+                request.GroundTruth,
+                cancellationToken);
+            
+            return Ok(new
+            {
+                contextRecallScore = score,
+                description = "Measures if all relevant context was retrieved",
+                timestamp = DateTime.UtcNow
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error calculating context recall");
+            return StatusCode(500, new { error = "Failed to calculate context recall score" });
+        }
+    }
+
+    /// <summary>
+    /// Evaluate golden dataset for comprehensive testing
+    /// </summary>
+    [HttpPost("ragas/evaluate-dataset")]
+    [EnableRateLimiting("ai")]
+    public async Task<IActionResult> EvaluateGoldenDataset(
+        [FromBody] EvaluateDatasetRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _ragasService.EvaluateGoldenDatasetAsync(
+                request.DatasetId,
+                cancellationToken);
+            
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error evaluating golden dataset");
+            return StatusCode(500, new { error = "Failed to evaluate golden dataset" });
+        }
+    }
 }
 
 public record VerifyQualityRequest(
@@ -220,3 +365,24 @@ public record ABTestRequest(
     string ConfigurationA,
     string ConfigurationB,
     string TestDatasetId);
+
+public record FaithfulnessRequest(
+    string Response,
+    List<string> Contexts);
+
+public record RelevancyRequest(
+    string Query,
+    string Response);
+
+public record ContextPrecisionRequest(
+    string Query,
+    List<string> Contexts,
+    string? GroundTruth = null);
+
+public record ContextRecallRequest(
+    List<string> Contexts,
+    string? GroundTruth = null);
+
+public record EvaluateDatasetRequest(
+    string DatasetId);
+
