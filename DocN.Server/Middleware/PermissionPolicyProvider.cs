@@ -37,8 +37,11 @@ public class PermissionPolicyProvider : IAuthorizationPolicyProvider
             policyName.Contains("rag.") || policyName.Contains("agent."))
         {
             var permissions = policyName.Split(',', StringSplitOptions.RemoveEmptyEntries);
+            // Allow anonymous access - the PermissionAuthorizationHandler will handle authorization
+            // This is necessary because the Client app handles authentication separately
             var policy = new AuthorizationPolicyBuilder()
                 .AddRequirements(new PermissionRequirement(permissions))
+                .RequireAssertion(_ => true) // Always allow at the policy level
                 .Build();
             
             return Task.FromResult<AuthorizationPolicy?>(policy);

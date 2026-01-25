@@ -230,6 +230,10 @@ builder.Services.AddCors(options =>
 });
 
 // Configure Authentication with Cookie scheme (compatible with Blazor Client using Identity)
+// Note: This API is designed to work with a separate Blazor Client that handles its own authentication.
+// The Server API accepts user identity from the Client via request payloads (e.g., UserId in body).
+// Cookie authentication is configured here primarily to support the [Authorize] attribute without errors,
+// but most endpoints are designed to work without authentication challenges.
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultScheme = Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationDefaults.AuthenticationScheme;
@@ -246,10 +250,28 @@ builder.Services.AddAuthentication(options =>
     options.Cookie.SameSite = Microsoft.AspNetCore.Http.SameSiteMode.Lax;
     options.ExpireTimeSpan = TimeSpan.FromHours(24);
     options.SlidingExpiration = true;
+    // Don't redirect API requests to login page - return 401 instead
+    options.Events.OnRedirectToLogin = context =>
+    {
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        return Task.CompletedTask;
+    };
+    options.Events.OnRedirectToAccessDenied = context =>
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        return Task.CompletedTask;
+    };
 });
 
 // Configure Authorization with granular permission-based access control
-builder.Services.AddAuthorization();
+// Note: By default, this API allows anonymous access. Authorization is checked at the permission level
+// by the PermissionAuthorizationHandler, which gracefully handles unauthenticated users.
+builder.Services.AddAuthorization(options =>
+{
+    // Don't require authentication by default for API endpoints
+    // Individual endpoints can opt-in to requiring authentication with [Authorize] or [RequirePermission]
+    options.FallbackPolicy = null; // Allow anonymous by default
+});
 builder.Services.AddSingleton<IAuthorizationHandler, PermissionAuthorizationHandler>();
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
