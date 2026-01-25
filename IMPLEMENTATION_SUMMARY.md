@@ -266,11 +266,10 @@ Added services:
 ## Next Steps
 
 ### High Priority
-1. **Database Migration**: Create and apply EF Core migration for new entities
-   ```bash
-   dotnet ef migrations add AddDashboardAndRBACFeatures --project DocN.Data
-   dotnet ef database update --project DocN.Client
-   ```
+1. **Database Migration**: ✅ COMPLETED - Created SQL script Database/CreateDatabase_Complete_V3.sql
+   - Migration includes all dashboard and RBAC features
+   - Script is idempotent and can be safely re-run
+   - See Database/README.md for usage instructions
 
 2. **Apply Authorization**: Add `[RequirePermission(...)]` attributes to controllers
    - DocumentsController

@@ -46,7 +46,7 @@ Password: Admin@123
    ```
 
 3. **Se l'utente non esiste / If user doesn't exist:**
-   - Esegui lo script SQL: `Database/CreateDatabase_Complete_V2.sql`
+   - Esegui lo script SQL: `Database/CreateDatabase_Complete_V3.sql`
    - Oppure avvia l'applicazione e l'`ApplicationSeeder` lo creerà automaticamente
    
 4. **Reset password (se necessario) / Reset password (if needed):**
@@ -57,7 +57,7 @@ Password: Admin@123
 
 L'utente amministratore può essere creato in due modi / The admin user can be created in two ways:
 
-1. **SQL Script** (`CreateDatabase_Complete_V2.sql`):
+1. **SQL Script** (`CreateDatabase_Complete_V3.sql`):
    - Crea l'utente direttamente nel database con un hash password pre-calcolato
    - Creates the user directly in the database with a pre-calculated password hash
 
