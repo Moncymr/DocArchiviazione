@@ -10,7 +10,7 @@
     <PackageReference Include="ClosedXML" Version="0.104.2" />
     <PackageReference Include="Cronos" Version="0.8.4" />
     <PackageReference Include="DocumentFormat.OpenXml" Version="3.2.0" />
-    <PackageReference Include="Google.Apis.Drive.v3" Version="1.70.0.3643" />
+    <PackageReference Include="Google.Apis.Drive.v3" Version="1.70.0.3834" />
     <PackageReference Include="Hangfire.Core" Version="1.8.14" />
     <PackageReference Include="itext7" Version="9.0.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.1">
@@ -35,9 +35,9 @@
     <PackageReference Include="Tesseract" Version="5.2.0" />
     
     <!-- PostgreSQL with pgvector support for optimal vector search -->
-    <!-- Using preview version compatible with EF Core 10 -->
-    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0-preview.1" />
-    <PackageReference Include="Npgsql" Version="10.0.0-preview.1" />
+    <!-- Using version compatible with EF Core 10 -->
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
+    <PackageReference Include="Npgsql" Version="10.0.0" />
     <PackageReference Include="Pgvector" Version="0.3.0" />
   </ItemGroup>
 
