@@ -96,16 +96,85 @@
                             </div>
                             <div class="message-content">
                                 <div class="message-text">@msg.Content</div>
+                                @if (msg.Role == "assistant")
+                                {
+                                    <!-- Confidence Indicator -->
+                                    @if (msg.Metadata != null && GetConfidenceScore(msg.Metadata) > 0)
+                                    {
+                                        <div class="confidence-indicator">
+                                            <span class="confidence-label">Confidenza:</span>
+                                            <div class="confidence-bar">
+                                                <div class="confidence-fill @GetConfidenceClass(GetConfidenceScore(msg.Metadata))" 
+                                                     style="width: @((GetConfidenceScore(msg.Metadata) * 100).ToString("F0"))%"></div>
+                                            </div>
+                                            <span class="confidence-value">@((GetConfidenceScore(msg.Metadata) * 100).ToString("F0"))%</span>
+                                        </div>
+                                    }
+                                    
+                                    <!-- Feedback System -->
+                                    <div class="message-feedback">
+                                        <span class="feedback-label">Questa risposta è stata utile?</span>
+                                        <div class="feedback-buttons">
+                                            <button class="btn-feedback @(msg.UserRating == 5 ? "active thumbs-up" : "")" 
+                                                    @onclick="async () => await RateMessage(msg, 5)"
+                                                    title="Utile">
+                                                👍
+                                            </button>
+                                            <button class="btn-feedback @(msg.UserRating == 1 ? "active thumbs-down" : "")" 
+                                                    @onclick="async () => await RateMessage(msg, 1)"
+                                                    title="Non utile">
+                                                👎
+                                            </button>
+                                        </div>
+                                        @if (msg.UserRating.HasValue && _showFeedbackTextFor == msg.Id)
+                                        {
+                                            <div class="feedback-text-area">
+                                                <textarea placeholder="Vuoi aggiungere un commento? (opzionale)" 
+                                                          @bind="_feedbackText"
+                                                          rows="2"></textarea>
+                                                <div class="feedback-actions">
+                                                    <button class="btn-submit-feedback" @onclick="async () => await SubmitFeedback(msg)">Invia</button>
+                                                    <button class="btn-cancel-feedback" @onclick="() => CancelFeedback()">Annulla</button>
+                                                </div>
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(msg.UserFeedback))
+                                        {
+                                            <div class="feedback-submitted">
+                                                ✓ Feedback inviato: @msg.UserFeedback
+                                            </div>
+                                        }
+                                    </div>
+                                }
                                 @if (msg.ReferencedDocumentIds.Any())
                                 {
                                     <div class="message-sources">
-                                        <span class="sources-label">📚 Fonti:</span>
-                                        @foreach (var docId in msg.ReferencedDocumentIds)
-                                        {
-                                            <a href="/documents?id=@docId" class="source-tag" target="_blank" title="Apri documento">
-                                                Documento #@docId
-                                            </a>
-                                        }
+                                        <span class="sources-label">📚 Fonti utilizzate:</span>
+                                        <div class="sources-grid">
+                                            @foreach (var docId in msg.ReferencedDocumentIds)
+                                            {
+                                                var sourceInfo = GetSourceInfo(msg.Metadata, docId);
+                                                <div class="source-card">
+                                                    <div class="source-header">
+                                                        <a href="/documents?id=@docId" class="source-link" target="_blank" title="Apri documento">
+                                                            📄 Documento #@docId
+                                                        </a>
+                                                        @if (sourceInfo.similarityScore > 0)
+                                                        {
+                                                            <span class="similarity-badge @GetSimilarityClass(sourceInfo.similarityScore)">
+                                                                @((sourceInfo.similarityScore * 100).ToString("F0"))% match
+                                                            </span>
+                                                        }
+                                                    </div>
+                                                    @if (!string.IsNullOrEmpty(sourceInfo.relevantChunk))
+                                                    {
+                                                        <div class="source-preview">
+                                                            "@(TruncateText(sourceInfo.relevantChunk, 150))"
+                                                        </div>
+                                                    }
+                                                </div>
+                                            }
+                                        </div>
                                     </div>
                                 }
                                 <div class="message-time">@msg.Timestamp.ToString("HH:mm")</div>
@@ -452,10 +521,6 @@
         margin-top: 0.75rem;
         padding-top: 0.75rem;
         border-top: 1px solid #e9ecef;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-        align-items: center;
     }
 
     .message.user .message-sources {
@@ -465,6 +530,102 @@
     .sources-label {
         font-size: 0.85rem;
         font-weight: 600;
+        display: block;
+        margin-bottom: 0.75rem;
+    }
+
+    .sources-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .source-card {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 0.75rem;
+        border: 1px solid #e9ecef;
+        transition: all 0.2s ease;
+    }
+
+    .source-card:hover {
+        border-color: #2563eb;
+        box-shadow: 0 2px 8px rgba(37, 99, 235, 0.15);
+        transform: translateY(-1px);
+    }
+
+    .message.user .source-card {
+        background: rgba(255,255,255,0.15);
+        border-color: rgba(255,255,255,0.3);
+    }
+
+    .message.user .source-card:hover {
+        background: rgba(255,255,255,0.25);
+        border-color: rgba(255,255,255,0.5);
+    }
+
+    .source-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .source-link {
+        color: #2563eb;
+        font-weight: 600;
+        text-decoration: none;
+        font-size: 0.9rem;
+        flex: 1;
+    }
+
+    .source-link:hover {
+        text-decoration: underline;
+    }
+
+    .message.user .source-link {
+        color: white;
+    }
+
+    .similarity-badge {
+        padding: 0.25rem 0.5rem;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .similarity-badge.high {
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        color: white;
+    }
+
+    .similarity-badge.medium {
+        background: linear-gradient(135deg, #ffc107 0%, #fd7e14 100%);
+        color: white;
+    }
+
+    .similarity-badge.low {
+        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        color: white;
+    }
+
+    .source-preview {
+        font-size: 0.85rem;
+        color: #666;
+        font-style: italic;
+        line-height: 1.4;
+        padding: 0.5rem;
+        background: white;
+        border-radius: 4px;
+        border-left: 3px solid #2563eb;
+    }
+
+    .message.user .source-preview {
+        color: rgba(255,255,255,0.9);
+        background: rgba(255,255,255,0.1);
+        border-left-color: white;
     }
 
     .source-tag {
@@ -501,6 +662,184 @@
         margin-top: 0.5rem;
         font-size: 0.75rem;
         opacity: 0.7;
+    }
+
+    /* Confidence Indicator */
+    .confidence-indicator {
+        margin-top: 0.75rem;
+        padding-top: 0.75rem;
+        border-top: 1px solid #e9ecef;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        font-size: 0.85rem;
+    }
+
+    .confidence-label {
+        font-weight: 600;
+        color: #666;
+        white-space: nowrap;
+    }
+
+    .confidence-bar {
+        flex: 1;
+        height: 8px;
+        background: #e9ecef;
+        border-radius: 4px;
+        overflow: hidden;
+        position: relative;
+    }
+
+    .confidence-fill {
+        height: 100%;
+        transition: width 0.3s ease;
+        border-radius: 4px;
+    }
+
+    .confidence-fill.high {
+        background: linear-gradient(90deg, #28a745 0%, #20c997 100%);
+    }
+
+    .confidence-fill.medium {
+        background: linear-gradient(90deg, #ffc107 0%, #fd7e14 100%);
+    }
+
+    .confidence-fill.low {
+        background: linear-gradient(90deg, #dc3545 0%, #c82333 100%);
+    }
+
+    .confidence-value {
+        font-weight: 700;
+        color: #333;
+        min-width: 45px;
+        text-align: right;
+    }
+
+    /* Message Feedback */
+    .message-feedback {
+        margin-top: 1rem;
+        padding-top: 0.75rem;
+        border-top: 1px solid #e9ecef;
+    }
+
+    .feedback-label {
+        font-size: 0.85rem;
+        color: #666;
+        display: block;
+        margin-bottom: 0.5rem;
+    }
+
+    .feedback-buttons {
+        display: flex;
+        gap: 0.75rem;
+    }
+
+    .btn-feedback {
+        padding: 0.5rem 1rem;
+        background: white;
+        border: 2px solid #dee2e6;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 1.2rem;
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .btn-feedback:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+
+    .btn-feedback.active.thumbs-up {
+        background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+        border-color: transparent;
+        transform: scale(1.1);
+    }
+
+    .btn-feedback.active.thumbs-down {
+        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        border-color: transparent;
+        transform: scale(1.1);
+    }
+
+    .feedback-text-area {
+        margin-top: 1rem;
+        animation: slideDown 0.3s ease;
+    }
+
+    .feedback-text-area textarea {
+        width: 100%;
+        padding: 0.75rem;
+        border: 2px solid #dee2e6;
+        border-radius: 8px;
+        font-family: inherit;
+        font-size: 0.9rem;
+        resize: vertical;
+        transition: border-color 0.2s;
+    }
+
+    .feedback-text-area textarea:focus {
+        outline: none;
+        border-color: #2563eb;
+    }
+
+    .feedback-actions {
+        display: flex;
+        gap: 0.5rem;
+        margin-top: 0.5rem;
+    }
+
+    .btn-submit-feedback, .btn-cancel-feedback {
+        padding: 0.5rem 1rem;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.9rem;
+        font-weight: 500;
+        transition: all 0.2s ease;
+    }
+
+    .btn-submit-feedback {
+        background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+        color: white;
+    }
+
+    .btn-submit-feedback:hover {
+        background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
+        transform: translateY(-1px);
+    }
+
+    .btn-cancel-feedback {
+        background: #f8f9fa;
+        color: #666;
+        border: 1px solid #dee2e6;
+    }
+
+    .btn-cancel-feedback:hover {
+        background: #e9ecef;
+    }
+
+    .feedback-submitted {
+        margin-top: 0.75rem;
+        padding: 0.5rem;
+        background: #d4edda;
+        color: #155724;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-style: italic;
+    }
+
+    @keyframes slideDown {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
     }
 
     /* Typing Indicator */
@@ -680,6 +1019,8 @@
     private bool showSidebar = true;
     private string? errorMessage = null;
     private HttpClient? _httpClient;
+    private int? _showFeedbackTextFor = null;
+    private string _feedbackText = string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
@@ -794,13 +1135,33 @@
                 
                 if (result != null)
                 {
+                    // Prepare metadata for storage
+                    var metadata = new Dictionary<string, object>(result.Metadata);
+                    
+                    // Add confidence score if available
+                    if (result.SourceDocuments.Any())
+                    {
+                        var topScore = result.SourceDocuments.Max(d => d.SimilarityScore);
+                        metadata["confidence_score"] = topScore;
+                        metadata["top_similarity_score"] = topScore;
+                        
+                        // Add source documents info
+                        metadata["source_documents"] = result.SourceDocuments.Select(d => new
+                        {
+                            document_id = d.DocumentId,
+                            similarity_score = d.SimilarityScore,
+                            relevant_chunk = d.RelevantChunk
+                        }).ToList();
+                    }
+
                     // Add assistant message
                     messages.Add(new ConversationMessage
                     {
                         Role = "assistant",
                         Content = result.Answer,
                         Timestamp = DateTime.UtcNow,
-                        ReferencedDocumentIds = result.SourceDocuments.Select(d => d.DocumentId).ToList()
+                        ReferencedDocumentIds = result.SourceDocuments.Select(d => d.DocumentId).ToList(),
+                        Metadata = System.Text.Json.JsonSerializer.Serialize(metadata)
                     });
 
                     currentConversationId = result.ConversationId;
@@ -919,6 +1280,154 @@
         return date.ToString("MMM dd");
     }
 
+    private double GetConfidenceScore(string? metadata)
+    {
+        if (string.IsNullOrEmpty(metadata))
+            return 0;
+
+        try
+        {
+            var metadataDict = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(metadata);
+            if (metadataDict != null && metadataDict.ContainsKey("confidence_score"))
+            {
+                var value = metadataDict["confidence_score"];
+                if (value is System.Text.Json.JsonElement jsonElement && jsonElement.ValueKind == System.Text.Json.JsonValueKind.Number)
+                {
+                    return jsonElement.GetDouble();
+                }
+            }
+            // If no confidence score, calculate from similarity scores
+            if (metadataDict != null && metadataDict.ContainsKey("top_similarity_score"))
+            {
+                var value = metadataDict["top_similarity_score"];
+                if (value is System.Text.Json.JsonElement jsonElement && jsonElement.ValueKind == System.Text.Json.JsonValueKind.Number)
+                {
+                    return jsonElement.GetDouble();
+                }
+            }
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return 0;
+        }
+
+        return 0;
+    }
+
+    private string GetConfidenceClass(double score)
+    {
+        if (score >= 0.8) return "high";
+        if (score >= 0.6) return "medium";
+        return "low";
+    }
+
+    private async Task RateMessage(ConversationMessage message, int rating)
+    {
+        if (_httpClient == null) return;
+
+        try
+        {
+            message.UserRating = rating;
+            _showFeedbackTextFor = message.Id;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error rating message: {ex}");
+        }
+    }
+
+    private async Task SubmitFeedback(ConversationMessage message)
+    {
+        if (_httpClient == null) return;
+
+        try
+        {
+            var feedbackData = new
+            {
+                messageId = message.Id,
+                rating = message.UserRating,
+                feedback = _feedbackText
+            };
+
+            var response = await _httpClient.PostAsJsonAsync("api/SemanticChat/feedback", feedbackData);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                message.UserFeedback = _feedbackText;
+                _showFeedbackTextFor = null;
+                _feedbackText = string.Empty;
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error submitting feedback: {ex}");
+            errorMessage = "Errore nell'invio del feedback";
+        }
+    }
+
+    private void CancelFeedback()
+    {
+        _showFeedbackTextFor = null;
+        _feedbackText = string.Empty;
+        StateHasChanged();
+    }
+
+    private (double similarityScore, string relevantChunk) GetSourceInfo(string? metadata, int docId)
+    {
+        if (string.IsNullOrEmpty(metadata))
+            return (0, string.Empty);
+
+        try
+        {
+            var metadataDict = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(metadata);
+            if (metadataDict != null && metadataDict.ContainsKey("source_documents"))
+            {
+                var sourcesElement = metadataDict["source_documents"];
+                if (sourcesElement is System.Text.Json.JsonElement jsonElement && 
+                    jsonElement.ValueKind == System.Text.Json.JsonValueKind.Array)
+                {
+                    foreach (var source in jsonElement.EnumerateArray())
+                    {
+                        if (source.TryGetProperty("document_id", out var docIdProp) && 
+                            docIdProp.GetInt32() == docId)
+                        {
+                            var score = source.TryGetProperty("similarity_score", out var scoreProp) 
+                                ? scoreProp.GetDouble() 
+                                : 0;
+                            var chunk = source.TryGetProperty("relevant_chunk", out var chunkProp) 
+                                ? chunkProp.GetString() ?? string.Empty
+                                : string.Empty;
+                            return (score, chunk);
+                        }
+                    }
+                }
+            }
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return (0, string.Empty);
+        }
+
+        return (0, string.Empty);
+    }
+
+    private string GetSimilarityClass(double score)
+    {
+        if (score >= 0.8) return "high";
+        if (score >= 0.6) return "medium";
+        return "low";
+    }
+
+    private string TruncateText(string text, int maxLength)
+    {
+        if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
+            return text;
+        
+        return text.Substring(0, maxLength) + "...";
+    }
+
     // Request/Response models (matching the API)
     public class SemanticChatRequest
     {
@@ -973,6 +1482,9 @@
         public string Content { get; set; } = string.Empty;
         public DateTime Timestamp { get; set; }
         public List<int> ReferencedDocumentIds { get; set; } = new();
+        public string? Metadata { get; set; }
+        public int? UserRating { get; set; }
+        public string? UserFeedback { get; set; }
     }
 
     public class ConversationMessagesResponse

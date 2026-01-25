@@ -126,4 +126,82 @@ style.textContent = `
 `;
 document.head.appendChild(style);
 
+/**
+ * Initialize drag and drop for dashboard widgets
+ */
+window.initDragAndDrop = () => {
+    const widgetsGrid = document.querySelector('.widgets-grid');
+    if (!widgetsGrid) return;
+
+    let draggedElement = null;
+
+    const widgets = widgetsGrid.querySelectorAll('.widget-container');
+    
+    widgets.forEach(widget => {
+        widget.setAttribute('draggable', 'true');
+        
+        widget.addEventListener('dragstart', (e) => {
+            draggedElement = widget;
+            widget.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+        });
+        
+        widget.addEventListener('dragend', () => {
+            widget.classList.remove('dragging');
+        });
+        
+        widget.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            
+            const afterElement = getDragAfterElement(widgetsGrid, e.clientY, e.clientX);
+            if (afterElement == null) {
+                widgetsGrid.appendChild(draggedElement);
+            } else {
+                widgetsGrid.insertBefore(draggedElement, afterElement);
+            }
+        });
+    });
+};
+
+function getDragAfterElement(container, y, x) {
+    const draggableElements = [...container.querySelectorAll('.widget-container:not(.dragging)')];
+    
+    return draggableElements.reduce((closest, child) => {
+        const box = child.getBoundingClientRect();
+        const offsetY = y - box.top - box.height / 2;
+        const offsetX = x - box.left - box.width / 2;
+        const offset = Math.sqrt(offsetX * offsetX + offsetY * offsetY);
+        
+        if (offset < 0 && offset > closest.offset) {
+            return { offset: offset, element: child };
+        } else {
+            return closest;
+        }
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
+}
+
+/**
+ * Get widget positions after drag and drop
+ */
+window.getWidgetPositions = () => {
+    const widgetsGrid = document.querySelector('.widgets-grid');
+    if (!widgetsGrid) return [];
+    
+    const widgets = widgetsGrid.querySelectorAll('.widget-container');
+    const positions = [];
+    
+    widgets.forEach((widget, index) => {
+        const widgetId = widget.getAttribute('data-widget-id');
+        if (widgetId) {
+            positions.push({
+                widgetId: parseInt(widgetId),
+                position: index
+            });
+        }
+    });
+    
+    return positions;
+};
+
 console.log('✅ DocN JavaScript helpers loaded');

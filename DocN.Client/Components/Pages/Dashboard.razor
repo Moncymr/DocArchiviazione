@@ -3,9 +3,11 @@
 @using DocN.Data.Models
 @using DocN.Data.Constants
 @using System.Security.Claims
+@using Microsoft.JSInterop
 @inject IDashboardWidgetService WidgetService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ILogger<Dashboard> Logger
+@inject IJSRuntime JSRuntime
 @rendermode InteractiveServer
 
 <PageTitle>Dashboard - DocN</PageTitle>
@@ -13,9 +15,17 @@
 <div class="dashboard-container">
     <div class="dashboard-header">
         <h2>📊 Dashboard Documenti</h2>
-        <button class="btn-manage" @onclick="ToggleWidgetManagement">
-            ⚙️ @(_isManagingWidgets ? "Chiudi" : "Gestisci Widget")
-        </button>
+        <div class="header-actions">
+            @if (!_isManagingWidgets && _widgets?.Any(w => w.IsVisible) == true)
+            {
+                <button class="btn-drag-mode @(_isDragMode ? "active" : "")" @onclick="ToggleDragMode">
+                    @(_isDragMode ? "✓ Drag Mode" : "⚡ Drag Mode")
+                </button>
+            }
+            <button class="btn-manage" @onclick="ToggleWidgetManagement">
+                ⚙️ @(_isManagingWidgets ? "Chiudi" : "Gestisci Widget")
+            </button>
+        </div>
     </div>
 
     @if (_isLoading)
@@ -88,10 +98,13 @@
 
         @if (_widgets?.Any() == true)
         {
-            <div class="widgets-grid">
+            <div class="widgets-grid @(_isDragMode ? "drag-mode" : "")">
                 @foreach (var widget in _widgets.Where(w => w.IsVisible).OrderBy(w => w.Position))
                 {
-                    <div class="widget-container">
+                    <div class="widget-container @(_isDragMode ? "draggable" : "")" data-widget-id="@widget.Id" draggable="@_isDragMode"
+                         @ondragstart="@(() => OnDragStart(widget))"
+                         @ondragover="@((e) => OnDragOver(e))"
+                         @ondrop="@((e) => OnDrop(e, widget))">
                         @switch (widget.WidgetType)
                         {
                             case "Statistics":
@@ -115,9 +128,20 @@
                                 </div>
                                 break;
                         }
+                        @if (_isDragMode)
+                        {
+                            <div class="drag-handle">⋮⋮</div>
+                        }
                     </div>
                 }
             </div>
+            @if (_isDragMode)
+            {
+                <div class="drag-mode-actions">
+                    <button class="btn-save-layout" @onclick="SaveLayout">💾 Salva Layout</button>
+                    <button class="btn-cancel" @onclick="CancelDragMode">✕ Annulla</button>
+                </div>
+            }
         }
         else if (!_isManagingWidgets)
         {
@@ -138,6 +162,9 @@
     private bool _isManagingWidgets = false;
     private bool _isAdmin = false;
     private string _selectedWidgetType = "";
+    private bool _isDragMode = false;
+    private DashboardWidget? _draggedWidget;
+    private List<DashboardWidget>? _originalWidgetsOrder;
 
     protected override async Task OnInitializedAsync()
     {
@@ -335,6 +362,111 @@
             _ => "📦"
         };
     }
+
+    private void ToggleDragMode()
+    {
+        _isDragMode = !_isDragMode;
+        if (_isDragMode)
+        {
+            // Save original order in case user cancels
+            _originalWidgetsOrder = _widgets?.Select(w => new DashboardWidget
+            {
+                Id = w.Id,
+                Position = w.Position,
+                UserId = w.UserId,
+                WidgetType = w.WidgetType,
+                Title = w.Title,
+                IsVisible = w.IsVisible
+            }).ToList();
+        }
+        StateHasChanged();
+    }
+
+    private void OnDragStart(DashboardWidget widget)
+    {
+        _draggedWidget = widget;
+    }
+
+    private void OnDragOver(DragEventArgs e)
+    {
+        e.PreventDefault();
+    }
+
+    private void OnDrop(DragEventArgs e, DashboardWidget targetWidget)
+    {
+        e.PreventDefault();
+        
+        if (_draggedWidget == null || _widgets == null || _draggedWidget.Id == targetWidget.Id)
+            return;
+
+        var draggedIndex = _widgets.FindIndex(w => w.Id == _draggedWidget.Id);
+        var targetIndex = _widgets.FindIndex(w => w.Id == targetWidget.Id);
+
+        if (draggedIndex == -1 || targetIndex == -1)
+            return;
+
+        // Remove dragged widget
+        var widget = _widgets[draggedIndex];
+        _widgets.RemoveAt(draggedIndex);
+
+        // Insert at new position
+        if (draggedIndex < targetIndex)
+            targetIndex--;
+        
+        _widgets.Insert(targetIndex, widget);
+
+        // Update positions
+        for (int i = 0; i < _widgets.Count; i++)
+        {
+            _widgets[i].Position = i;
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task SaveLayout()
+    {
+        if (_widgets == null) return;
+
+        try
+        {
+            foreach (var widget in _widgets)
+            {
+                await WidgetService.UpdateWidgetAsync(widget);
+            }
+            
+            _isDragMode = false;
+            _originalWidgetsOrder = null;
+            await JSRuntime.InvokeVoidAsync("showToast", "Layout salvato con successo!", "success");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error saving widget layout");
+            _errorMessage = "Errore nel salvare il layout";
+            await JSRuntime.InvokeVoidAsync("showToast", "Errore nel salvare il layout", "error");
+        }
+    }
+
+    private void CancelDragMode()
+    {
+        if (_originalWidgetsOrder != null)
+        {
+            // Restore original order
+            _widgets = _originalWidgetsOrder.Select(w => new DashboardWidget
+            {
+                Id = w.Id,
+                Position = w.Position,
+                UserId = w.UserId,
+                WidgetType = w.WidgetType,
+                Title = w.Title,
+                IsVisible = w.IsVisible
+            }).ToList();
+        }
+        
+        _isDragMode = false;
+        _originalWidgetsOrder = null;
+        StateHasChanged();
+    }
 }
 
 <style>
@@ -354,6 +486,36 @@
     .dashboard-header h2 {
         margin: 0;
         font-size: 2rem;
+    }
+
+    .header-actions {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+    }
+
+    .btn-drag-mode {
+        padding: 0.75rem 1.5rem;
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        color: #333;
+        border: 2px solid #dee2e6;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 1rem;
+        transition: all 0.2s ease;
+        font-weight: 500;
+    }
+
+    .btn-drag-mode:hover {
+        background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    .btn-drag-mode.active {
+        background: linear-gradient(135deg, #198754 0%, #20c997 100%);
+        color: white;
+        border-color: transparent;
     }
 
     .btn-manage {
@@ -573,6 +735,87 @@
 
     .widget-container {
         min-height: 300px;
+        position: relative;
+        transition: all 0.3s ease;
+    }
+
+    .widget-container.draggable {
+        cursor: move;
+        border: 2px dashed transparent;
+    }
+
+    .widget-container.draggable:hover {
+        border-color: #2563eb;
+        transform: scale(1.02);
+    }
+
+    .widgets-grid.drag-mode .widget-container {
+        opacity: 0.9;
+    }
+
+    .drag-handle {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        font-size: 1.5rem;
+        color: #2563eb;
+        background: white;
+        padding: 0.5rem;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+        cursor: grab;
+        z-index: 10;
+    }
+
+    .drag-handle:active {
+        cursor: grabbing;
+    }
+
+    .drag-mode-actions {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+        margin-top: 2rem;
+        padding: 1rem;
+        background: white;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+
+    .btn-save-layout {
+        padding: 0.75rem 2rem;
+        background: linear-gradient(135deg, #198754 0%, #20c997 100%);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 1rem;
+        font-weight: 600;
+        transition: all 0.2s ease;
+    }
+
+    .btn-save-layout:hover {
+        background: linear-gradient(135deg, #20c997 0%, #198754 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(25, 135, 84, 0.3);
+    }
+
+    .btn-cancel {
+        padding: 0.75rem 2rem;
+        background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 1rem;
+        font-weight: 600;
+        transition: all 0.2s ease;
+    }
+
+    .btn-cancel:hover {
+        background: linear-gradient(135deg, #495057 0%, #343a40 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(108, 117, 125, 0.3);
     }
 
     @@media (max-width: 768px) {
