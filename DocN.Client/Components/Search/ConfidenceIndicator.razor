@@ -1,0 +1,43 @@
+@using DocN.Core.Services
+
+<div class="confidence-indicator confidence-@Color">
+    <div class="confidence-badge">
+        <span class="confidence-icon">@Icon</span>
+        <span class="confidence-text">@Level</span>
+        <span class="confidence-score">@Score.ToString("F1")%</span>
+    </div>
+    @if (ShowWarning)
+    {
+        <div class="confidence-warning">
+            ⚠️ Attenzione: Questa risposta potrebbe non essere accurata. Confidenza molto bassa.
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public double Score { get; set; }
+    
+    private string Level => Score switch
+    {
+        > 80 => "Alta",
+        >= 50 => "Media",
+        _ => "Bassa"
+    };
+    
+    private string Color => Score switch
+    {
+        > 80 => "green",
+        >= 50 => "yellow",
+        _ => "red"
+    };
+    
+    private string Icon => Score switch
+    {
+        > 80 => "✓",
+        >= 50 => "⚡",
+        _ => "⚠"
+    };
+    
+    private bool ShowWarning => Score < 40;
+}

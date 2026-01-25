@@ -1,0 +1,133 @@
+@using Markdig
+@using DocN.Core.Services
+
+<div class="search-results-container">
+    <!-- Main Response -->
+    <div class="main-response">
+        <h3>Risposta</h3>
+        <div class="response-content">
+            @((MarkupString)Markdown.ToHtml(Response ?? ""))
+        </div>
+    </div>
+    
+    <!-- Confidence Indicator -->
+    <ConfidenceIndicator Score="@ConfidenceScore" />
+    
+    <!-- Source Documents Section -->
+    @if (SourceDocuments?.Any() == true)
+    {
+        <div class="source-documents">
+            <div class="section-header" @onclick="ToggleDocuments">
+                <h4>📚 Documenti Fonte (@SourceDocuments.Count)</h4>
+                <span class="toggle-icon">@(showDocuments ? "▼" : "▶")</span>
+            </div>
+            
+            @if (showDocuments)
+            {
+                <div class="documents-list">
+                    @foreach (var doc in SourceDocuments)
+                    {
+                        <div class="document-item" @onclick="() => OnDocumentClick(doc.Id)">
+                            <div class="document-header">
+                                <span class="document-title">@doc.Title</span>
+                                <span class="similarity-score">Score: @doc.SimilarityScore.ToString("F2")</span>
+                            </div>
+                            @if (!string.IsNullOrEmpty(doc.Date))
+                            {
+                                <div class="document-meta">
+                                    📅 @doc.Date
+                                </div>
+                            }
+                            @if (!string.IsNullOrEmpty(doc.ChunkPreview))
+                            {
+                                <div class="chunk-preview">
+                                    @doc.ChunkPreview
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+    
+    <!-- Alternative Suggestions (for low confidence) -->
+    @if (ConfidenceScore < 50 && AlternativeSuggestions?.Any() == true)
+    {
+        <div class="alternative-suggestions">
+            <h4>💡 Forse cercavi...</h4>
+            <div class="suggestions-list">
+                @foreach (var suggestion in AlternativeSuggestions)
+                {
+                    <div class="suggestion-item" @onclick="() => OnSuggestionClick(suggestion)">
+                        @suggestion
+                    </div>
+                }
+            </div>
+        </div>
+    }
+    
+    <!-- Feedback Widget -->
+    <FeedbackWidget 
+        Query="@Query" 
+        Response="@Response" 
+        ConfidenceScore="@ConfidenceScore"
+        SourceDocumentIds="@(SourceDocuments != null ? string.Join(",", SourceDocuments.Select(d => d.Id)) : "")"
+        SourceChunkIds="@(SourceDocuments != null ? string.Join(",", SourceDocuments.SelectMany(d => d.ChunkIds ?? new List<int>())) : "")" />
+</div>
+
+@code {
+    [Parameter]
+    public string Query { get; set; } = string.Empty;
+    
+    [Parameter]
+    public string? Response { get; set; }
+    
+    [Parameter]
+    public double ConfidenceScore { get; set; }
+    
+    [Parameter]
+    public List<SourceDocument>? SourceDocuments { get; set; }
+    
+    [Parameter]
+    public List<string>? AlternativeSuggestions { get; set; }
+    
+    [Parameter]
+    public EventCallback<int> OnDocumentSelected { get; set; }
+    
+    [Parameter]
+    public EventCallback<string> OnSuggestionSelected { get; set; }
+    
+    private bool showDocuments = true;
+    
+    private void ToggleDocuments()
+    {
+        showDocuments = !showDocuments;
+    }
+    
+    private async Task OnDocumentClick(int documentId)
+    {
+        if (OnDocumentSelected.HasDelegate)
+        {
+            await OnDocumentSelected.InvokeAsync(documentId);
+        }
+    }
+    
+    private async Task OnSuggestionClick(string suggestion)
+    {
+        if (OnSuggestionSelected.HasDelegate)
+        {
+            await OnSuggestionSelected.InvokeAsync(suggestion);
+        }
+    }
+    
+    public class SourceDocument
+    {
+        public int Id { get; set; }
+        public string Title { get; set; } = string.Empty;
+        public string? Date { get; set; }
+        public double SimilarityScore { get; set; }
+        public string? ChunkPreview { get; set; }
+        public List<int>? ChunkIds { get; set; }
+    }
+}

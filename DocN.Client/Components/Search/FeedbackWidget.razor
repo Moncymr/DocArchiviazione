@@ -1,0 +1,128 @@
+@using System.Net.Http.Json
+@inject IHttpClientFactory HttpClientFactory
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<div class="feedback-widget">
+    @if (!showCommentBox)
+    {
+        <div class="feedback-buttons">
+            <button class="feedback-btn @(isHelpful == true ? "active" : "")" 
+                    @onclick="() => OnFeedback(true)" 
+                    disabled="@isSubmitting">
+                👍 Utile
+            </button>
+            <button class="feedback-btn @(isHelpful == false ? "active" : "")" 
+                    @onclick="() => OnFeedback(false)" 
+                    disabled="@isSubmitting">
+                👎 Non utile
+            </button>
+        </div>
+    }
+    else
+    {
+        <div class="feedback-comment">
+            <textarea class="comment-box" 
+                      placeholder="(Opzionale) Cosa possiamo migliorare?" 
+                      @bind="comment"
+                      maxlength="1000"
+                      rows="3"></textarea>
+            <div class="comment-actions">
+                <button class="btn-submit" @onclick="SubmitFeedback" disabled="@isSubmitting">
+                    @if (isSubmitting)
+                    {
+                        <text>Invio...</text>
+                    }
+                    else
+                    {
+                        <text>Invia Feedback</text>
+                    }
+                </button>
+                <button class="btn-cancel" @onclick="() => showCommentBox = false" disabled="@isSubmitting">
+                    Annulla
+                </button>
+            </div>
+        </div>
+    }
+    
+    @if (feedbackSubmitted)
+    {
+        <div class="feedback-success">
+            ✓ Grazie per il tuo feedback!
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string Query { get; set; } = string.Empty;
+    
+    [Parameter]
+    public string Response { get; set; } = string.Empty;
+    
+    [Parameter]
+    public double ConfidenceScore { get; set; }
+    
+    [Parameter]
+    public string? SourceDocumentIds { get; set; }
+    
+    [Parameter]
+    public string? SourceChunkIds { get; set; }
+    
+    private bool? isHelpful = null;
+    private bool showCommentBox = false;
+    private bool isSubmitting = false;
+    private bool feedbackSubmitted = false;
+    private string comment = string.Empty;
+    
+    private async Task OnFeedback(bool helpful)
+    {
+        isHelpful = helpful;
+        showCommentBox = true;
+    }
+    
+    private async Task SubmitFeedback()
+    {
+        if (isHelpful == null) return;
+        
+        isSubmitting = true;
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+            var userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "";
+            
+            var httpClient = HttpClientFactory.CreateClient("ServerAPI");
+            var feedback = new
+            {
+                userId = userId,
+                query = Query,
+                response = Response,
+                confidenceScore = ConfidenceScore,
+                isHelpful = isHelpful.Value,
+                comment = string.IsNullOrWhiteSpace(comment) ? null : comment,
+                sourceDocumentIds = SourceDocumentIds,
+                sourceChunkIds = SourceChunkIds
+            };
+            
+            var response = await httpClient.PostAsJsonAsync("/api/feedback", feedback);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                feedbackSubmitted = true;
+                showCommentBox = false;
+                
+                // Hide success message after 3 seconds
+                await Task.Delay(3000);
+                feedbackSubmitted = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error submitting feedback: {ex.Message}");
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+}

@@ -1,0 +1,53 @@
+<div class="user-stats-widget">
+    <h4>📊 Statistiche Utenti</h4>
+    
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-value">@TotalUsers</div>
+            <div class="stat-label">Totale Utenti</div>
+        </div>
+        
+        <div class="stat-card active">
+            <div class="stat-value">@ActiveUsers</div>
+            <div class="stat-label">Attivi (30 giorni)</div>
+        </div>
+        
+        <div class="stat-card inactive">
+            <div class="stat-value">@InactiveUsers</div>
+            <div class="stat-label">Inattivi</div>
+        </div>
+    </div>
+    
+    <div class="role-distribution">
+        <h5>Distribuzione per Ruolo</h5>
+        <div class="role-bars">
+            @foreach (var role in RoleStats.OrderByDescending(r => r.Value))
+            {
+                var percentage = TotalUsers > 0 ? (role.Value * 100.0 / TotalUsers) : 0;
+                <div class="role-bar-item">
+                    <div class="role-bar-header">
+                        <span class="role-name">@role.Key</span>
+                        <span class="role-count">@role.Value (@percentage.ToString("F1")%)</span>
+                    </div>
+                    <div class="role-bar">
+                        <div class="role-bar-fill" style="width: @percentage%"></div>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public int TotalUsers { get; set; }
+    
+    [Parameter]
+    public int ActiveUsers { get; set; }
+    
+    [Parameter]
+    public int InactiveUsers { get; set; }
+    
+    [Parameter]
+    public Dictionary<string, int> RoleStats { get; set; } = new();
+}
