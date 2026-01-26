@@ -47,7 +47,7 @@
                 @Document.UploadedAt.ToString("dd/MM/yyyy")
             </span>
             <span class="metadata-item">
-                <FluentIcon Value="@(new Icons.Regular.Size16.DocumentDatabase())" />
+                <FluentIcon Value="@(new Icons.Regular.Size16.Document())" />
                 @FormatFileSize(Document.FileSize)
             </span>
             @if (!string.IsNullOrEmpty(Document.ActualCategory))

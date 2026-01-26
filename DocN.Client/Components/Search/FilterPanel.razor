@@ -7,7 +7,7 @@
         <FluentButton Appearance="Appearance.Lightweight" 
                     OnClick="@ResetFilters"
                     class="reset-button">
-            <FluentIcon Value="@(new Icons.Regular.Size16.ArrowReset())" />
+            <FluentIcon Value="@(new Icons.Regular.Size16.ArrowCounterclockwise())" />
             Reset
         </FluentButton>
     </div>
@@ -41,15 +41,15 @@
         <!-- Date Range Filter -->
         <div class="filter-section">
             <label class="filter-section-title">Periodo</label>
-            <FluentSelect @bind-Value="@_datePreset" 
+            <FluentSelect TOption="string" @bind-Value="@_datePreset" 
                          @onchange="@OnDatePresetChange"
                          class="filter-select">
-                <FluentOption Value="">Tutti i periodi</FluentOption>
-                <FluentOption Value="@DateRangePresets.Last7Days">Ultimi 7 giorni</FluentOption>
-                <FluentOption Value="@DateRangePresets.Last30Days">Ultimi 30 giorni</FluentOption>
-                <FluentOption Value="@DateRangePresets.Last3Months">Ultimi 3 mesi</FluentOption>
-                <FluentOption Value="@DateRangePresets.LastYear">Ultimo anno</FluentOption>
-                <FluentOption Value="@DateRangePresets.Custom">Personalizzato</FluentOption>
+                <FluentOption TOption="string" Value="">Tutti i periodi</FluentOption>
+                <FluentOption TOption="string" Value="@DateRangePresets.Last7Days">Ultimi 7 giorni</FluentOption>
+                <FluentOption TOption="string" Value="@DateRangePresets.Last30Days">Ultimi 30 giorni</FluentOption>
+                <FluentOption TOption="string" Value="@DateRangePresets.Last3Months">Ultimi 3 mesi</FluentOption>
+                <FluentOption TOption="string" Value="@DateRangePresets.LastYear">Ultimo anno</FluentOption>
+                <FluentOption TOption="string" Value="@DateRangePresets.Custom">Personalizzato</FluentOption>
             </FluentSelect>
             
             @if (_datePreset == DateRangePresets.Custom)
@@ -89,13 +89,13 @@
         <!-- Author Filter -->
         <div class="filter-section">
             <label class="filter-section-title">Autore</label>
-            <FluentSelect @bind-Value="@_selectedAuthor"
+            <FluentSelect TOption="string" @bind-Value="@_selectedAuthor"
                          @onchange="@OnAuthorChange"
                          class="filter-select">
-                <FluentOption Value="">Tutti gli autori</FluentOption>
+                <FluentOption TOption="string" Value="">Tutti gli autori</FluentOption>
                 @foreach (var author in AvailableAuthors)
                 {
-                    <FluentOption Value="@author">@author</FluentOption>
+                    <FluentOption TOption="string" Value="@author">@author</FluentOption>
                 }
             </FluentSelect>
         </div>
@@ -103,13 +103,13 @@
         <!-- Tags Filter -->
         <div class="filter-section">
             <label class="filter-section-title">Tag</label>
-            <FluentSelect @bind-Value="@_selectedTag"
+            <FluentSelect TOption="string" @bind-Value="@_selectedTag"
                          @onchange="@OnTagChange"
                          class="filter-select">
-                <FluentOption Value="">Tutti i tag</FluentOption>
+                <FluentOption TOption="string" Value="">Tutti i tag</FluentOption>
                 @foreach (var tag in AvailableTags)
                 {
-                    <FluentOption Value="@tag">@tag</FluentOption>
+                    <FluentOption TOption="string" Value="@tag">@tag</FluentOption>
                 }
             </FluentSelect>
             @if (Filters.Tags?.Any() == true)
@@ -133,26 +133,26 @@
         <!-- Status Filter -->
         <div class="filter-section">
             <label class="filter-section-title">Stato</label>
-            <FluentSelect @bind-Value="@Filters.Status"
+            <FluentSelect TOption="string" @bind-Value="@Filters.Status"
                          @onchange="@OnFilterChanged"
                          class="filter-select">
-                <FluentOption Value="">Tutti gli stati</FluentOption>
-                <FluentOption Value="draft">Bozza</FluentOption>
-                <FluentOption Value="published">Pubblicato</FluentOption>
-                <FluentOption Value="archived">Archiviato</FluentOption>
+                <FluentOption TOption="string" Value="">Tutti gli stati</FluentOption>
+                <FluentOption TOption="string" Value="draft">Bozza</FluentOption>
+                <FluentOption TOption="string" Value="published">Pubblicato</FluentOption>
+                <FluentOption TOption="string" Value="archived">Archiviato</FluentOption>
             </FluentSelect>
         </div>
 
         <!-- Category Filter -->
         <div class="filter-section">
             <label class="filter-section-title">Categoria</label>
-            <FluentSelect @bind-Value="@Filters.Category"
+            <FluentSelect TOption="string" @bind-Value="@Filters.Category"
                          @onchange="@OnFilterChanged"
                          class="filter-select">
-                <FluentOption Value="">Tutte le categorie</FluentOption>
+                <FluentOption TOption="string" Value="">Tutte le categorie</FluentOption>
                 @foreach (var category in AvailableCategories)
                 {
-                    <FluentOption Value="@category">@category</FluentOption>
+                    <FluentOption TOption="string" Value="@category">@category</FluentOption>
                 }
             </FluentSelect>
         </div>

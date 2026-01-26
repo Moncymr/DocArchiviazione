@@ -7,7 +7,6 @@
         
         <FluentTextField @bind-Value="@SearchQuery"
                         Placeholder="Cerca documenti..."
-                        Appearance="Appearance.Filled"
                         @oninput="OnSearchInput"
                         @onkeydown="OnKeyDown"
                         class="search-input" />
@@ -17,7 +16,7 @@
             <FluentButton Appearance="Appearance.Stealth" 
                         OnClick="@StartVoiceSearch"
                         Title="Ricerca vocale"
-                        class="voice-search-button @(_isRecording ? "recording" : "")">
+                        class="@($"voice-search-button{(_isRecording ? " recording" : "")}")">
                 <FluentIcon Value="@(new Icons.Regular.Size20.Mic())" />
             </FluentButton>
         }

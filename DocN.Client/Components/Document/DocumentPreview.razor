@@ -87,7 +87,7 @@
                     else
                     {
                         <div class="unsupported-preview">
-                            <FluentIcon Value="@(new Icons.Regular.Size48.DocumentError())" Color="Color.Neutral" />
+                            <FluentIcon Value="@(new Icons.Regular.Size48.ErrorCircle())" Color="Color.Neutral" />
                             <p>Anteprima non disponibile per questo tipo di file</p>
                             <p class="preview-hint">Apri il documento completo per visualizzarlo</p>
                         </div>
@@ -103,7 +103,7 @@
                     @_uploadDate
                 </span>
                 <span class="metadata-item">
-                    <FluentIcon Value="@(new Icons.Regular.Size16.DocumentDatabase())" />
+                    <FluentIcon Value="@(new Icons.Regular.Size16.Document())" />
                     @_fileSize
                 </span>
                 @if (!string.IsNullOrEmpty(_category))
