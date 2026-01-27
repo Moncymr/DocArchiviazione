@@ -701,10 +701,11 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
             entity.Property(e => e.CreatedAt).IsRequired();
             entity.Property(e => e.ReadAt);
             
-            // Relationship with User
+            // Relationship with User - optional to prevent startup validation issues
             entity.HasOne(e => e.User)
                 .WithMany()
                 .HasForeignKey(e => e.UserId)
+                .IsRequired(false)
                 .OnDelete(DeleteBehavior.Cascade);
             
             // Indexes for performance
@@ -721,10 +722,11 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
             entity.Property(e => e.UserId).IsRequired().HasMaxLength(450);
             entity.Property(e => e.EmailDigestFrequency).IsRequired().HasMaxLength(20);
             
-            // Relationship with User - one user has one preference
+            // Relationship with User - optional to prevent startup validation issues
             entity.HasOne(e => e.User)
                 .WithMany()
                 .HasForeignKey(e => e.UserId)
+                .IsRequired(false)
                 .OnDelete(DeleteBehavior.Cascade);
             
             // Unique index on UserId - each user can only have one preference record
