@@ -4,9 +4,11 @@
 @using Microsoft.JSInterop
 @using DocN.Data.Constants
 @using Microsoft.Extensions.DependencyInjection
-@inject IDocumentService DocumentService
-@inject IDocumentStatisticsService StatisticsService
-@inject IFileProcessingService FileProcessingService
+@* COMMENTED OUT - Data services not available in Client (Server-only) *@
+@* TODO: Replace with HTTP API calls to Server *@
+@*@inject IDocumentService DocumentService*@
+@*@inject IDocumentStatisticsService StatisticsService*@
+@*@inject IFileProcessingService FileProcessingService*@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager Navigation
 @inject IJSRuntime JSRuntime
@@ -17,6 +19,13 @@
 <PageTitle>Documents - DocN</PageTitle>
 
 <div class="documents-page">
+    <!-- ⚠️ IMPORTANT: This page needs refactoring to use Server HTTP APIs -->
+    <div class="alert alert-warning" style="margin: 1rem; padding: 1rem; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px;">
+        <strong>⚠️ Page Under Development</strong>
+        <p style="margin: 0.5rem 0 0 0;">This page is being refactored to use Server HTTP APIs. Document management features are temporarily unavailable.</p>
+        <p style="margin: 0.5rem 0 0 0;"><em>The page will load but functionality is limited until API integration is complete.</em></p>
+    </div>
+    
     <!-- Header con ricerca e controlli -->
     <div class="page-header">
         <div class="header-left">

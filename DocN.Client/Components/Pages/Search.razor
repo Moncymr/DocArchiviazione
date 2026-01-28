@@ -7,8 +7,10 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager Navigation
 @inject ILogger<Search> Logger
-@inject ISavedSearchService SavedSearchService
-@inject ISearchSuggestionService SearchSuggestionService
+@* COMMENTED OUT - Search services not available in Client (Server-only) *@
+@* TODO: Replace with HTTP API calls to Server *@
+@*@inject ISavedSearchService SavedSearchService*@
+@*@inject ISearchSuggestionService SearchSuggestionService*@
 @rendermode InteractiveServer
 
 <PageTitle>Ricerca - DocN</PageTitle>

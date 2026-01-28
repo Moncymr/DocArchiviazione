@@ -30,10 +30,12 @@
 @using DocN.Data.Models
 @using Microsoft.Extensions.DependencyInjection
 @inject IServiceProvider ServiceProvider
-@inject IMultiProviderAIService AIService
-@inject IFileProcessingService FileProcessingService
-@inject ISemanticRAGService SemanticRAGService
-@inject ILogService LogService
+@* COMMENTED OUT - Data/AI services not available in Client (Server-only) *@
+@* TODO: Replace with HTTP API calls to Server *@
+@*@inject IMultiProviderAIService AIService*@
+@*@inject IFileProcessingService FileProcessingService*@
+@*@inject ISemanticRAGService SemanticRAGService*@
+@*@inject ILogService LogService*@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager Navigation
 @inject IConfiguration Configuration

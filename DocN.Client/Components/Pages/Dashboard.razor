@@ -4,7 +4,9 @@
 @using DocN.Data.Constants
 @using System.Security.Claims
 @using Microsoft.JSInterop
-@inject IDashboardWidgetService WidgetService
+@* COMMENTED OUT - Dashboard widget service not available in Client (Server-only) *@
+@* TODO: Replace with HTTP API calls to Server *@
+@*@inject IDashboardWidgetService WidgetService*@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ILogger<Dashboard> Logger
 @inject IJSRuntime JSRuntime
