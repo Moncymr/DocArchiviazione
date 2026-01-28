@@ -68,7 +68,10 @@ public class ApplicationSeeder
     {
         try
         {
-            return await _context.Database.CanConnectAsync();
+            // Use raw SQL query instead of CanConnectAsync to avoid EF Core model validation
+            // which can crash if tables are missing or schema doesn't match the model
+            await _context.Database.ExecuteSqlRawAsync("SELECT 1");
+            return true;
         }
         catch (Exception ex)
         {
