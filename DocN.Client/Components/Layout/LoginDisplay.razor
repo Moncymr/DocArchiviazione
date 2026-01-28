@@ -1,6 +1,7 @@
 @using Microsoft.AspNetCore.Identity
 @using DocN.Data.Models
-@inject SignInManager<ApplicationUser> SignInManager
+@* COMMENTED OUT - SignInManager not available in Client (Server-only) *@
+@*@inject SignInManager<ApplicationUser> SignInManager*@
 @inject NavigationManager Navigation
 
 <AuthorizeView>
