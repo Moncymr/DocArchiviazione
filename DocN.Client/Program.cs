@@ -184,6 +184,9 @@ builder.Services.AddHttpClient("BackendAPI", client =>
     client.Timeout = TimeSpan.FromMinutes(5);
 });
 
+// Register Authentication Service to call Server API for login/register/logout
+builder.Services.AddScoped<DocN.Client.Services.IAuthenticationService, DocN.Client.Services.AuthenticationService>();
+
 var app = builder.Build();
 
 // NOTE: Database seeding removed from Client
