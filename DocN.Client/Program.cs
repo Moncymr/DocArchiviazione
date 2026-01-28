@@ -145,61 +145,29 @@ if (string.IsNullOrEmpty(connectionString))
     }
 }
 
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-{
-    options.UseSqlServer(connectionString, sqlServerOptions =>
+// ═══════════════════════════════════════════════════════════════════════════════
+// CLIENT AUTHENTICATION (Cookie-Based, No Direct Database Access)
+// ═══════════════════════════════════════════════════════════════════════════════
+// The Client is a Blazor Server UI that should NOT access the database directly.
+// Authentication is handled via cookies from the Server's login endpoints.
+// 
+// IMPORTANT: Do NOT register ApplicationDbContext or AddEntityFrameworkStores here!
+// That causes EF Core model validation during builder.Build() which crashes the app
+// when database schema doesn't match (e.g., missing Notifications tables).
+// 
+// The Server handles all database operations. The Client just authenticates users
+// via HTTP requests and uses cookies for subsequent requests.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+builder.Services.AddAuthentication(Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
     {
-        // Enable retry on transient failures
-        sqlServerOptions.EnableRetryOnFailure(
-            maxRetryCount: 5,
-            maxRetryDelay: TimeSpan.FromSeconds(30),
-            errorNumbersToAdd: null);
+        options.LoginPath = "/login";
+        options.LogoutPath = "/logout";
+        options.AccessDeniedPath = "/access-denied";
+        options.ExpireTimeSpan = TimeSpan.FromHours(12);
+        options.SlidingExpiration = true;
     });
-
-    // Enable sensitive data logging in development
-    if (builder.Environment.IsDevelopment())
-    {
-        options.EnableSensitiveDataLogging();
-        options.EnableDetailedErrors();
-    }
-});
-
-// Add DocArcContext for logging
-builder.Services.AddDbContext<DocArcContext>(options =>
-{
-    options.UseSqlServer(connectionString, sqlServerOptions =>
-    {
-        sqlServerOptions.EnableRetryOnFailure(
-            maxRetryCount: 5,
-            maxRetryDelay: TimeSpan.FromSeconds(30),
-            errorNumbersToAdd: null);
-    });
-
-    if (builder.Environment.IsDevelopment())
-    {
-        options.EnableSensitiveDataLogging();
-        options.EnableDetailedErrors();
-    }
-});
-
-// Identity & Authentication
-builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
-{
-    // Password policy configuration
-    options.Password.RequireDigit = true;
-    options.Password.RequiredLength = 6;
-    options.Password.RequireNonAlphanumeric = false;
-    options.Password.RequireUppercase = true;
-    options.Password.RequireLowercase = true;
-    options.User.RequireUniqueEmail = true;
-
-    // Lockout configuration
-    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
-    options.Lockout.MaxFailedAccessAttempts = 5;
-    options.Lockout.AllowedForNewUsers = true;
-})
-.AddEntityFrameworkStores<ApplicationDbContext>()
-.AddDefaultTokenProviders();
 
 builder.Services.AddCascadingAuthenticationState();
 
