@@ -8,12 +8,14 @@ public class DatabaseSeeder
 {
     private readonly DocArcContext _context;
     private readonly ApplicationDbContext _appContext;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<DatabaseSeeder> _logger;
 
-    public DatabaseSeeder(DocArcContext context, ApplicationDbContext appContext, ILogger<DatabaseSeeder> logger)
+    public DatabaseSeeder(DocArcContext context, ApplicationDbContext appContext, IConfiguration configuration, ILogger<DatabaseSeeder> logger)
     {
         _context = context;
         _appContext = appContext;
+        _configuration = configuration;
         _logger = logger;
     }
 
@@ -21,16 +23,17 @@ public class DatabaseSeeder
     {
         try
         {
-            // Test database connection first
-            if (!await CanConnectToDatabaseAsync(_context))
+            // Test database connection first using connection strings from configuration
+            // This avoids EF Core model validation which can crash the application
+            if (!await CanConnectToDatabaseAsync("DocArc"))
             {
-                _logger.LogWarning("Cannot connect to DocArcContext database. Skipping document seeding.");
+                _logger.LogWarning("Cannot connect to DocArc database. Skipping document seeding.");
                 return;
             }
 
-            if (!await CanConnectToDatabaseAsync(_appContext))
+            if (!await CanConnectToDatabaseAsync("DefaultConnection"))
             {
-                _logger.LogWarning("Cannot connect to ApplicationDbContext database. Skipping AI configuration seeding.");
+                _logger.LogWarning("Cannot connect to DefaultConnection database. Skipping AI configuration seeding.");
                 return;
             }
 
@@ -132,18 +135,39 @@ public class DatabaseSeeder
         }
     }
 
-    private async Task<bool> CanConnectToDatabaseAsync(DbContext context)
+    private async Task<bool> CanConnectToDatabaseAsync(string connectionStringName)
     {
         try
         {
-            // Use raw SQL query to test connection without EF Core model validation
-            // This prevents crashes if tables are missing or schema doesn't match
-            await context.Database.ExecuteSqlRawAsync("SELECT 1");
-            return true;
+            // Get connection string from configuration instead of DbContext
+            // to avoid EF Core model validation which crashes if schema doesn't match
+            var connectionString = _configuration.GetConnectionString(connectionStringName);
+            
+            if (string.IsNullOrEmpty(connectionString))
+            {
+                _logger.LogError("Connection string '{ConnectionStringName}' is not configured", connectionStringName);
+                return false;
+            }
+
+            _logger.LogInformation("Testing database connection for '{ConnectionStringName}'...", connectionStringName);
+            
+            // Test using SqlConnection directly - no EF Core model validation
+            using (var connection = new Microsoft.Data.SqlClient.SqlConnection(connectionString))
+            {
+                await connection.OpenAsync();
+                _logger.LogInformation("✅ Database connection successful for '{ConnectionStringName}'", connectionStringName);
+                return true;
+            }
+        }
+        catch (Microsoft.Data.SqlClient.SqlException sqlEx)
+        {
+            _logger.LogError(sqlEx, "❌ SQL Exception for '{ConnectionStringName}': {Message} (Error: {Number}, State: {State})",
+                connectionStringName, sqlEx.Message, sqlEx.Number, sqlEx.State);
+            return false;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to connect to database: {ContextType}", context.GetType().Name);
+            _logger.LogError(ex, "❌ Failed to check database connection for '{ConnectionStringName}'", connectionStringName);
             return false;
         }
     }

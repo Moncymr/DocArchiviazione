@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Configuration;
 using DocN.Data.Models;
 
 namespace DocN.Data.Services;
@@ -13,17 +14,20 @@ public class ApplicationSeeder
     private readonly ApplicationDbContext _context;
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly RoleManager<IdentityRole> _roleManager;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<ApplicationSeeder> _logger;
 
     public ApplicationSeeder(
         ApplicationDbContext context,
         UserManager<ApplicationUser> userManager,
         RoleManager<IdentityRole> roleManager,
+        IConfiguration configuration,
         ILogger<ApplicationSeeder> logger)
     {
         _context = context ?? throw new ArgumentNullException(nameof(context));
         _userManager = userManager ?? throw new ArgumentNullException(nameof(userManager));
         _roleManager = roleManager ?? throw new ArgumentNullException(nameof(roleManager));
+        _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -68,14 +72,37 @@ public class ApplicationSeeder
     {
         try
         {
-            // Use raw SQL query instead of CanConnectAsync to avoid EF Core model validation
-            // which can crash if tables are missing or schema doesn't match the model
-            await _context.Database.ExecuteSqlRawAsync("SELECT 1");
-            return true;
+            // Get connection string from configuration instead of DbContext
+            // to avoid EF Core model validation which crashes if schema doesn't match
+            var connectionString = _configuration.GetConnectionString("DefaultConnection");
+            
+            if (string.IsNullOrEmpty(connectionString))
+            {
+                _logger.LogError("Connection string 'DefaultConnection' is not configured");
+                return false;
+            }
+
+            _logger.LogInformation("Testing database connection...");
+            _logger.LogDebug("Connection string: {ConnectionString}",
+                connectionString.Replace("Password=", "Password=***"));
+
+            // Test using SqlConnection directly - no EF Core model validation
+            using (var connection = new Microsoft.Data.SqlClient.SqlConnection(connectionString))
+            {
+                await connection.OpenAsync();
+                _logger.LogInformation("✅ Database connection successful");
+                return true;
+            }
+        }
+        catch (Microsoft.Data.SqlClient.SqlException sqlEx)
+        {
+            _logger.LogError(sqlEx, "❌ SQL Exception: {Message} (Error: {Number}, State: {State})",
+                sqlEx.Message, sqlEx.Number, sqlEx.State);
+            return false;
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to check database connection");
+            _logger.LogError(ex, "❌ Failed to check database connection");
             return false;
         }
     }
