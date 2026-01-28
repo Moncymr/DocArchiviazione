@@ -603,7 +603,55 @@ builder.Services.AddSignalR(options =>
     options.ClientTimeoutInterval = TimeSpan.FromSeconds(30);
 });
 
-var app = builder.Build();
+// Build the application with detailed error handling
+WebApplication app;
+try
+{
+    app = builder.Build();
+}
+catch (Exception ex)
+{
+    // Log the detailed error during service provider construction
+    Console.WriteLine("╔═══════════════════════════════════════════════════════════════╗");
+    Console.WriteLine("║ CRITICAL ERROR: Failed to build application                  ║");
+    Console.WriteLine("╚═══════════════════════════════════════════════════════════════╝");
+    Console.WriteLine();
+    Console.WriteLine($"Error Type: {ex.GetType().Name}");
+    Console.WriteLine($"Error Message: {ex.Message}");
+    Console.WriteLine();
+    
+    if (ex is AggregateException aggEx)
+    {
+        Console.WriteLine("Inner Exceptions:");
+        foreach (var innerEx in aggEx.InnerExceptions)
+        {
+            Console.WriteLine($"  - {innerEx.GetType().Name}: {innerEx.Message}");
+            if (innerEx.InnerException != null)
+            {
+                Console.WriteLine($"    Inner: {innerEx.InnerException.Message}");
+            }
+        }
+    }
+    else if (ex.InnerException != null)
+    {
+        Console.WriteLine($"Inner Exception: {ex.InnerException.GetType().Name}");
+        Console.WriteLine($"Inner Message: {ex.InnerException.Message}");
+    }
+    
+    Console.WriteLine();
+    Console.WriteLine("Stack Trace:");
+    Console.WriteLine(ex.StackTrace);
+    Console.WriteLine();
+    Console.WriteLine("╔═══════════════════════════════════════════════════════════════╗");
+    Console.WriteLine("║ Common Causes:                                                ║");
+    Console.WriteLine("║ 1. Missing service registration                               ║");
+    Console.WriteLine("║ 2. Circular dependency between services                      ║");
+    Console.WriteLine("║ 3. Scoped service consumed by Singleton                       ║");
+    Console.WriteLine("║ 4. Database connection issue during validation                ║");
+    Console.WriteLine("╚═══════════════════════════════════════════════════════════════╝");
+    
+    throw; // Re-throw to stop application
+}
 
 // Apply pending migrations automatically
 using (var scope = app.Services.CreateScope())
