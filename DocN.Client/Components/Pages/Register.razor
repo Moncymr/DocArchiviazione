@@ -1,5 +1,10 @@
 @page "/register"
+@rendermode InteractiveServer
 @using Microsoft.AspNetCore.Components
+@using System.ComponentModel.DataAnnotations
+@using DocN.Client.Services
+@inject IAuthenticationService AuthService
+@inject CustomAuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 
 <PageTitle>Register - DocN</PageTitle>
@@ -12,82 +17,78 @@
             <p class="auth-subtitle">Join DocN to manage your documents</p>
         </div>
 
-        <form method="post" action="/account/register">
-            @if (!string.IsNullOrEmpty(errorMessage))
-            {
-                <div class="alert alert-error">
-                    <span class="alert-icon">⚠️</span>
-                    <span>@errorMessage</span>
-                </div>
-            }
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="alert alert-error">
+                <span class="alert-icon">⚠️</span>
+                <span>@errorMessage</span>
+            </div>
+        }
 
-            @if (!string.IsNullOrEmpty(successMessage))
-            {
-                <div class="alert alert-success">
-                    <span class="alert-icon">✓</span>
-                    <span>@successMessage</span>
-                </div>
-            }
-
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="firstName" class="form-label">First Name</label>
-                    <input type="text" id="firstName" name="firstName" class="form-input" placeholder="John" autocomplete="given-name" required />
-                </div>
-
-                <div class="form-group">
-                    <label for="lastName" class="form-label">Last Name</label>
-                    <input type="text" id="lastName" name="lastName" class="form-input" placeholder="Doe" autocomplete="family-name" required />
-                </div>
+        <EditForm Model="registerModel" OnValidSubmit="HandleRegister" class="auth-form">
+            <DataAnnotationsValidator />
+            
+            <div class="form-group">
+                <label for="firstName" class="form-label">First Name</label>
+                <InputText id="firstName" @bind-Value="registerModel.FirstName" class="form-input" placeholder="Enter your first name" />
+                <ValidationMessage For="@(() => registerModel.FirstName)" class="validation-message" />
             </div>
 
             <div class="form-group">
-                <label for="email" class="form-label">Email</label>
-                <input type="email" id="email" name="email" class="form-input" placeholder="your@email.com" autocomplete="email" required />
+                <label for="lastName" class="form-label">Last Name</label>
+                <InputText id="lastName" @bind-Value="registerModel.LastName" class="form-input" placeholder="Enter your last name" />
+                <ValidationMessage For="@(() => registerModel.LastName)" class="validation-message" />
+            </div>
+
+            <div class="form-group">
+                <label for="email" class="form-label">Email Address</label>
+                <InputText id="email" type="email" @bind-Value="registerModel.Email" class="form-input" placeholder="Enter your email" />
+                <ValidationMessage For="@(() => registerModel.Email)" class="validation-message" />
             </div>
 
             <div class="form-group">
                 <label for="password" class="form-label">Password</label>
-                <input type="password" id="password" name="password" class="form-input" placeholder="••••••••" autocomplete="new-password" minlength="6" required />
-                <div class="password-hint">At least 6 characters with uppercase, lowercase, and digit</div>
+                <InputText id="password" type="password" @bind-Value="registerModel.Password" class="form-input" placeholder="Create a strong password" />
+                <ValidationMessage For="@(() => registerModel.Password)" class="validation-message" />
+                <small class="form-hint">At least 6 characters with uppercase, lowercase, and digit</small>
             </div>
 
-            <div class="form-group">
-                <label for="confirmPassword" class="form-label">Confirm Password</label>
-                <input type="password" id="confirmPassword" name="confirmPassword" class="form-input" placeholder="••••••••" autocomplete="new-password" minlength="6" required />
-            </div>
-
-            <button type="submit" class="btn btn-primary">
-                <span>Create Account</span>
+            <button type="submit" class="btn-submit" disabled="@isLoading">
+                @if (isLoading)
+                {
+                    <span class="spinner"></span>
+                    <span>Creating account...</span>
+                }
+                else
+                {
+                    <span>Create Account</span>
+                }
             </button>
-        </form>
+        </EditForm>
 
         <div class="auth-footer">
-            <div class="auth-divider">
-                <span>Already have an account?</span>
-            </div>
-            <a href="/login" class="btn btn-secondary">Sign In</a>
+            <p>Already have an account? <a href="/login" class="auth-link">Sign in</a></p>
         </div>
     </div>
 </div>
 
 <style>
     .auth-container {
-        min-height: 100vh;
+        min-height: calc(100vh - 100px);
         display: flex;
         align-items: center;
         justify-content: center;
-        background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
-        padding: 1rem;
+        padding: 2rem;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     }
 
     .auth-card {
         background: white;
         border-radius: 16px;
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
-        padding: 2.5rem;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
         width: 100%;
         max-width: 480px;
+        padding: 3rem;
         animation: slideUp 0.4s ease-out;
     }
 
@@ -104,73 +105,115 @@
 
     .auth-header {
         text-align: center;
-        margin-bottom: 2rem;
+        margin-bottom: 2.5rem;
     }
 
     .auth-icon {
         font-size: 3rem;
-        margin-bottom: 0.5rem;
+        margin-bottom: 1rem;
+        animation: bounce 2s infinite;
+    }
+
+    @@keyframes bounce {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-10px); }
     }
 
     .auth-title {
-        font-size: 1.75rem;
+        font-size: 2rem;
         font-weight: 700;
         color: #1a202c;
-        margin: 0 0 0.5rem;
+        margin: 0 0 0.5rem 0;
     }
 
     .auth-subtitle {
-        font-size: 0.95rem;
         color: #718096;
+        font-size: 1rem;
         margin: 0;
     }
 
-    .form-row {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 1rem;
+    .alert {
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        animation: shake 0.5s;
+    }
+
+    .alert-error {
+        background-color: #fee;
+        border: 1px solid #fcc;
+        color: #c33;
+    }
+
+    .alert-icon {
+        font-size: 1.25rem;
+    }
+
+    @@keyframes shake {
+        0%, 100% { transform: translateX(0); }
+        25% { transform: translateX(-10px); }
+        75% { transform: translateX(10px); }
+    }
+
+    .auth-form {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
     }
 
     .form-group {
-        margin-bottom: 1.25rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
     }
 
     .form-label {
-        display: block;
-        font-size: 0.875rem;
         font-weight: 600;
         color: #2d3748;
-        margin-bottom: 0.5rem;
+        font-size: 0.875rem;
     }
 
     .form-input {
-        width: 100%;
-        padding: 0.75rem;
+        padding: 0.75rem 1rem;
         border: 2px solid #e2e8f0;
         border-radius: 8px;
-        font-size: 0.95rem;
+        font-size: 1rem;
         transition: all 0.2s;
-        box-sizing: border-box;
+        width: 100%;
     }
 
     .form-input:focus {
         outline: none;
-        border-color: #2563eb;
-        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
     }
 
-    .password-hint {
-        margin-top: 0.5rem;
-        font-size: 0.75rem;
+    .form-input:invalid {
+        border-color: #fc8181;
+    }
+
+    .form-hint {
         color: #718096;
+        font-size: 0.75rem;
+        margin-top: 0.25rem;
     }
 
-    .btn {
-        width: 100%;
-        padding: 0.875rem;
+    .validation-message {
+        color: #e53e3e;
+        font-size: 0.875rem;
+        margin-top: 0.25rem;
+    }
+
+    .btn-submit {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 1rem;
         border: none;
         border-radius: 8px;
-        font-size: 0.95rem;
+        font-size: 1rem;
         font-weight: 600;
         cursor: pointer;
         transition: all 0.2s;
@@ -178,43 +221,30 @@
         align-items: center;
         justify-content: center;
         gap: 0.5rem;
-        text-decoration: none;
-        box-sizing: border-box;
+        margin-top: 0.5rem;
     }
 
-    .btn-primary {
-        background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
-        color: white;
-    }
-
-    .btn-primary:hover:not(:disabled) {
+    .btn-submit:hover:not(:disabled) {
         transform: translateY(-2px);
-        box-shadow: 0 8px 20px rgba(37, 99, 235, 0.3);
+        box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
     }
 
-    .btn-primary:disabled {
+    .btn-submit:active:not(:disabled) {
+        transform: translateY(0);
+    }
+
+    .btn-submit:disabled {
         opacity: 0.7;
         cursor: not-allowed;
-    }
-
-    .btn-secondary {
-        background: #f7fafc;
-        color: #4a5568;
-        border: 2px solid #e2e8f0;
-    }
-
-    .btn-secondary:hover {
-        background: #edf2f7;
-        border-color: #cbd5e0;
     }
 
     .spinner {
         width: 16px;
         height: 16px;
-        border: 2px solid rgba(255, 255, 255, 0.3);
-        border-top-color: white;
+        border: 2px solid #ffffff;
+        border-top-color: transparent;
         border-radius: 50%;
-        animation: spin 0.8s linear infinite;
+        animation: spin 0.6s linear infinite;
     }
 
     @@keyframes spin {
@@ -222,95 +252,117 @@
     }
 
     .auth-footer {
-        margin-top: 2rem;
         text-align: center;
+        margin-top: 2rem;
+        padding-top: 2rem;
+        border-top: 1px solid #e2e8f0;
     }
 
-    .auth-divider {
-        margin: 1.5rem 0 1rem;
-        font-size: 0.875rem;
+    .auth-footer p {
         color: #718096;
+        margin: 0;
     }
 
-    .alert {
-        padding: 0.875rem;
-        border-radius: 8px;
-        margin-bottom: 1.25rem;
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        font-size: 0.875rem;
+    .auth-link {
+        color: #667eea;
+        text-decoration: none;
+        font-weight: 600;
+        transition: color 0.2s;
     }
 
-    .alert-error {
-        background: #fff5f5;
-        color: #c53030;
-        border: 1px solid #feb2b2;
+    .auth-link:hover {
+        color: #764ba2;
+        text-decoration: underline;
     }
 
-    .alert-success {
-        background: #f0fff4;
-        color: #276749;
-        border: 1px solid #9ae6b4;
-    }
-
-    .alert-icon {
-        font-size: 1.1rem;
-    }
-
-    .validation-message {
-        color: #c53030;
-        font-size: 0.8rem;
-        margin-top: 0.25rem;
-        display: block;
-    }
-
-    @@media (max-width: 480px) {
-        .auth-card {
-            padding: 2rem 1.5rem;
+    @@media (max-width: 640px) {
+        .auth-container {
+            padding: 1rem;
         }
-        
+
+        .auth-card {
+            padding: 2rem;
+        }
+
         .auth-title {
             font-size: 1.5rem;
-        }
-
-        .form-row {
-            grid-template-columns: 1fr;
-            gap: 0;
         }
     }
 </style>
 
 @code {
-    private string? errorMessage;
-    private string? successMessage;
+    private RegisterModel registerModel = new();
+    private bool isLoading = false;
+    private string? errorMessage = null;
 
-    protected override void OnInitialized()
+    private async Task HandleRegister()
     {
-        var uri = new Uri(Navigation.Uri);
-        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
-        var error = query["error"];
-        var registered = query["registered"];
+        isLoading = true;
+        errorMessage = null;
+        StateHasChanged();
 
-        if (registered == "true")
+        try
         {
-            successMessage = "Account created successfully!";
-        }
-        else
-        {
-            errorMessage = error switch
+            var result = await AuthService.RegisterAsync(
+                registerModel.FirstName,
+                registerModel.LastName,
+                registerModel.Email,
+                registerModel.Password
+            );
+
+            if (result.Success)
             {
-                "required" => "All fields are required.",
-                "mismatch" => "Passwords do not match.",
-                "exists" => "An account with this email already exists.",
-                "PasswordTooShort" => "Password must be at least 6 characters.",
-                "PasswordRequiresNonAlphanumeric" => "Password must contain at least one special character.",
-                "PasswordRequiresDigit" => "Password must contain at least one digit.",
-                "PasswordRequiresUpper" => "Password must contain at least one uppercase letter.",
-                "PasswordRequiresLower" => "Password must contain at least one lowercase letter.",
-                "RegistrationFailed" => "Registration failed. Please check your information and try again.",
-                _ => error != null ? "An error occurred while creating your account." : null
-            };
+                // Set authentication state in the provider
+                await AuthStateProvider.SetAuthenticationStateAsync(
+                    result.UserId ?? string.Empty,
+                    result.Email ?? string.Empty,
+                    registerModel.FirstName,
+                    registerModel.LastName
+                );
+                
+                // Registration successful - redirect to home page
+                Navigation.NavigateTo("/", forceLoad: true);
+            }
+            else
+            {
+                // Show error message
+                if (result.StatusCode == 409)
+                {
+                    errorMessage = "A user with this email address already exists.";
+                }
+                else
+                {
+                    errorMessage = result.ErrorMessage ?? "Registration failed. Please try again.";
+                }
+            }
         }
+        catch (Exception ex)
+        {
+            errorMessage = "Unable to connect to server. Please check your connection and try again.";
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    public class RegisterModel
+    {
+        [Required(ErrorMessage = "First name is required")]
+        [MinLength(2, ErrorMessage = "First name must be at least 2 characters")]
+        public string FirstName { get; set; } = "";
+
+        [Required(ErrorMessage = "Last name is required")]
+        [MinLength(2, ErrorMessage = "Last name must be at least 2 characters")]
+        public string LastName { get; set; } = "";
+
+        [Required(ErrorMessage = "Email is required")]
+        [EmailAddress(ErrorMessage = "Invalid email format")]
+        public string Email { get; set; } = "";
+
+        [Required(ErrorMessage = "Password is required")]
+        [MinLength(6, ErrorMessage = "Password must be at least 6 characters")]
+        public string Password { get; set; } = "";
     }
 }

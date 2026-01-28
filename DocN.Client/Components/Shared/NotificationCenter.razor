@@ -1,0 +1,287 @@
+@using DocN.Data.Models
+@using DocN.Client.Services
+@using Microsoft.FluentUI.AspNetCore.Components
+@inject NotificationClientService NotificationService
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<div class="notification-center">
+    <FluentButton Appearance="Appearance.Stealth" 
+                  OnClick="@TogglePanel"
+                  class="notification-bell-button">
+        <FluentIcon Value="@(new Icons.Regular.Size24.Alert())" Color="Color.Neutral" />
+        @if (NotificationService.UnreadCount > 0)
+        {
+            <FluentBadge Appearance="Appearance.Accent" 
+                        class="notification-badge">
+                @(NotificationService.UnreadCount > 99 ? "99+" : NotificationService.UnreadCount.ToString())
+            </FluentBadge>
+        }
+    </FluentButton>
+
+    @if (_isPanelOpen)
+    {
+        <div class="notification-panel">
+            <div class="notification-panel-header">
+                <h3>Notifiche</h3>
+                <div class="notification-actions">
+                    @if (NotificationService.UnreadCount > 0)
+                    {
+                        <FluentButton Appearance="Appearance.Lightweight" 
+                                    OnClick="@MarkAllAsRead">
+                            Segna tutte come lette
+                        </FluentButton>
+                    }
+                    <FluentButton Appearance="Appearance.Stealth" 
+                                OnClick="@TogglePanel">
+                        <FluentIcon Value="@(new Icons.Regular.Size20.Dismiss())" />
+                    </FluentButton>
+                </div>
+            </div>
+
+            <div class="notification-filters">
+                <FluentButton Appearance="@(_currentFilter == NotificationFilter.All ? Appearance.Accent : Appearance.Neutral)" 
+                            OnClick="@(() => SetFilter(NotificationFilter.All))">
+                    Tutte
+                </FluentButton>
+                <FluentButton Appearance="@(_currentFilter == NotificationFilter.Unread ? Appearance.Accent : Appearance.Neutral)" 
+                            OnClick="@(() => SetFilter(NotificationFilter.Unread))">
+                    Non lette
+                </FluentButton>
+                <FluentButton Appearance="@(_currentFilter == NotificationFilter.Important ? Appearance.Accent : Appearance.Neutral)" 
+                            OnClick="@(() => SetFilter(NotificationFilter.Important))">
+                    Importanti
+                </FluentButton>
+            </div>
+
+            <div class="notification-list">
+                @if (_isLoading)
+                {
+                    <FluentProgressRing />
+                }
+                else if (!_notifications.Any())
+                {
+                    <div class="no-notifications">
+                        <FluentIcon Value="@(new Icons.Regular.Size48.Mail())" Color="Color.Neutral" />
+                        <p>Nessuna notifica</p>
+                    </div>
+                }
+                else
+                {
+                    @foreach (var notification in _notifications)
+                    {
+                        <NotificationItem Notification="@notification" 
+                                        OnClick="@HandleNotificationClick" 
+                                        OnDelete="@HandleNotificationDelete" />
+                    }
+                }
+            </div>
+
+            @if (_notifications.Any() && _hasMore)
+            {
+                <div class="notification-load-more">
+                    <FluentButton Appearance="Appearance.Lightweight" 
+                                OnClick="@LoadMore">
+                        Carica altre...
+                    </FluentButton>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private bool _isPanelOpen;
+    private bool _isLoading;
+    private List<Notification> _notifications = new();
+    private NotificationFilter _currentFilter = NotificationFilter.All;
+    private bool _hasMore = true;
+    private int _skip = 0;
+    private const int _pageSize = 20;
+
+    protected override async Task OnInitializedAsync()
+    {
+        NotificationService.OnNotificationReceived += HandleNewNotification;
+        NotificationService.OnConnectionStateChanged += StateHasChanged;
+        
+        await LoadNotificationsAsync();
+    }
+
+    private void TogglePanel()
+    {
+        _isPanelOpen = !_isPanelOpen;
+        if (_isPanelOpen)
+        {
+            _ = LoadNotificationsAsync();
+        }
+    }
+
+    private async Task LoadNotificationsAsync()
+    {
+        _isLoading = true;
+        _skip = 0;
+        StateHasChanged();
+
+        try
+        {
+            bool? unreadOnly = _currentFilter switch
+            {
+                NotificationFilter.Unread => true,
+                _ => null
+            };
+
+            var notifications = await NotificationService.GetNotificationsAsync(unreadOnly, _skip, _pageSize);
+            
+            if (_currentFilter == NotificationFilter.Important)
+            {
+                _notifications = notifications.Where(n => n.IsImportant).ToList();
+            }
+            else
+            {
+                _notifications = notifications;
+            }
+
+            _hasMore = notifications.Count >= _pageSize;
+            _skip = _notifications.Count;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error loading notifications: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadMore()
+    {
+        try
+        {
+            bool? unreadOnly = _currentFilter switch
+            {
+                NotificationFilter.Unread => true,
+                _ => null
+            };
+
+            var notifications = await NotificationService.GetNotificationsAsync(unreadOnly, _skip, _pageSize);
+            
+            if (_currentFilter == NotificationFilter.Important)
+            {
+                _notifications.AddRange(notifications.Where(n => n.IsImportant));
+            }
+            else
+            {
+                _notifications.AddRange(notifications);
+            }
+
+            _hasMore = notifications.Count >= _pageSize;
+            _skip = _notifications.Count;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error loading more notifications: {ex.Message}");
+        }
+    }
+
+    private async Task SetFilter(NotificationFilter filter)
+    {
+        _currentFilter = filter;
+        await LoadNotificationsAsync();
+    }
+
+    private async Task MarkAllAsRead()
+    {
+        var success = await NotificationService.MarkAllAsReadAsync();
+        if (success)
+        {
+            foreach (var notification in _notifications)
+            {
+                notification.IsRead = true;
+            }
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleNotificationClick(Notification notification)
+    {
+        if (!notification.IsRead)
+        {
+            var success = await NotificationService.MarkAsReadAsync(notification.Id);
+            if (success)
+            {
+                notification.IsRead = true;
+                StateHasChanged();
+            }
+        }
+
+        // Navigate to the link if provided
+        if (!string.IsNullOrEmpty(notification.Link))
+        {
+            // Close panel and navigate
+            _isPanelOpen = false;
+            // Navigation would be handled by NavigationManager, but we'll let the parent handle it
+        }
+    }
+
+    private async Task HandleNotificationDelete(int notificationId)
+    {
+        var success = await NotificationService.DeleteNotificationAsync(notificationId);
+        if (success)
+        {
+            _notifications.RemoveAll(n => n.Id == notificationId);
+            StateHasChanged();
+        }
+    }
+
+    private void HandleNewNotification(Notification notification)
+    {
+        // Add to the top of the list if panel is open and filter allows it
+        if (_isPanelOpen)
+        {
+            bool shouldAdd = _currentFilter switch
+            {
+                NotificationFilter.All => true,
+                NotificationFilter.Unread => !notification.IsRead,
+                NotificationFilter.Important => notification.IsImportant,
+                _ => false
+            };
+
+            if (shouldAdd)
+            {
+                _notifications.Insert(0, notification);
+                StateHasChanged();
+            }
+        }
+
+        // Show browser notification if enabled
+        _ = ShowBrowserNotificationAsync(notification);
+    }
+
+    private async Task ShowBrowserNotificationAsync(Notification notification)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("showNotification", notification.Title, notification.Message);
+        }
+        catch
+        {
+            // Browser notifications might not be supported or permitted
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        NotificationService.OnNotificationReceived -= HandleNewNotification;
+        NotificationService.OnConnectionStateChanged -= StateHasChanged;
+    }
+
+    private enum NotificationFilter
+    {
+        All,
+        Unread,
+        Important
+    }
+}

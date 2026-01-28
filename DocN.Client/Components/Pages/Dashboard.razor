@@ -1,836 +1,121 @@
 @page "/dashboard"
-@using DocN.Data.Services
-@using DocN.Data.Models
-@using DocN.Data.Constants
-@using System.Security.Claims
-@using Microsoft.JSInterop
-@inject IDashboardWidgetService WidgetService
-@inject AuthenticationStateProvider AuthenticationStateProvider
-@inject ILogger<Dashboard> Logger
-@inject IJSRuntime JSRuntime
-@rendermode InteractiveServer
+@inject NavigationManager Navigation
 
 <PageTitle>Dashboard - DocN</PageTitle>
 
-<div class="dashboard-container">
-    <div class="dashboard-header">
-        <h2>📊 Dashboard Documenti</h2>
-        <div class="header-actions">
-            @if (!_isManagingWidgets && _widgets?.Any(w => w.IsVisible) == true)
-            {
-                <button class="btn-drag-mode @(_isDragMode ? "active" : "")" @onclick="ToggleDragMode">
-                    @(_isDragMode ? "✓ Drag Mode" : "⚡ Drag Mode")
-                </button>
-            }
-            <button class="btn-manage" @onclick="ToggleWidgetManagement">
-                ⚙️ @(_isManagingWidgets ? "Chiudi" : "Gestisci Widget")
+<div class="placeholder-page">
+    <div class="placeholder-card">
+        <div class="placeholder-icon">📄</div>
+        <h1>${file}</h1>
+        <p class="placeholder-message">
+            This page is being refactored to use Server HTTP APIs.
+        </p>
+        <p class="placeholder-details">
+            This feature will be available once the API integration is complete.
+        </p>
+        
+        <div class="placeholder-actions">
+            <button class="btn btn-primary" @onclick='() => Navigation.NavigateTo("/documents")'>
+                View Documents
+            </button>
+            <button class="btn btn-secondary" @onclick='() => Navigation.NavigateTo("/")'>
+                Go to Home
             </button>
         </div>
     </div>
-
-    @if (_isLoading)
-    {
-        <div class="loading">Caricamento dashboard...</div>
-    }
-    else if (!string.IsNullOrEmpty(_errorMessage))
-    {
-        <div class="alert alert-error">
-            <strong>⚠️ Errore</strong>
-            <p>@_errorMessage</p>
-        </div>
-    }
-    else
-    {
-        @if (_isManagingWidgets)
-        {
-            <div class="widget-management">
-                <h3>Gestione Widget</h3>
-                
-                @if (_widgets?.Any() == true)
-                {
-                    <div class="widget-list">
-                        @foreach (var widget in _widgets.OrderBy(w => w.Position))
-                        {
-                            <div class="widget-control-item">
-                                <span class="widget-type-icon">@GetWidgetIcon(widget.WidgetType)</span>
-                                <span class="widget-title">@widget.Title</span>
-                                
-                                <div class="widget-actions">
-                                    <button class="btn-icon" @onclick="async () => await MoveWidgetUp(widget)" disabled="@(widget.Position == 0)" title="Sposta su">
-                                        ⬆️
-                                    </button>
-                                    <button class="btn-icon" @onclick="async () => await MoveWidgetDown(widget)" disabled="@(widget.Position == _widgets.Count - 1)" title="Sposta giù">
-                                        ⬇️
-                                    </button>
-                                    
-                                    <label class="switch">
-                                        <input type="checkbox" checked="@widget.IsVisible" @onchange="async (e) => await ToggleWidgetVisibility(widget, (bool)e.Value!)" />
-                                        <span class="slider"></span>
-                                    </label>
-                                    
-                                    <button class="btn-icon btn-delete" @onclick="async () => await DeleteWidget(widget)" title="Elimina">
-                                        🗑️
-                                    </button>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                }
-
-                <div class="add-widget-section">
-                    <select class="select-widget-type" @bind="_selectedWidgetType">
-                        <option value="">-- Seleziona tipo widget --</option>
-                        <option value="Statistics">📊 Statistiche</option>
-                        <option value="RecentDocuments">📄 Documenti Recenti</option>
-                        <option value="ActivityFeed">📈 Feed Attività</option>
-                        <option value="SavedSearches">🔖 Ricerche Salvate</option>
-                        @if (_isAdmin)
-                        {
-                            <option value="SystemHealth">💚 Stato Sistema</option>
-                        }
-                    </select>
-                    <button class="btn-add" @onclick="AddWidget" disabled="@string.IsNullOrEmpty(_selectedWidgetType)">
-                        ➕ Aggiungi Widget
-                    </button>
-                </div>
-            </div>
-        }
-
-        @if (_widgets?.Any() == true)
-        {
-            <div class="widgets-grid @(_isDragMode ? "drag-mode" : "")">
-                @foreach (var widget in _widgets.Where(w => w.IsVisible).OrderBy(w => w.Position))
-                {
-                    <div class="widget-container @(_isDragMode ? "draggable" : "")" data-widget-id="@widget.Id" draggable="@_isDragMode"
-                         @ondragstart="@(() => OnDragStart(widget))"
-                         @ondragover="@((e) => OnDragOver(e))"
-                         @ondrop="@((e) => OnDrop(e, widget))">
-                        @switch (widget.WidgetType)
-                        {
-                            case "Statistics":
-                                <StatisticsWidget WidgetId="@widget.Id" Title="@widget.Title" />
-                                break;
-                            case "RecentDocuments":
-                                <RecentDocumentsWidget WidgetId="@widget.Id" Title="@widget.Title" />
-                                break;
-                            case "ActivityFeed":
-                                <ActivityFeedWidget WidgetId="@widget.Id" Title="@widget.Title" />
-                                break;
-                            case "SavedSearches":
-                                <SavedSearchesWidget WidgetId="@widget.Id" Title="@widget.Title" />
-                                break;
-                            case "SystemHealth":
-                                <SystemHealthWidget WidgetId="@widget.Id" Title="@widget.Title" />
-                                break;
-                            default:
-                                <div class="alert alert-warning">
-                                    Widget type '@widget.WidgetType' non riconosciuto
-                                </div>
-                                break;
-                        }
-                        @if (_isDragMode)
-                        {
-                            <div class="drag-handle">⋮⋮</div>
-                        }
-                    </div>
-                }
-            </div>
-            @if (_isDragMode)
-            {
-                <div class="drag-mode-actions">
-                    <button class="btn-save-layout" @onclick="SaveLayout">💾 Salva Layout</button>
-                    <button class="btn-cancel" @onclick="CancelDragMode">✕ Annulla</button>
-                </div>
-            }
-        }
-        else if (!_isManagingWidgets)
-        {
-            <div class="alert alert-info">
-                <strong>ℹ️ Benvenuto</strong>
-                <p>Nessun widget configurato. Clicca su "Gestisci Widget" per aggiungere widget personalizzati alla tua dashboard.</p>
-            </div>
-        }
-    }
 </div>
 
-@code {
-    private List<DashboardWidget>? _widgets;
-    private bool _isLoading = true;
-    private string? _userId;
-    private string? _userRole;
-    private string? _errorMessage;
-    private bool _isManagingWidgets = false;
-    private bool _isAdmin = false;
-    private string _selectedWidgetType = "";
-    private bool _isDragMode = false;
-    private DashboardWidget? _draggedWidget;
-    private List<DashboardWidget>? _originalWidgetsOrder;
-
-    protected override async Task OnInitializedAsync()
-    {
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        _userId = authState.User.FindFirstValue(ClaimTypes.NameIdentifier);
-        _userRole = authState.User.FindFirstValue(ClaimTypes.Role);
-        _isAdmin = _userRole == Roles.SuperAdmin || _userRole == Roles.TenantAdmin;
-
-        await LoadWidgetsAsync();
-    }
-
-    private async Task LoadWidgetsAsync()
-    {
-        try
-        {
-            _isLoading = true;
-            _errorMessage = null;
-
-            if (string.IsNullOrEmpty(_userId))
-            {
-                _errorMessage = "Utente non autenticato";
-                return;
-            }
-
-            _widgets = await WidgetService.GetUserWidgetsAsync(_userId);
-
-            // If user has no widgets, initialize with defaults based on role
-            if (!_widgets.Any() && !string.IsNullOrEmpty(_userRole))
-            {
-                await InitializeDefaultWidgets();
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error loading dashboard widgets for user {UserId}", _userId);
-            _errorMessage = "Si è verificato un errore durante il caricamento della dashboard.";
-        }
-        finally
-        {
-            _isLoading = false;
-        }
-    }
-
-    private async Task InitializeDefaultWidgets()
-    {
-        try
-        {
-            var defaultWidgets = await WidgetService.GetDefaultWidgetsForRole(_userRole!);
-            
-            foreach (var widget in defaultWidgets)
-            {
-                widget.UserId = _userId!;
-                await WidgetService.CreateWidgetAsync(widget);
-            }
-
-            _widgets = await WidgetService.GetUserWidgetsAsync(_userId!);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error initializing default widgets for user {UserId}", _userId);
-        }
-    }
-
-    private void ToggleWidgetManagement()
-    {
-        _isManagingWidgets = !_isManagingWidgets;
-        StateHasChanged();
-    }
-
-    private async Task ToggleWidgetVisibility(DashboardWidget widget, bool isVisible)
-    {
-        try
-        {
-            widget.IsVisible = isVisible;
-            await WidgetService.UpdateWidgetAsync(widget);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error toggling widget visibility");
-            _errorMessage = "Errore nell'aggiornamento del widget";
-        }
-    }
-
-    private async Task MoveWidgetUp(DashboardWidget widget)
-    {
-        if (widget.Position == 0 || _widgets == null) return;
-
-        var otherWidget = _widgets.FirstOrDefault(w => w.Position == widget.Position - 1);
-        if (otherWidget != null)
-        {
-            widget.Position--;
-            otherWidget.Position++;
-
-            try
-            {
-                await WidgetService.UpdateWidgetAsync(widget);
-                await WidgetService.UpdateWidgetAsync(otherWidget);
-                await LoadWidgetsAsync();
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError(ex, "Error moving widget up");
-                _errorMessage = "Errore nello spostamento del widget";
-            }
-        }
-    }
-
-    private async Task MoveWidgetDown(DashboardWidget widget)
-    {
-        if (_widgets == null || widget.Position == _widgets.Count - 1) return;
-
-        var otherWidget = _widgets.FirstOrDefault(w => w.Position == widget.Position + 1);
-        if (otherWidget != null)
-        {
-            widget.Position++;
-            otherWidget.Position--;
-
-            try
-            {
-                await WidgetService.UpdateWidgetAsync(widget);
-                await WidgetService.UpdateWidgetAsync(otherWidget);
-                await LoadWidgetsAsync();
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError(ex, "Error moving widget down");
-                _errorMessage = "Errore nello spostamento del widget";
-            }
-        }
-    }
-
-    private async Task DeleteWidget(DashboardWidget widget)
-    {
-        try
-        {
-            await WidgetService.DeleteWidgetAsync(widget.Id, _userId!);
-            await LoadWidgetsAsync();
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error deleting widget");
-            _errorMessage = "Errore nell'eliminazione del widget";
-        }
-    }
-
-    private async Task AddWidget()
-    {
-        if (string.IsNullOrEmpty(_selectedWidgetType) || string.IsNullOrEmpty(_userId) || _widgets == null)
-            return;
-
-        try
-        {
-            var newWidget = new DashboardWidget
-            {
-                UserId = _userId,
-                WidgetType = _selectedWidgetType,
-                Title = GetWidgetTitle(_selectedWidgetType),
-                Position = _widgets.Count,
-                IsVisible = true
-            };
-
-            await WidgetService.CreateWidgetAsync(newWidget);
-            _selectedWidgetType = "";
-            await LoadWidgetsAsync();
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error adding widget");
-            _errorMessage = "Errore nell'aggiunta del widget";
-        }
-    }
-
-    private string GetWidgetTitle(string widgetType)
-    {
-        return widgetType switch
-        {
-            "Statistics" => "Statistiche Documenti",
-            "RecentDocuments" => "Documenti Recenti",
-            "ActivityFeed" => "Attività Recenti",
-            "SavedSearches" => "Ricerche Salvate",
-            "SystemHealth" => "Stato Sistema",
-            _ => widgetType
-        };
-    }
-
-    private string GetWidgetIcon(string widgetType)
-    {
-        return widgetType switch
-        {
-            "Statistics" => "📊",
-            "RecentDocuments" => "📄",
-            "ActivityFeed" => "📈",
-            "SavedSearches" => "🔖",
-            "SystemHealth" => "💚",
-            _ => "📦"
-        };
-    }
-
-    private void ToggleDragMode()
-    {
-        _isDragMode = !_isDragMode;
-        if (_isDragMode)
-        {
-            // Save original order in case user cancels
-            _originalWidgetsOrder = _widgets?.Select(w => new DashboardWidget
-            {
-                Id = w.Id,
-                Position = w.Position,
-                UserId = w.UserId,
-                WidgetType = w.WidgetType,
-                Title = w.Title,
-                IsVisible = w.IsVisible
-            }).ToList();
-        }
-        StateHasChanged();
-    }
-
-    private void OnDragStart(DashboardWidget widget)
-    {
-        _draggedWidget = widget;
-    }
-
-    private void OnDragOver(DragEventArgs e)
-    {
-        // Blazor handles preventDefault automatically for drag events
-    }
-
-    private void OnDrop(DragEventArgs e, DashboardWidget targetWidget)
-    {
-        // Blazor handles preventDefault automatically for drag events
-        
-        if (_draggedWidget == null || _widgets == null || _draggedWidget.Id == targetWidget.Id)
-            return;
-
-        var draggedIndex = _widgets.FindIndex(w => w.Id == _draggedWidget.Id);
-        var targetIndex = _widgets.FindIndex(w => w.Id == targetWidget.Id);
-
-        if (draggedIndex == -1 || targetIndex == -1)
-            return;
-
-        // Remove dragged widget
-        var widget = _widgets[draggedIndex];
-        _widgets.RemoveAt(draggedIndex);
-
-        // Insert at new position
-        if (draggedIndex < targetIndex)
-            targetIndex--;
-        
-        _widgets.Insert(targetIndex, widget);
-
-        // Update positions
-        for (int i = 0; i < _widgets.Count; i++)
-        {
-            _widgets[i].Position = i;
-        }
-
-        StateHasChanged();
-    }
-
-    private async Task SaveLayout()
-    {
-        if (_widgets == null) return;
-
-        try
-        {
-            foreach (var widget in _widgets)
-            {
-                await WidgetService.UpdateWidgetAsync(widget);
-            }
-            
-            _isDragMode = false;
-            _originalWidgetsOrder = null;
-            await JSRuntime.InvokeVoidAsync("showToast", "Layout salvato con successo!", "success");
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Error saving widget layout");
-            _errorMessage = "Errore nel salvare il layout";
-            await JSRuntime.InvokeVoidAsync("showToast", "Errore nel salvare il layout", "error");
-        }
-    }
-
-    private void CancelDragMode()
-    {
-        if (_originalWidgetsOrder != null)
-        {
-            // Restore original order
-            _widgets = _originalWidgetsOrder.Select(w => new DashboardWidget
-            {
-                Id = w.Id,
-                Position = w.Position,
-                UserId = w.UserId,
-                WidgetType = w.WidgetType,
-                Title = w.Title,
-                IsVisible = w.IsVisible
-            }).ToList();
-        }
-        
-        _isDragMode = false;
-        _originalWidgetsOrder = null;
-        StateHasChanged();
-    }
-}
-
 <style>
-    .dashboard-container {
-        padding: 2rem;
-        max-width: 1600px;
-        margin: 0 auto;
-    }
-
-    .dashboard-header {
+    .placeholder-page {
+        min-height: 80vh;
         display: flex;
-        justify-content: space-between;
         align-items: center;
-        margin-bottom: 2rem;
+        justify-content: center;
+        padding: 2rem;
     }
 
-    .dashboard-header h2 {
-        margin: 0;
+    .placeholder-card {
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        padding: 3rem;
+        max-width: 600px;
+        text-align: center;
+    }
+
+    .placeholder-icon {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+    }
+
+    .placeholder-card h1 {
+        color: #2d3748;
+        margin-bottom: 1rem;
         font-size: 2rem;
     }
 
-    .header-actions {
-        display: flex;
-        gap: 1rem;
-        align-items: center;
+    .placeholder-message {
+        color: #718096;
+        font-size: 1.125rem;
+        margin-bottom: 1rem;
+        line-height: 1.6;
     }
 
-    .btn-drag-mode {
-        padding: 0.75rem 1.5rem;
-        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-        color: #333;
-        border: 2px solid #dee2e6;
-        border-radius: 8px;
-        cursor: pointer;
-        font-size: 1rem;
-        transition: all 0.2s ease;
-        font-weight: 500;
-    }
-
-    .btn-drag-mode:hover {
-        background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    }
-
-    .btn-drag-mode.active {
-        background: linear-gradient(135deg, #198754 0%, #20c997 100%);
-        color: white;
-        border-color: transparent;
-    }
-
-    .btn-manage {
-        padding: 0.75rem 1.5rem;
-        background: #2563eb;
-        color: white;
-        border: none;
-        border-radius: 8px;
-        cursor: pointer;
-        font-size: 1rem;
-        transition: all 0.2s ease;
-    }
-
-    .btn-manage:hover {
-        background: #1d4ed8;
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
-    }
-
-    .loading {
-        text-align: center;
-        padding: 3rem;
-        color: #666;
-        font-size: 1.1rem;
-    }
-
-    .alert {
-        padding: 1.5rem;
-        border-radius: 10px;
-        margin-bottom: 2rem;
-    }
-
-    .alert-error {
-        background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
-        color: #721c24;
-        border: 2px solid #dc3545;
-        border-left: 5px solid #dc3545;
-    }
-
-    .alert-info {
-        background: linear-gradient(135deg, #d1ecf1 0%, #bee5eb 100%);
-        color: #0c5460;
-        border: 2px solid #17a2b8;
-        border-left: 5px solid #17a2b8;
-    }
-
-    .alert-warning {
-        background: linear-gradient(135deg, #fff3cd 0%, #ffeeba 100%);
-        color: #856404;
-        border: 2px solid #ffc107;
-        border-left: 5px solid #ffc107;
-    }
-
-    .alert strong {
-        display: block;
-        margin-bottom: 0.5rem;
-    }
-
-    .widget-management {
-        background: white;
-        border-radius: 10px;
-        padding: 1.5rem;
-        margin-bottom: 2rem;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    }
-
-    .widget-management h3 {
-        margin: 0 0 1.5rem 0;
-        font-size: 1.3rem;
-        color: #333;
-    }
-
-    .widget-list {
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
+    .placeholder-details {
+        color: #4a5568;
+        font-size: 0.9rem;
         margin-bottom: 1.5rem;
+        line-height: 1.6;
     }
 
-    .widget-control-item {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-        padding: 1rem;
-        background: #f8f9fa;
-        border-radius: 8px;
-    }
-
-    .widget-type-icon {
-        font-size: 1.5rem;
-    }
-
-    .widget-title {
-        flex: 1;
-        font-weight: 500;
-        color: #333;
-    }
-
-    .widget-actions {
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-    }
-
-    .btn-icon {
-        padding: 0.5rem;
-        background: none;
-        border: 1px solid #dee2e6;
-        border-radius: 6px;
-        cursor: pointer;
-        font-size: 1rem;
-        transition: all 0.2s ease;
-    }
-
-    .btn-icon:hover:not(:disabled) {
-        background: #e9ecef;
-    }
-
-    .btn-icon:disabled {
-        opacity: 0.3;
-        cursor: not-allowed;
-    }
-
-    .btn-delete {
-        border-color: #dc3545;
-    }
-
-    .btn-delete:hover:not(:disabled) {
-        background: #f8d7da;
-    }
-
-    .switch {
-        position: relative;
-        display: inline-block;
-        width: 50px;
-        height: 24px;
-    }
-
-    .switch input {
-        opacity: 0;
-        width: 0;
-        height: 0;
-    }
-
-    .slider {
-        position: absolute;
-        cursor: pointer;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background-color: #ccc;
-        transition: .4s;
-        border-radius: 24px;
-    }
-
-    .slider:before {
-        position: absolute;
-        content: "";
-        height: 18px;
-        width: 18px;
-        left: 3px;
-        bottom: 3px;
-        background-color: white;
-        transition: .4s;
-        border-radius: 50%;
-    }
-
-    input:checked + .slider {
-        background-color: #2563eb;
-    }
-
-    input:checked + .slider:before {
-        transform: translateX(26px);
-    }
-
-    .add-widget-section {
-        display: flex;
-        gap: 1rem;
-        padding-top: 1rem;
-        border-top: 2px solid #e9ecef;
-    }
-
-    .select-widget-type {
-        flex: 1;
-        padding: 0.75rem;
-        border: 1px solid #dee2e6;
-        border-radius: 6px;
-        font-size: 1rem;
-    }
-
-    .btn-add {
-        padding: 0.75rem 1.5rem;
-        background: #198754;
-        color: white;
-        border: none;
-        border-radius: 6px;
-        cursor: pointer;
-        font-size: 1rem;
-        transition: all 0.2s ease;
-    }
-
-    .btn-add:hover:not(:disabled) {
-        background: #157347;
-    }
-
-    .btn-add:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-    }
-
-    .widgets-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
-        gap: 1.5rem;
-    }
-
-    .widget-container {
-        min-height: 300px;
-        position: relative;
-        transition: all 0.3s ease;
-    }
-
-    .widget-container.draggable {
-        cursor: move;
-        border: 2px dashed transparent;
-    }
-
-    .widget-container.draggable:hover {
-        border-color: #2563eb;
-        transform: scale(1.02);
-    }
-
-    .widgets-grid.drag-mode .widget-container {
-        opacity: 0.9;
-    }
-
-    .drag-handle {
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        font-size: 1.5rem;
-        color: #2563eb;
-        background: white;
-        padding: 0.5rem;
-        border-radius: 8px;
-        box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
-        cursor: grab;
-        z-index: 10;
-    }
-
-    .drag-handle:active {
-        cursor: grabbing;
-    }
-
-    .drag-mode-actions {
+    .placeholder-actions {
         display: flex;
         gap: 1rem;
         justify-content: center;
         margin-top: 2rem;
-        padding: 1rem;
-        background: white;
-        border-radius: 10px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     }
 
-    .btn-save-layout {
-        padding: 0.75rem 2rem;
-        background: linear-gradient(135deg, #198754 0%, #20c997 100%);
-        color: white;
-        border: none;
+    .btn {
+        padding: 0.75rem 1.5rem;
         border-radius: 8px;
-        cursor: pointer;
-        font-size: 1rem;
-        font-weight: 600;
-        transition: all 0.2s ease;
-    }
-
-    .btn-save-layout:hover {
-        background: linear-gradient(135deg, #20c997 0%, #198754 100%);
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(25, 135, 84, 0.3);
-    }
-
-    .btn-cancel {
-        padding: 0.75rem 2rem;
-        background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
-        color: white;
         border: none;
-        border-radius: 8px;
-        cursor: pointer;
-        font-size: 1rem;
         font-weight: 600;
-        transition: all 0.2s ease;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-size: 0.9rem;
     }
 
-    .btn-cancel:hover {
-        background: linear-gradient(135deg, #495057 0%, #343a40 100%);
+    .btn-primary {
+        background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+        color: white;
+    }
+
+    .btn-primary:hover {
         transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(108, 117, 125, 0.3);
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+    }
+
+    .btn-secondary {
+        background: #e2e8f0;
+        color: #2d3748;
+    }
+
+    .btn-secondary:hover {
+        background: #cbd5e0;
+        transform: translateY(-2px);
     }
 
     @@media (max-width: 768px) {
-        .dashboard-header {
+        .placeholder-card {
+            padding: 2rem;
+        }
+
+        .placeholder-actions {
             flex-direction: column;
-            gap: 1rem;
-            align-items: flex-start;
         }
 
-        .widgets-grid {
-            grid-template-columns: 1fr;
-        }
-
-        .widget-actions {
-            flex-wrap: wrap;
+        .btn {
+            width: 100%;
         }
     }
 </style>

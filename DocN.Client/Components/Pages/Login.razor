@@ -1,5 +1,9 @@
 @page "/login"
-@using Microsoft.AspNetCore.Components
+@rendermode InteractiveServer
+@using System.ComponentModel.DataAnnotations
+@using DocN.Client.Services
+@inject IAuthenticationService AuthService
+@inject CustomAuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 
 <PageTitle>Login - DocN</PageTitle>
@@ -12,7 +16,9 @@
             <p class="auth-subtitle">Sign in to your account</p>
         </div>
 
-        <form method="post" action="/account/login">
+        <EditForm Model="loginModel" OnValidSubmit="HandleLogin" FormName="loginForm">
+            <DataAnnotationsValidator />
+            
             @if (!string.IsNullOrEmpty(errorMessage))
             {
                 <div class="alert alert-error">
@@ -23,23 +29,29 @@
 
             <div class="form-group">
                 <label for="email" class="form-label">Email</label>
-                <input type="email" id="email" name="email" class="form-input" placeholder="your@email.com" autocomplete="email" required />
+                <InputText id="email" @bind-Value="loginModel.Email" class="form-input" placeholder="your@email.com" autocomplete="email" />
+                <ValidationMessage For="@(() => loginModel.Email)" class="validation-message" />
             </div>
 
             <div class="form-group">
                 <label for="password" class="form-label">Password</label>
-                <input type="password" id="password" name="password" class="form-input" placeholder="••••••••" autocomplete="current-password" required />
+                <InputText type="password" id="password" @bind-Value="loginModel.Password" class="form-input" placeholder="••••••••" autocomplete="current-password" />
+                <ValidationMessage For="@(() => loginModel.Password)" class="validation-message" />
             </div>
 
             <div class="form-checkbox">
-                <input type="checkbox" id="rememberMe" name="rememberMe" value="true" class="checkbox-input" />
+                <InputCheckbox id="rememberMe" @bind-Value="loginModel.RememberMe" class="checkbox-input" />
                 <label for="rememberMe" class="checkbox-label">Remember me</label>
             </div>
 
-            <button type="submit" class="btn btn-primary">
-                <span>Sign In</span>
+            <button type="submit" class="btn btn-primary" disabled="@isLoading">
+                @if (isLoading)
+                {
+                    <div class="spinner"></div>
+                }
+                <span>@(isLoading ? "Signing in..." : "Sign In")</span>
             </button>
-        </form>
+        </EditForm>
 
         <div class="auth-footer">
             <a href="/forgot-password" class="auth-link">Forgot password?</a>
@@ -270,10 +282,73 @@
 </style>
 
 @code {
+    private LoginModel loginModel = new();
     private string? errorMessage;
+    private bool isLoading = false;
+
+    /// <summary>
+    /// Handle login form submission
+    /// Calls Server authentication API via IAuthenticationService
+    /// </summary>
+    private async Task HandleLogin()
+    {
+        try
+        {
+            isLoading = true;
+            errorMessage = null;
+            StateHasChanged();
+
+            // Call Server API to authenticate
+            var result = await AuthService.LoginAsync(
+                loginModel.Email,
+                loginModel.Password,
+                loginModel.RememberMe
+            );
+
+            if (result.Success)
+            {
+                // Set authentication state in the provider
+                await AuthStateProvider.SetAuthenticationStateAsync(
+                    result.UserId ?? string.Empty,
+                    result.Email ?? string.Empty,
+                    result.FirstName ?? "User",
+                    result.LastName ?? ""
+                );
+                
+                // Redirect to home page on successful login
+                Navigation.NavigateTo("/", forceLoad: true);
+            }
+            else
+            {
+                // Display error message from Server
+                errorMessage = result.ErrorMessage ?? "Login failed. Please try again.";
+                
+                // Handle specific status codes
+                if (result.StatusCode == 423)
+                {
+                    errorMessage = "Account locked due to multiple failed attempts. Try again later.";
+                }
+                else if (result.StatusCode == 401)
+                {
+                    errorMessage = "Invalid email or password.";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "An unexpected error occurred. Please try again.";
+            Console.WriteLine($"Login error: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+        }
+    }
 
     protected override void OnInitialized()
     {
+        // Check for error query parameter (e.g., from redirect)
         var uri = new Uri(Navigation.Uri);
         var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
         var error = query["error"];
@@ -285,5 +360,21 @@
             "2fa" => "Two-factor authentication is required.",
             _ => null
         };
+    }
+
+    /// <summary>
+    /// Login form model with validation
+    /// </summary>
+    public class LoginModel
+    {
+        [Required(ErrorMessage = "Email is required")]
+        [EmailAddress(ErrorMessage = "Invalid email format")]
+        public string Email { get; set; } = "";
+
+        [Required(ErrorMessage = "Password is required")]
+        [MinLength(6, ErrorMessage = "Password must be at least 6 characters")]
+        public string Password { get; set; } = "";
+
+        public bool RememberMe { get; set; }
     }
 }

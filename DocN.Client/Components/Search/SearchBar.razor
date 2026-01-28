@@ -1,0 +1,287 @@
+@using Microsoft.FluentUI.AspNetCore.Components
+@inject IJSRuntime JS
+
+<div class="search-bar-container">
+    <div class="search-bar">
+        <FluentIcon Value="@(new Icons.Regular.Size20.Search())" class="search-icon" />
+        
+        <FluentTextField @bind-Value="@SearchQuery"
+                        Placeholder="Cerca documenti..."
+                        @oninput="OnSearchInput"
+                        @onkeydown="OnKeyDown"
+                        class="search-input" />
+        
+        @if (EnableVoiceSearch && IsVoiceSearchSupported)
+        {
+            <FluentButton Appearance="Appearance.Stealth" 
+                        OnClick="@StartVoiceSearch"
+                        Title="Ricerca vocale"
+                        class="@($"voice-search-button{(_isRecording ? " recording" : "")}")">
+                <FluentIcon Value="@(new Icons.Regular.Size20.Mic())" />
+            </FluentButton>
+        }
+        
+        @if (!string.IsNullOrWhiteSpace(SearchQuery))
+        {
+            <FluentButton Appearance="Appearance.Stealth" 
+                        OnClick="@ClearSearch"
+                        Title="Cancella"
+                        class="clear-button">
+                <FluentIcon Value="@(new Icons.Regular.Size16.Dismiss())" />
+            </FluentButton>
+        }
+    </div>
+    
+    @if (_showRecentSearches && _recentSearches.Any())
+    {
+        <div class="recent-searches">
+            <div class="recent-searches-header">
+                <span>Ricerche recenti</span>
+                <FluentButton Appearance="Appearance.Stealth" 
+                            OnClick="@ClearRecentSearches"
+                            class="clear-recent">
+                    Cancella tutto
+                </FluentButton>
+            </div>
+            <div class="recent-searches-list">
+                @foreach (var search in _recentSearches.Take(5))
+                {
+                    <div class="recent-search-item" @onclick="@(() => SelectRecentSearch(search))">
+                        <FluentIcon Value="@(new Icons.Regular.Size16.History())" />
+                        <span>@search</span>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+    
+    @if (_showAutocomplete && _suggestions.Any())
+    {
+        <div class="autocomplete-suggestions">
+            @foreach (var suggestion in _suggestions)
+            {
+                <div class="suggestion-item" @onclick="@(() => SelectSuggestion(suggestion))">
+                    <FluentIcon Value="@(new Icons.Regular.Size16.Search())" />
+                    <span>@suggestion</span>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string SearchQuery { get; set; } = string.Empty;
+    
+    [Parameter]
+    public EventCallback<string> SearchQueryChanged { get; set; }
+    
+    [Parameter]
+    public EventCallback<string> OnSearch { get; set; }
+    
+    [Parameter]
+    public bool EnableVoiceSearch { get; set; } = true;
+    
+    [Parameter]
+    public bool EnableAutocomplete { get; set; } = true;
+    
+    private bool IsVoiceSearchSupported { get; set; }
+    private bool _isRecording;
+    private bool _showRecentSearches;
+    private bool _showAutocomplete;
+    private List<string> _recentSearches = new();
+    private List<string> _suggestions = new();
+    private System.Timers.Timer? _debounceTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRecentSearchesAsync();
+        IsVoiceSearchSupported = await CheckVoiceSearchSupportAsync();
+    }
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        SearchQuery = e.Value?.ToString() ?? string.Empty;
+        await SearchQueryChanged.InvokeAsync(SearchQuery);
+        
+        _showRecentSearches = false;
+        
+        if (EnableAutocomplete && !string.IsNullOrWhiteSpace(SearchQuery))
+        {
+            // Debounce autocomplete
+            _debounceTimer?.Stop();
+            _debounceTimer = new System.Timers.Timer(300);
+            _debounceTimer.Elapsed += async (sender, args) =>
+            {
+                await InvokeAsync(async () =>
+                {
+                    await LoadSuggestionsAsync();
+                    StateHasChanged();
+                });
+                _debounceTimer?.Stop();
+            };
+            _debounceTimer.Start();
+        }
+        else
+        {
+            _showAutocomplete = false;
+            _suggestions.Clear();
+        }
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(SearchQuery))
+        {
+            _showAutocomplete = false;
+            _showRecentSearches = false;
+            await PerformSearchAsync();
+        }
+        else if (e.Key == "Escape")
+        {
+            _showAutocomplete = false;
+            _showRecentSearches = false;
+        }
+    }
+
+    private async Task PerformSearchAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(SearchQuery))
+        {
+            await SaveToRecentSearchesAsync(SearchQuery);
+            await OnSearch.InvokeAsync(SearchQuery);
+        }
+    }
+
+    private async Task ClearSearch()
+    {
+        SearchQuery = string.Empty;
+        await SearchQueryChanged.InvokeAsync(SearchQuery);
+        _showAutocomplete = false;
+        _suggestions.Clear();
+    }
+
+    private async Task StartVoiceSearch()
+    {
+        try
+        {
+            _isRecording = true;
+            StateHasChanged();
+            
+            var result = await JS.InvokeAsync<string>("startVoiceRecognition");
+            
+            if (!string.IsNullOrWhiteSpace(result))
+            {
+                SearchQuery = result;
+                await SearchQueryChanged.InvokeAsync(SearchQuery);
+                await PerformSearchAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Voice search error: {ex.Message}");
+        }
+        finally
+        {
+            _isRecording = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task<bool> CheckVoiceSearchSupportAsync()
+    {
+        try
+        {
+            return await JS.InvokeAsync<bool>("isVoiceRecognitionSupported");
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private async Task LoadRecentSearchesAsync()
+    {
+        try
+        {
+            var stored = await JS.InvokeAsync<string>("localStorage.getItem", "recentSearches");
+            if (!string.IsNullOrEmpty(stored))
+            {
+                _recentSearches = System.Text.Json.JsonSerializer.Deserialize<List<string>>(stored) ?? new List<string>();
+            }
+        }
+        catch
+        {
+            _recentSearches = new List<string>();
+        }
+    }
+
+    private async Task SaveToRecentSearchesAsync(string query)
+    {
+        try
+        {
+            if (!_recentSearches.Contains(query))
+            {
+                _recentSearches.Insert(0, query);
+                if (_recentSearches.Count > 10)
+                {
+                    _recentSearches = _recentSearches.Take(10).ToList();
+                }
+                
+                var json = System.Text.Json.JsonSerializer.Serialize(_recentSearches);
+                await JS.InvokeVoidAsync("localStorage.setItem", "recentSearches", json);
+            }
+        }
+        catch
+        {
+            // Ignore localStorage errors
+        }
+    }
+
+    private async Task ClearRecentSearches()
+    {
+        _recentSearches.Clear();
+        _showRecentSearches = false;
+        
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.removeItem", "recentSearches");
+        }
+        catch
+        {
+            // Ignore localStorage errors
+        }
+    }
+
+    private void SelectRecentSearch(string query)
+    {
+        SearchQuery = query;
+        _ = SearchQueryChanged.InvokeAsync(SearchQuery);
+        _ = PerformSearchAsync();
+    }
+
+    private async Task LoadSuggestionsAsync()
+    {
+        // This would call a backend API to get suggestions
+        // For now, just show basic suggestions
+        _suggestions = new List<string>
+        {
+            SearchQuery + " PDF",
+            SearchQuery + " documento",
+            SearchQuery + " file"
+        };
+        _showAutocomplete = _suggestions.Any();
+    }
+
+    private void SelectSuggestion(string suggestion)
+    {
+        SearchQuery = suggestion;
+        _ = SearchQueryChanged.InvokeAsync(SearchQuery);
+        _ = PerformSearchAsync();
+    }
+
+    public void Dispose()
+    {
+        _debounceTimer?.Dispose();
+    }
+}

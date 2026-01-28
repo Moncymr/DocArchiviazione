@@ -1,16 +1,8 @@
 using DocN.Client.Components;
 using Microsoft.FluentUI.AspNetCore.Components;
-using DocN.Core.Interfaces;
-using DocN.Data;
 using DocN.Data.Models;
-using DocN.Data.Services;
-using Microsoft.AspNetCore.Identity;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.SemanticKernel;
-
-#pragma warning disable SKEXP0001 // Type is for evaluation purposes only
-#pragma warning disable SKEXP0010 // Method is for evaluation purposes only
-#pragma warning disable SKEXP0110 // Agents are experimental
+using DocN.Client.Services;
+using Microsoft.AspNetCore.Components.Authorization;
 
 // Helper method to ensure configuration files exist
 static void EnsureConfigurationFiles()
@@ -123,213 +115,117 @@ builder.Services.AddFluentUIComponents();
 // Add HttpClient for Blazor components
 builder.Services.AddHttpClient();
 
-// Add memory cache for caching service
+// Add memory cache for client-side caching (optional)
 builder.Services.AddMemoryCache(options =>
 {
-    options.SizeLimit = 1024 * 1024 * 100; // 100MB cache limit
+    options.SizeLimit = 1024 * 1024 * 50; // 50MB cache limit for client-side data
 });
 
-// Database configuration
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+// ═══════════════════════════════════════════════════════════════════════════════
+// CLIENT AUTHENTICATION (Cookie-Based, No Direct Database Access)
+// ═══════════════════════════════════════════════════════════════════════════════
+// The Client is a Blazor Server UI that should NOT access the database directly.
+// Authentication is handled via cookies from the Server's login endpoints.
+// 
+// IMPORTANT: Do NOT register ApplicationDbContext or AddEntityFrameworkStores here!
+// That causes EF Core model validation during builder.Build() which crashes the app
+// when database schema doesn't match (e.g., missing Notifications tables).
+// 
+// The Server handles all database operations. The Client just authenticates users
+// via HTTP requests and uses cookies for subsequent requests.
+// ═══════════════════════════════════════════════════════════════════════════════
 
-// Use a fallback connection string only in development
-if (string.IsNullOrEmpty(connectionString))
-{
-    if (builder.Environment.IsDevelopment())
+builder.Services.AddAuthentication(Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
     {
-        connectionString = "Server=NTSPJ-060-02\\SQL2025;Database=DocNDb;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True;Encrypt=True";
-    }
-    else
-    {
-        throw new InvalidOperationException("Database connection string 'DefaultConnection' is not configured. Please set it in appsettings.json or environment variables.");
-    }
-}
-
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-{
-    options.UseSqlServer(connectionString, sqlServerOptions =>
-    {
-        // Enable retry on transient failures
-        sqlServerOptions.EnableRetryOnFailure(
-            maxRetryCount: 5,
-            maxRetryDelay: TimeSpan.FromSeconds(30),
-            errorNumbersToAdd: null);
+        options.LoginPath = "/login";
+        options.LogoutPath = "/logout";
+        options.AccessDeniedPath = "/access-denied";
+        options.ExpireTimeSpan = TimeSpan.FromHours(12);
+        options.SlidingExpiration = true;
     });
-
-    // Enable sensitive data logging in development
-    if (builder.Environment.IsDevelopment())
-    {
-        options.EnableSensitiveDataLogging();
-        options.EnableDetailedErrors();
-    }
-});
-
-// Add DocArcContext for logging
-builder.Services.AddDbContext<DocArcContext>(options =>
-{
-    options.UseSqlServer(connectionString, sqlServerOptions =>
-    {
-        sqlServerOptions.EnableRetryOnFailure(
-            maxRetryCount: 5,
-            maxRetryDelay: TimeSpan.FromSeconds(30),
-            errorNumbersToAdd: null);
-    });
-
-    if (builder.Environment.IsDevelopment())
-    {
-        options.EnableSensitiveDataLogging();
-        options.EnableDetailedErrors();
-    }
-});
-
-// Identity & Authentication
-builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
-{
-    // Password policy configuration
-    options.Password.RequireDigit = true;
-    options.Password.RequiredLength = 6;
-    options.Password.RequireNonAlphanumeric = false;
-    options.Password.RequireUppercase = true;
-    options.Password.RequireLowercase = true;
-    options.User.RequireUniqueEmail = true;
-
-    // Lockout configuration
-    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
-    options.Lockout.MaxFailedAccessAttempts = 5;
-    options.Lockout.AllowedForNewUsers = true;
-})
-.AddEntityFrameworkStores<ApplicationDbContext>()
-.AddDefaultTokenProviders();
 
 builder.Services.AddCascadingAuthenticationState();
 
-// Application Settings
+// ═══════════════════════════════════════════════════════════════════════════════
+// CLIENT-SIDE SERVICES (NO DATABASE ACCESS)
+// ═══════════════════════════════════════════════════════════════════════════════
+// The Client should ONLY have UI services and HTTP clients.
+// All data services are in the Server and accessed via HTTP APIs.
+// 
+// REMOVED: All database-dependent services that were causing DI errors:
+// - DocumentService, EmbeddingService, CategoryService
+// - DocumentStatisticsService, MultiProviderAIService
+// - DashboardWidgetService, SavedSearchService, SearchSuggestionService
+// - UserActivityService, LogService, SemanticRAGService
+// 
+// These services require ApplicationDbContext which is not available in Client.
+// Client components should call Server HTTP APIs instead of using services directly.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Application Settings (for configuration only, not for data services)
 builder.Services.Configure<FileStorageSettings>(builder.Configuration.GetSection("FileStorage"));
-builder.Services.Configure<AISettings>(builder.Configuration.GetSection("AI"));
-builder.Services.Configure<OpenAISettings>(builder.Configuration.GetSection("OpenAI"));
-builder.Services.Configure<GeminiSettings>(builder.Configuration.GetSection("Gemini"));
-builder.Services.Configure<EmbeddingsSettings>(builder.Configuration.GetSection("Embeddings"));
 
-// Application Services
-builder.Services.AddScoped<IDocumentService, DocumentService>();
-builder.Services.AddScoped<DocN.Data.Services.IChunkingService, DocN.Data.Services.ChunkingService>();
-builder.Services.AddScoped<DocN.Data.Services.IEmbeddingService, EmbeddingService>();
-builder.Services.AddScoped<DocN.Data.Services.ICategoryService, CategoryService>();
-builder.Services.AddScoped<IDocumentStatisticsService, DocumentStatisticsService>();
-builder.Services.AddScoped<IMultiProviderAIService, MultiProviderAIService>();
-builder.Services.AddScoped<IOCRService, TesseractOCRService>();
-builder.Services.AddScoped<IFileProcessingService, FileProcessingService>();
-builder.Services.AddScoped<ILogService, LogService>();
+// Notification Service for real-time updates (SignalR client-side only)
+builder.Services.AddScoped<DocN.Client.Services.NotificationClientService>();
 
-// Dashboard and Personalization Services
-builder.Services.AddScoped<IDashboardWidgetService, DashboardWidgetService>();
-builder.Services.AddScoped<ISavedSearchService, SavedSearchService>();
-builder.Services.AddScoped<ISearchSuggestionService, SearchSuggestionService>();
-builder.Services.AddScoped<IUserActivityService, UserActivityService>();
+// Authentication State Provider - Manages user authentication state in Client
+// This provider stores user information in browser session storage and provides
+// authentication state to all components via AuthorizeView and AuthenticationStateProvider
+builder.Services.AddScoped<DocN.Client.Services.CustomAuthenticationStateProvider>();
+builder.Services.AddScoped<AuthenticationStateProvider>(provider => 
+    provider.GetRequiredService<DocN.Client.Services.CustomAuthenticationStateProvider>());
+builder.Services.AddAuthorizationCore();
+builder.Services.AddCascadingAuthenticationState();
 
-// Configure Semantic Kernel for RAG Service (only if AI services are configured)
-var azureOpenAIEndpoint = builder.Configuration["AzureOpenAI:Endpoint"];
-var azureOpenAIKey = builder.Configuration["AzureOpenAI:ApiKey"];
-var azureOpenAIChatDeployment = builder.Configuration["AzureOpenAI:ChatDeployment"] ?? "gpt-4";
-var azureOpenAIEmbeddingDeployment = builder.Configuration["AzureOpenAI:EmbeddingDeployment"] ?? "text-embedding-ada-002";
-var openAIKey = builder.Configuration["OpenAI:ApiKey"];
+// NOTE: All data operations should be performed via HttpClient calls to Server APIs
+// Example: Instead of injecting IDocumentService, use HttpClient to call /api/documents
 
-var hasAIServiceConfigured = (!string.IsNullOrEmpty(azureOpenAIEndpoint) && !string.IsNullOrEmpty(azureOpenAIKey)) ||
-                             !string.IsNullOrEmpty(openAIKey);
-
-if (hasAIServiceConfigured)
-{
-    var kernelBuilder = Kernel.CreateBuilder();
-
-    if (!string.IsNullOrEmpty(azureOpenAIEndpoint) && !string.IsNullOrEmpty(azureOpenAIKey))
-    {
-        // Add Azure OpenAI Chat Completion
-        kernelBuilder.AddAzureOpenAIChatCompletion(
-            deploymentName: azureOpenAIChatDeployment,
-            endpoint: azureOpenAIEndpoint,
-            apiKey: azureOpenAIKey);
-
-        // Add Azure OpenAI Text Embedding
-        kernelBuilder.AddAzureOpenAITextEmbeddingGeneration(
-            deploymentName: azureOpenAIEmbeddingDeployment,
-            endpoint: azureOpenAIEndpoint,
-            apiKey: azureOpenAIKey);
-    }
-    else if (!string.IsNullOrEmpty(openAIKey))
-    {
-        // Fallback to OpenAI if Azure is not configured
-        kernelBuilder.AddOpenAIChatCompletion(
-            modelId: "gpt-4",
-            apiKey: openAIKey);
-
-        kernelBuilder.AddOpenAITextEmbeddingGeneration(
-            modelId: "text-embedding-ada-002",
-            apiKey: openAIKey);
-    }
-
-    var kernel = kernelBuilder.Build();
-    builder.Services.AddSingleton(kernel);
-
-    // Register additional services for RAG
-    builder.Services.AddScoped<DocN.Data.Services.IChunkingService, ChunkingService>();
-    builder.Services.AddScoped<ICacheService, CacheService>();
-
-    // Register Semantic RAG Service only when AI services are configured
-    builder.Services.AddScoped<ISemanticRAGService, SemanticRAGService>();
-}
-else
-{
-    // Register a no-op implementation when no AI service is configured
-    builder.Services.AddScoped<DocN.Data.Services.IChunkingService, ChunkingService>();
-    builder.Services.AddScoped<ICacheService, CacheService>();
-
-    // Register a no-op service that returns empty results when AI is not configured
-    builder.Services.AddScoped<ISemanticRAGService, NoOpSemanticRAGService>();
-}
-
-// Register ApplicationSeeder
-builder.Services.AddScoped<DocN.Data.Services.ApplicationSeeder>();
+// NOTE: Database seeding is handled by the Server, not the Client
+// The Client is a Blazor WebAssembly application and should only communicate with the Server via HTTP APIs
+// Direct database access from the Client can cause race conditions and conflicts when both start simultaneously
 
 // Configure HttpClient to call the backend API with extended timeout for AI operations
 // Increased timeout to 300 seconds (5 minutes) for AI/RAG operations which can take longer
 // This matches the server-side timeout configuration for AI providers
 builder.Services.AddHttpClient("BackendAPI", client =>
 {
-    client.BaseAddress = new Uri(builder.Configuration["BackendApiUrl"] ?? "https://localhost:5211/");
+    var backendUrl = builder.Configuration["BackendApiUrl"] ?? "https://localhost:5211/";
+    client.BaseAddress = new Uri(backendUrl);
     client.Timeout = TimeSpan.FromMinutes(5);
+    Console.WriteLine($"BackendAPI HttpClient configured with BaseAddress: {backendUrl}");
+})
+.ConfigurePrimaryHttpMessageHandler(() =>
+{
+    // In development, bypass SSL certificate validation to avoid issues with self-signed certificates
+    // This is ONLY for development - production should use valid certificates
+    var handler = new HttpClientHandler();
+    if (builder.Environment.IsDevelopment())
+    {
+        handler.ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
+        Console.WriteLine("SSL certificate validation bypassed for development environment");
+    }
+    return handler;
 });
+
+// Register Authentication Service to call Server API for login/register/logout
+builder.Services.AddScoped<DocN.Client.Services.IAuthenticationService, DocN.Client.Services.AuthenticationService>();
 
 var app = builder.Build();
 
-// Seed the database with default tenant and user
-using (var scope = app.Services.CreateScope())
-{
-    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-    try
-    {
-        var seeder = scope.ServiceProvider.GetRequiredService<DocN.Data.Services.ApplicationSeeder>();
-        await seeder.SeedAsync();
-        logger.LogInformation("Database seeding completed successfully");
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "An error occurred while seeding the database. The application will continue but may not function correctly without initial data.\n" +
-            "Please verify:\n" +
-            "1. Database connection string is correct and database server is accessible\n" +
-            "2. Database has been created using the SQL scripts in Database/ folder\n" +
-            "3. Database user has appropriate permissions\n" +
-            "4. If this is first startup, ensure the database has been initialized\n" +
-            "5. If Client and Server start simultaneously, one may fail to seed - this is normal and can be ignored");
-
-        // Log additional diagnostic information
-        logger.LogWarning("Application will attempt to start despite seeding failure. Database may have been seeded by another instance. Some features may not work correctly.");
-
-        // Allow the application to continue even if seeding fails
-        // This prevents immediate crash and allows users to see error messages in the UI
-        // Critical database issues will be caught when users try to access features
-        // When Client and Server start together, one might fail to seed due to database locks - this is expected
-    }
-}
+// NOTE: Database seeding removed from Client
+// ═══════════════════════════════════════════════════════════════════════════════
+// The Server is responsible for all database operations including seeding.
+// The Client should ONLY communicate with the Server via HTTP APIs.
+// 
+// Previous implementation had both Client and Server seeding the database,
+// which caused race conditions, conflicts, and crashes when starting simultaneously.
+// 
+// If you see database-related errors in the Client:
+// 1. Ensure the Server is running and has completed seeding
+// 2. Check the Server logs for seeding success/failure
+// 3. The Client will automatically work once the Server has seeded the database
+// ═══════════════════════════════════════════════════════════════════════════════
 
 // Ensure upload directory exists
 var fileStorageSettings = builder.Configuration.GetSection("FileStorage").Get<FileStorageSettings>();
@@ -364,116 +260,9 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 // Authentication endpoints
-app.MapPost("/logout", async (SignInManager<ApplicationUser> signInManager) =>
-{
-    await signInManager.SignOutAsync();
-    return Results.Redirect("/");
-}).RequireAuthorization();
-
-app.MapPost("/account/login", async (
-    HttpContext context,
-    SignInManager<ApplicationUser> signInManager,
-    UserManager<ApplicationUser> userManager) =>
-{
-    var form = await context.Request.ReadFormAsync();
-    var email = form["email"].ToString();
-    var password = form["password"].ToString();
-    var rememberMe = form["rememberMe"].ToString() == "true";
-
-    if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
-    {
-        return Results.Redirect("/login?error=invalid");
-    }
-
-    var user = await userManager.FindByEmailAsync(email);
-    if (user == null)
-    {
-        return Results.Redirect("/login?error=invalid");
-    }
-
-    var result = await signInManager.PasswordSignInAsync(
-        user.UserName!,
-        password,
-        rememberMe,
-        lockoutOnFailure: true
-    );
-
-    if (result.Succeeded)
-    {
-        // Update last login time
-        user.LastLoginAt = DateTime.UtcNow;
-        await userManager.UpdateAsync(user);
-        return Results.Redirect("/");
-    }
-    else if (result.IsLockedOut)
-    {
-        return Results.Redirect("/login?error=locked");
-    }
-    else if (result.RequiresTwoFactor)
-    {
-        return Results.Redirect("/login?error=2fa");
-    }
-    else
-    {
-        return Results.Redirect("/login?error=invalid");
-    }
-}).AllowAnonymous();
-
-app.MapPost("/account/register", async (
-    HttpContext context,
-    UserManager<ApplicationUser> userManager,
-    SignInManager<ApplicationUser> signInManager) =>
-{
-    var form = await context.Request.ReadFormAsync();
-    var firstName = form["firstName"].ToString();
-    var lastName = form["lastName"].ToString();
-    var email = form["email"].ToString();
-    var password = form["password"].ToString();
-    var confirmPassword = form["confirmPassword"].ToString();
-
-    if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password) ||
-        string.IsNullOrWhiteSpace(firstName) || string.IsNullOrWhiteSpace(lastName))
-    {
-        return Results.Redirect("/register?error=required");
-    }
-
-    if (password != confirmPassword)
-    {
-        return Results.Redirect("/register?error=mismatch");
-    }
-
-    // Check if user already exists
-    var existingUser = await userManager.FindByEmailAsync(email);
-    if (existingUser != null)
-    {
-        return Results.Redirect("/register?error=exists");
-    }
-
-    var user = new ApplicationUser
-    {
-        UserName = email,
-        Email = email,
-        FirstName = firstName,
-        LastName = lastName,
-        CreatedAt = DateTime.UtcNow,
-        IsActive = true
-    };
-
-    var result = await userManager.CreateAsync(user, password);
-
-    if (result.Succeeded)
-    {
-        // Sign in the user
-        await signInManager.SignInAsync(user, isPersistent: false);
-        return Results.Redirect("/?registered=true");
-    }
-    else
-    {
-        // Get the first error code, or use a generic error if none found
-        var error = result.Errors.FirstOrDefault()?.Code ?? "RegistrationFailed";
-        return Results.Redirect($"/register?error={error}");
-    }
-}).AllowAnonymous();
+// NOTE: Authentication endpoints (login, logout, register) are handled by the Server.
+// The Client should submit forms to the Server's authentication endpoints, not handle them locally.
+// The Server will manage Identity services (UserManager, SignInManager) and return authentication cookies.
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();

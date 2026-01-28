@@ -1,22 +1,29 @@
 @using Microsoft.AspNetCore.Identity
 @using DocN.Data.Models
-@inject SignInManager<ApplicationUser> SignInManager
+@using DocN.Client.Services
+@inject CustomAuthenticationStateProvider AuthStateProvider
+@inject IAuthenticationService AuthService
 @inject NavigationManager Navigation
+@rendermode InteractiveServer
 
 <AuthorizeView>
     <Authorized>
         <div class="user-display">
             <div class="user-info">
                 <span class="user-icon">👤</span>
-                <span class="user-name">@GetUserDisplayName(context.User)</span>
+                <span class="user-name">Hello, @GetUserDisplayName(context.User)</span>
             </div>
-            <form action="/logout" method="post">
-                <AntiforgeryToken />
-                <button type="submit" class="logout-btn">
+            <button type="button" @onclick="HandleLogout" class="logout-btn" disabled="@isLoggingOut">
+                @if (isLoggingOut)
+                {
+                    <span class="spinner">⟳</span>
+                }
+                else
+                {
                     <span class="logout-icon">🚪</span>
-                    Logout
-                </button>
-            </form>
+                }
+                Logout
+            </button>
         </div>
     </Authorized>
     <NotAuthorized>
@@ -142,13 +149,46 @@
 </style>
 
 @code {
+    private bool isLoggingOut = false;
+
     private string GetUserDisplayName(System.Security.Claims.ClaimsPrincipal user)
     {
+        // Try to get the full name first
         var name = user.Identity?.Name;
+        
+        // If name contains email, extract the first part
         if (!string.IsNullOrEmpty(name) && name.Contains("@"))
         {
             return name.Split("@")[0];
         }
+        
         return name ?? "User";
+    }
+
+    private async Task HandleLogout()
+    {
+        try
+        {
+            isLoggingOut = true;
+            StateHasChanged();
+
+            // Clear authentication state locally
+            await AuthStateProvider.ClearAuthenticationStateAsync();
+
+            // Call Server logout API
+            await AuthService.LogoutAsync();
+
+            // Redirect to home page
+            Navigation.NavigateTo("/", forceLoad: true);
+        }
+        catch (Exception)
+        {
+            // Even if Server call fails, we've already cleared local state
+            Navigation.NavigateTo("/", forceLoad: true);
+        }
+        finally
+        {
+            isLoggingOut = false;
+        }
     }
 }

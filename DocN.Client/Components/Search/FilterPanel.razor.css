@@ -1,0 +1,125 @@
+.filter-panel {
+    background: var(--neutral-layer-1);
+    border-radius: 8px;
+    padding: 20px;
+    height: 100%;
+    overflow-y: auto;
+}
+
+.filter-panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--neutral-stroke-divider-rest);
+}
+
+.filter-panel-header h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--neutral-foreground-rest);
+}
+
+.reset-button {
+    color: var(--accent-foreground-rest);
+}
+
+.filter-panel-content {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.filter-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.filter-section-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--neutral-foreground-rest);
+    margin-bottom: 4px;
+}
+
+.filter-checkboxes {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.filter-select {
+    width: 100%;
+}
+
+.date-range-inputs {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 8px;
+}
+
+.date-picker {
+    width: 100%;
+}
+
+.size-inputs {
+    display: flex;
+    gap: 12px;
+}
+
+.size-input {
+    flex: 1;
+}
+
+.selected-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.tag-chip {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+}
+
+.tag-remove {
+    padding: 0;
+    min-width: auto;
+    height: auto;
+}
+
+/* Scrollbar styling */
+.filter-panel::-webkit-scrollbar {
+    width: 8px;
+}
+
+.filter-panel::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.filter-panel::-webkit-scrollbar-thumb {
+    background: var(--neutral-fill-stealth-rest);
+    border-radius: 4px;
+}
+
+.filter-panel::-webkit-scrollbar-thumb:hover {
+    background: var(--neutral-fill-stealth-hover);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .filter-panel {
+        padding: 16px;
+    }
+    
+    .filter-panel-header h3 {
+        font-size: 16px;
+    }
+}

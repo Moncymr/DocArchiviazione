@@ -8,12 +8,14 @@ public class DatabaseSeeder
 {
     private readonly DocArcContext _context;
     private readonly ApplicationDbContext _appContext;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<DatabaseSeeder> _logger;
 
-    public DatabaseSeeder(DocArcContext context, ApplicationDbContext appContext, ILogger<DatabaseSeeder> logger)
+    public DatabaseSeeder(DocArcContext context, ApplicationDbContext appContext, IConfiguration configuration, ILogger<DatabaseSeeder> logger)
     {
         _context = context;
         _appContext = appContext;
+        _configuration = configuration;
         _logger = logger;
     }
 
@@ -21,14 +23,35 @@ public class DatabaseSeeder
     {
         try
         {
+            // Test database connection first using connection strings from configuration
+            // This avoids EF Core model validation which can crash the application
+            if (!await CanConnectToDatabaseAsync("DocArc"))
+            {
+                _logger.LogWarning("Cannot connect to DocArc database. Skipping document seeding.");
+                return;
+            }
+
+            if (!await CanConnectToDatabaseAsync("DefaultConnection"))
+            {
+                _logger.LogWarning("Cannot connect to DefaultConnection database. Skipping AI configuration seeding.");
+                return;
+            }
+
             // Seed AI Configuration first
             await SeedAIConfigurationAsync();
             
-            // Check if we already have data
-            if (_context.Documents.Any())
+            // Check if we already have data - wrap in try-catch for missing tables
+            try
             {
-                _logger.LogInformation("Database already has documents, skipping seeding");
-                return;
+                if (_context.Documents.Any())
+                {
+                    _logger.LogInformation("Database already has documents, skipping seeding");
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Documents table may not exist yet. Will attempt to seed.");
             }
 
             // Add sample documents - some with vectors, some without
@@ -112,12 +135,59 @@ public class DatabaseSeeder
         }
     }
 
+    private async Task<bool> CanConnectToDatabaseAsync(string connectionStringName)
+    {
+        try
+        {
+            // Get connection string from configuration instead of DbContext
+            // to avoid EF Core model validation which crashes if schema doesn't match
+            var connectionString = _configuration.GetConnectionString(connectionStringName);
+            
+            if (string.IsNullOrEmpty(connectionString))
+            {
+                _logger.LogError("Connection string '{ConnectionStringName}' is not configured", connectionStringName);
+                return false;
+            }
+
+            _logger.LogInformation("Testing database connection for '{ConnectionStringName}'...", connectionStringName);
+            
+            // Test using SqlConnection directly - no EF Core model validation
+            using (var connection = new Microsoft.Data.SqlClient.SqlConnection(connectionString))
+            {
+                await connection.OpenAsync();
+                _logger.LogInformation("✅ Database connection successful for '{ConnectionStringName}'", connectionStringName);
+                return true;
+            }
+        }
+        catch (Microsoft.Data.SqlClient.SqlException sqlEx)
+        {
+            _logger.LogError(sqlEx, "❌ SQL Exception for '{ConnectionStringName}': {Message} (Error: {Number}, State: {State})",
+                connectionStringName, sqlEx.Message, sqlEx.Number, sqlEx.State);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ Failed to check database connection for '{ConnectionStringName}'", connectionStringName);
+            return false;
+        }
+    }
+
     private async Task SeedAIConfigurationAsync()
     {
         try
         {
-            // Check if we already have an AI configuration
-            if (await _appContext.AIConfigurations.AnyAsync())
+            // Check if we already have an AI configuration - wrap in try-catch for missing table
+            bool configExists = false;
+            try
+            {
+                configExists = await _appContext.AIConfigurations.AnyAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "AIConfigurations table may not exist. Will attempt to create default configuration.");
+            }
+
+            if (configExists)
             {
                 _logger.LogInformation("AI Configuration already exists, skipping seeding");
                 return;

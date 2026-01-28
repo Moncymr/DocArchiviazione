@@ -51,6 +51,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     
     // Response feedback for RAG quality improvement
     public DbSet<ResponseFeedback> ResponseFeedbacks { get; set; } = null!;
+    
+    // Notifications for real-time updates
+    public DbSet<Notification> Notifications { get; set; } = null!;
+    public DbSet<NotificationPreference> NotificationPreferences { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -679,6 +683,54 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
             entity.HasIndex(e => e.CreatedAt);
             entity.HasIndex(e => new { e.UserId, e.CreatedAt });
             entity.HasIndex(e => new { e.IsHelpful, e.CreatedAt });
+        });
+        
+        // Notification configuration
+        modelBuilder.Entity<Notification>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.UserId).IsRequired().HasMaxLength(450);
+            entity.Property(e => e.Type).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Message).IsRequired().HasMaxLength(1000);
+            entity.Property(e => e.Link).HasMaxLength(500);
+            entity.Property(e => e.Icon).HasMaxLength(50);
+            entity.Property(e => e.Metadata).HasColumnType("nvarchar(max)");
+            entity.Property(e => e.IsRead).IsRequired();
+            entity.Property(e => e.IsImportant).IsRequired();
+            entity.Property(e => e.CreatedAt).IsRequired();
+            entity.Property(e => e.ReadAt);
+            
+            // Relationship with User - optional to prevent startup validation issues
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.Cascade);
+            
+            // Indexes for performance
+            entity.HasIndex(e => e.UserId);
+            entity.HasIndex(e => new { e.UserId, e.IsRead });
+            entity.HasIndex(e => new { e.UserId, e.CreatedAt });
+            entity.HasIndex(e => e.CreatedAt);
+        });
+        
+        // NotificationPreference configuration
+        modelBuilder.Entity<NotificationPreference>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.UserId).IsRequired().HasMaxLength(450);
+            entity.Property(e => e.EmailDigestFrequency).IsRequired().HasMaxLength(20);
+            
+            // Relationship with User - optional to prevent startup validation issues
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.Cascade);
+            
+            // Unique index on UserId - each user can only have one preference record
+            entity.HasIndex(e => e.UserId).IsUnique();
         });
     }
     

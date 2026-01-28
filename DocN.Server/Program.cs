@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.SemanticKernel;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using DocN.Data;
+using DocN.Data.Models;
 using DocN.Data.Services;
 using DocN.Data.Services.Agents;
 using DocN.Server.Services;
@@ -225,7 +227,7 @@ builder.Services.AddCors(options =>
         policy.WithOrigins("http://localhost:5210", "https://localhost:5211", "http://localhost:5036", "https://localhost:7114")
               .AllowAnyMethod()
               .AllowAnyHeader()
-              .AllowCredentials();
+              .AllowCredentials(); // Required for SignalR
     });
 });
 
@@ -374,6 +376,64 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 });
 
 // ════════════════════════════════════════════════════════════════════════════════
+// ASP.NET Core Identity Configuration
+// ════════════════════════════════════════════════════════════════════════════════
+// Register Identity services for user authentication and authorization
+// This enables UserManager<ApplicationUser> and SignInManager<ApplicationUser>
+// ════════════════════════════════════════════════════════════════════════════════
+
+builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
+{
+    // Password requirements
+    options.Password.RequireDigit = true;
+    options.Password.RequireLowercase = true;
+    options.Password.RequireUppercase = true;
+    options.Password.RequireNonAlphanumeric = false;
+    options.Password.RequiredLength = 6;
+    options.Password.RequiredUniqueChars = 1;
+    
+    // Lockout settings to prevent brute force attacks
+    options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
+    options.Lockout.MaxFailedAccessAttempts = 5;
+    options.Lockout.AllowedForNewUsers = true;
+    
+    // User settings
+    options.User.RequireUniqueEmail = true;
+    options.User.AllowedUserNameCharacters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._@+";
+    
+    // Sign-in settings
+    options.SignIn.RequireConfirmedEmail = false; // Set to true in production
+    options.SignIn.RequireConfirmedPhoneNumber = false;
+})
+.AddEntityFrameworkStores<ApplicationDbContext>()
+.AddDefaultTokenProviders();
+
+Log.Information("ASP.NET Core Identity configured successfully");
+
+// Configure cookie settings for cross-application authentication
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    options.Cookie.Name = "DocN.Auth";
+    options.Cookie.HttpOnly = true;
+    options.Cookie.SameSite = Microsoft.AspNetCore.Http.SameSiteMode.None; // Allow cross-site
+    options.Cookie.SecurePolicy = Microsoft.AspNetCore.Http.CookieSecurePolicy.Always; // HTTPS only in production
+    options.ExpireTimeSpan = TimeSpan.FromHours(24);
+    options.SlidingExpiration = true;
+    
+    // Don't redirect API requests to login page
+    options.Events.OnRedirectToLogin = context =>
+    {
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        return Task.CompletedTask;
+    };
+    options.Events.OnRedirectToAccessDenied = context =>
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        return Task.CompletedTask;
+    };
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
 // Semantic Kernel Configuration - LOADED FROM DATABASE ONLY
 // ════════════════════════════════════════════════════════════════════════════════
 // The Semantic Kernel is now configured using ONLY database configuration,
@@ -483,6 +543,12 @@ builder.Services.AddScoped<ISavedSearchService, SavedSearchService>();
 builder.Services.AddScoped<ISearchSuggestionService, SearchSuggestionService>();
 builder.Services.AddScoped<IUserActivityService, UserActivityService>();
 
+// Register Notification Service for real-time updates
+// Register the base service first
+builder.Services.AddScoped<NotificationService>();
+// Then register the SignalR wrapper as the interface implementation
+builder.Services.AddScoped<INotificationService, DocN.Server.Services.SignalRNotificationService>();
+
 // Register Distributed Cache Service (works with both Redis and in-memory cache)
 builder.Services.AddSingleton<IDistributedCacheService, DistributedCacheService>();
 
@@ -569,7 +635,9 @@ builder.Services.AddScoped<IStatisticalAnswerGenerator, StatisticalAnswerGenerat
 builder.Services.AddHostedService<BatchEmbeddingProcessor>();
 builder.Services.AddHostedService<IngestionSchedulerService>();
 
-// Register DatabaseSeeder
+// Register Seeders
+// IMPORTANT: ApplicationSeeder creates default users/roles needed for login
+builder.Services.AddScoped<ApplicationSeeder>();
 builder.Services.AddScoped<DatabaseSeeder>();
 
 // Add Health Checks for monitoring and orchestration
@@ -586,7 +654,64 @@ if (!string.IsNullOrEmpty(redisConnectionString))
     healthChecksBuilder.AddRedis(redisConnectionString, "redis_cache", tags: new[] { "ready", "cache" });
 }
 
-var app = builder.Build();
+// Add SignalR for real-time notifications
+builder.Services.AddSignalR(options =>
+{
+    options.EnableDetailedErrors = builder.Environment.IsDevelopment();
+    options.MaximumReceiveMessageSize = 102400; // 100 KB
+    options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+    options.ClientTimeoutInterval = TimeSpan.FromSeconds(30);
+});
+
+// Build the application with detailed error handling
+WebApplication app;
+try
+{
+    app = builder.Build();
+}
+catch (Exception ex)
+{
+    // Log the detailed error during service provider construction
+    Console.WriteLine("╔═══════════════════════════════════════════════════════════════╗");
+    Console.WriteLine("║ CRITICAL ERROR: Failed to build application                  ║");
+    Console.WriteLine("╚═══════════════════════════════════════════════════════════════╝");
+    Console.WriteLine();
+    Console.WriteLine($"Error Type: {ex.GetType().Name}");
+    Console.WriteLine($"Error Message: {ex.Message}");
+    Console.WriteLine();
+    
+    if (ex is AggregateException aggEx)
+    {
+        Console.WriteLine("Inner Exceptions:");
+        foreach (var innerEx in aggEx.InnerExceptions)
+        {
+            Console.WriteLine($"  - {innerEx.GetType().Name}: {innerEx.Message}");
+            if (innerEx.InnerException != null)
+            {
+                Console.WriteLine($"    Inner: {innerEx.InnerException.Message}");
+            }
+        }
+    }
+    else if (ex.InnerException != null)
+    {
+        Console.WriteLine($"Inner Exception: {ex.InnerException.GetType().Name}");
+        Console.WriteLine($"Inner Message: {ex.InnerException.Message}");
+    }
+    
+    Console.WriteLine();
+    Console.WriteLine("Stack Trace:");
+    Console.WriteLine(ex.StackTrace);
+    Console.WriteLine();
+    Console.WriteLine("╔═══════════════════════════════════════════════════════════════╗");
+    Console.WriteLine("║ Common Causes:                                                ║");
+    Console.WriteLine("║ 1. Missing service registration                               ║");
+    Console.WriteLine("║ 2. Circular dependency between services                      ║");
+    Console.WriteLine("║ 3. Scoped service consumed by Singleton                       ║");
+    Console.WriteLine("║ 4. Database connection issue during validation                ║");
+    Console.WriteLine("╚═══════════════════════════════════════════════════════════════╝");
+    
+    throw; // Re-throw to stop application
+}
 
 // Apply pending migrations automatically
 using (var scope = app.Services.CreateScope())
@@ -617,19 +742,34 @@ using (var scope = app.Services.CreateScope())
 }
 
 // Seed the database
+// IMPORTANT: Seeding order matters!
+// 1. ApplicationSeeder - Creates users, roles, tenants (required for login)
+// 2. DatabaseSeeder - Creates documents and AI configurations
+// 3. AgentTemplateSeeder - Creates agent templates
 using (var scope = app.Services.CreateScope())
 {
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
     try
     {
+        // Step 1: Seed Identity data (users, roles, tenants) - REQUIRED FOR LOGIN
+        logger.LogInformation("Seeding Identity data (users, roles, tenants)...");
+        var appSeeder = scope.ServiceProvider.GetRequiredService<ApplicationSeeder>();
+        await appSeeder.SeedAsync();
+        logger.LogInformation("✅ Identity data seeded successfully");
+        
+        // Step 2: Seed documents and AI configuration
+        logger.LogInformation("Seeding documents and AI configuration...");
         var seeder = scope.ServiceProvider.GetRequiredService<DatabaseSeeder>();
         await seeder.SeedAsync();
+        logger.LogInformation("✅ Document data seeded successfully");
         
-        // Seed agent templates
+        // Step 3: Seed agent templates
+        logger.LogInformation("Seeding agent templates...");
         var agentTemplateSeeder = scope.ServiceProvider.GetRequiredService<AgentTemplateSeeder>();
         await agentTemplateSeeder.SeedTemplatesAsync();
+        logger.LogInformation("✅ Agent templates seeded successfully");
         
-        logger.LogInformation("Database seeding completed successfully");
+        logger.LogInformation("✅ Database seeding completed successfully");
     }
     catch (Exception ex)
     {
@@ -637,15 +777,12 @@ using (var scope = app.Services.CreateScope())
             "Please verify:\n" +
             "1. Database connection string is correct and database server is accessible\n" +
             "2. Database has been created and migrations have been applied\n" +
-            "3. Database user has appropriate permissions\n" +
-            "4. If Client and Server start simultaneously, one may fail to seed - this is normal and can be ignored");
+            "3. Database user has appropriate permissions");
         
         // Log additional diagnostic information
-        logger.LogWarning("Application will attempt to start despite seeding failure. Database may have been seeded by another instance.");
+        logger.LogWarning("Application will attempt to start despite seeding failure.");
         
         // Allow the application to continue even if seeding fails
-        // This is especially important when Client and Server start together
-        // as they might conflict when trying to seed the same database
     }
 }
 
@@ -689,6 +826,9 @@ if (!string.IsNullOrEmpty(hangfireConnectionString))
 }
 
 app.MapControllers();
+
+// Map SignalR hubs
+app.MapHub<DocN.Server.Hubs.NotificationHub>("/hubs/notifications");
 
 // Add Prometheus-compatible metrics endpoint via OpenTelemetry
 app.UseOpenTelemetryPrometheusScrapingEndpoint();

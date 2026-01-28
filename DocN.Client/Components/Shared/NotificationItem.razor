@@ -1,0 +1,104 @@
+@using DocN.Data.Models
+@using Microsoft.FluentUI.AspNetCore.Components
+
+<div class="notification-item @(Notification.IsRead ? "read" : "unread") @(Notification.IsImportant ? "important" : "")"
+     @onclick="HandleClick">
+    <div class="notification-icon">
+        @switch (Notification.Icon)
+        {
+            case "document":
+                <FluentIcon Value="@(new Icons.Regular.Size24.Document())" Color="@GetIconColor()" />
+                break;
+            case "comment":
+                <FluentIcon Value="@(new Icons.Regular.Size24.Comment())" Color="@GetIconColor()" />
+                break;
+            case "mention":
+                <FluentIcon Value="@(new Icons.Regular.Size24.Mention())" Color="@GetIconColor()" />
+                break;
+            case "alert":
+                <FluentIcon Value="@(new Icons.Regular.Size24.Warning())" Color="@GetIconColor()" />
+                break;
+            case "check":
+                <FluentIcon Value="@(new Icons.Regular.Size24.CheckmarkCircle())" Color="@GetIconColor()" />
+                break;
+            default:
+                <FluentIcon Value="@(new Icons.Regular.Size24.Info())" Color="@GetIconColor()" />
+                break;
+        }
+    </div>
+    
+    <div class="notification-content">
+        <div class="notification-header">
+            <span class="notification-title">@Notification.Title</span>
+            @if (Notification.IsImportant)
+            {
+                <FluentIcon Value="@(new Icons.Filled.Size16.Important())" Color="Color.Error" />
+            }
+        </div>
+        <p class="notification-message">@Notification.Message</p>
+        <span class="notification-time">@FormatTime(Notification.CreatedAt)</span>
+    </div>
+    
+    <div class="notification-actions">
+        @if (!Notification.IsRead)
+        {
+            <span class="unread-dot"></span>
+        }
+        <FluentButton Appearance="Appearance.Stealth" 
+                     OnClick="@HandleDelete" 
+                     OnClick:stopPropagation="true"
+                     class="delete-button">
+            <FluentIcon Value="@(new Icons.Regular.Size16.Dismiss())" />
+        </FluentButton>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public Notification Notification { get; set; } = null!;
+
+    [Parameter]
+    public EventCallback<Notification> OnClick { get; set; }
+
+    [Parameter]
+    public EventCallback<int> OnDelete { get; set; }
+
+    private async Task HandleClick()
+    {
+        await OnClick.InvokeAsync(Notification);
+    }
+
+    private async Task HandleDelete()
+    {
+        await OnDelete.InvokeAsync(Notification.Id);
+    }
+
+    private Color GetIconColor()
+    {
+        return Notification.Type switch
+        {
+            NotificationTypes.DocumentProcessed => Color.Success,
+            NotificationTypes.NewComment => Color.Info,
+            NotificationTypes.Mention => Color.Warning,
+            NotificationTypes.SystemAlert => Color.Error,
+            NotificationTypes.TaskCompleted => Color.Success,
+            _ => Color.Neutral
+        };
+    }
+
+    private string FormatTime(DateTime dateTime)
+    {
+        var timeSpan = DateTime.UtcNow - dateTime;
+        
+        if (timeSpan.TotalMinutes < 1)
+            return "Adesso";
+        if (timeSpan.TotalMinutes < 60)
+            return $"{(int)timeSpan.TotalMinutes}m fa";
+        if (timeSpan.TotalHours < 24)
+            return $"{(int)timeSpan.TotalHours}h fa";
+        if (timeSpan.TotalDays < 7)
+            return $"{(int)timeSpan.TotalDays}g fa";
+        
+        return dateTime.ToLocalTime().ToString("dd/MM/yyyy HH:mm");
+    }
+}
