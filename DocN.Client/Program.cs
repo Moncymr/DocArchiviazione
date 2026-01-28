@@ -180,8 +180,22 @@ builder.Services.AddScoped<DocN.Client.Services.NotificationClientService>();
 // This matches the server-side timeout configuration for AI providers
 builder.Services.AddHttpClient("BackendAPI", client =>
 {
-    client.BaseAddress = new Uri(builder.Configuration["BackendApiUrl"] ?? "https://localhost:5211/");
+    var backendUrl = builder.Configuration["BackendApiUrl"] ?? "https://localhost:5211/";
+    client.BaseAddress = new Uri(backendUrl);
     client.Timeout = TimeSpan.FromMinutes(5);
+    Log.Information("BackendAPI HttpClient configured with BaseAddress: {BackendUrl}", backendUrl);
+})
+.ConfigurePrimaryHttpMessageHandler(() =>
+{
+    // In development, bypass SSL certificate validation to avoid issues with self-signed certificates
+    // This is ONLY for development - production should use valid certificates
+    var handler = new HttpClientHandler();
+    if (builder.Environment.IsDevelopment())
+    {
+        handler.ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
+        Log.Warning("SSL certificate validation bypassed for development environment");
+    }
+    return handler;
 });
 
 // Register Authentication Service to call Server API for login/register/logout
