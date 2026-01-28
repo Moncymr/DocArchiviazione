@@ -575,7 +575,9 @@ builder.Services.AddScoped<IStatisticalAnswerGenerator, StatisticalAnswerGenerat
 builder.Services.AddHostedService<BatchEmbeddingProcessor>();
 builder.Services.AddHostedService<IngestionSchedulerService>();
 
-// Register DatabaseSeeder
+// Register Seeders
+// IMPORTANT: ApplicationSeeder creates default users/roles needed for login
+builder.Services.AddScoped<ApplicationSeeder>();
 builder.Services.AddScoped<DatabaseSeeder>();
 
 // Add Health Checks for monitoring and orchestration
@@ -632,19 +634,34 @@ using (var scope = app.Services.CreateScope())
 }
 
 // Seed the database
+// IMPORTANT: Seeding order matters!
+// 1. ApplicationSeeder - Creates users, roles, tenants (required for login)
+// 2. DatabaseSeeder - Creates documents and AI configurations
+// 3. AgentTemplateSeeder - Creates agent templates
 using (var scope = app.Services.CreateScope())
 {
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
     try
     {
+        // Step 1: Seed Identity data (users, roles, tenants) - REQUIRED FOR LOGIN
+        logger.LogInformation("Seeding Identity data (users, roles, tenants)...");
+        var appSeeder = scope.ServiceProvider.GetRequiredService<ApplicationSeeder>();
+        await appSeeder.SeedAsync();
+        logger.LogInformation("✅ Identity data seeded successfully");
+        
+        // Step 2: Seed documents and AI configuration
+        logger.LogInformation("Seeding documents and AI configuration...");
         var seeder = scope.ServiceProvider.GetRequiredService<DatabaseSeeder>();
         await seeder.SeedAsync();
+        logger.LogInformation("✅ Document data seeded successfully");
         
-        // Seed agent templates
+        // Step 3: Seed agent templates
+        logger.LogInformation("Seeding agent templates...");
         var agentTemplateSeeder = scope.ServiceProvider.GetRequiredService<AgentTemplateSeeder>();
         await agentTemplateSeeder.SeedTemplatesAsync();
+        logger.LogInformation("✅ Agent templates seeded successfully");
         
-        logger.LogInformation("Database seeding completed successfully");
+        logger.LogInformation("✅ Database seeding completed successfully");
     }
     catch (Exception ex)
     {
@@ -652,15 +669,12 @@ using (var scope = app.Services.CreateScope())
             "Please verify:\n" +
             "1. Database connection string is correct and database server is accessible\n" +
             "2. Database has been created and migrations have been applied\n" +
-            "3. Database user has appropriate permissions\n" +
-            "4. If Client and Server start simultaneously, one may fail to seed - this is normal and can be ignored");
+            "3. Database user has appropriate permissions");
         
         // Log additional diagnostic information
-        logger.LogWarning("Application will attempt to start despite seeding failure. Database may have been seeded by another instance.");
+        logger.LogWarning("Application will attempt to start despite seeding failure.");
         
         // Allow the application to continue even if seeding fails
-        // This is especially important when Client and Server start together
-        // as they might conflict when trying to seed the same database
     }
 }
 
