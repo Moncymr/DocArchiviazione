@@ -1,16 +1,7 @@
 using DocN.Client.Components;
 using Microsoft.FluentUI.AspNetCore.Components;
-using DocN.Core.Interfaces;
-using DocN.Data;
 using DocN.Data.Models;
-using DocN.Data.Services;
-using Microsoft.AspNetCore.Identity;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.SemanticKernel;
-
-#pragma warning disable SKEXP0001 // Type is for evaluation purposes only
-#pragma warning disable SKEXP0010 // Method is for evaluation purposes only
-#pragma warning disable SKEXP0110 // Agents are experimental
+using DocN.Client.Services;
 
 // Helper method to ensure configuration files exist
 static void EnsureConfigurationFiles()
@@ -242,116 +233,9 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 // Authentication endpoints
-app.MapPost("/logout", async (SignInManager<ApplicationUser> signInManager) =>
-{
-    await signInManager.SignOutAsync();
-    return Results.Redirect("/");
-}).RequireAuthorization();
-
-app.MapPost("/account/login", async (
-    HttpContext context,
-    SignInManager<ApplicationUser> signInManager,
-    UserManager<ApplicationUser> userManager) =>
-{
-    var form = await context.Request.ReadFormAsync();
-    var email = form["email"].ToString();
-    var password = form["password"].ToString();
-    var rememberMe = form["rememberMe"].ToString() == "true";
-
-    if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
-    {
-        return Results.Redirect("/login?error=invalid");
-    }
-
-    var user = await userManager.FindByEmailAsync(email);
-    if (user == null)
-    {
-        return Results.Redirect("/login?error=invalid");
-    }
-
-    var result = await signInManager.PasswordSignInAsync(
-        user.UserName!,
-        password,
-        rememberMe,
-        lockoutOnFailure: true
-    );
-
-    if (result.Succeeded)
-    {
-        // Update last login time
-        user.LastLoginAt = DateTime.UtcNow;
-        await userManager.UpdateAsync(user);
-        return Results.Redirect("/");
-    }
-    else if (result.IsLockedOut)
-    {
-        return Results.Redirect("/login?error=locked");
-    }
-    else if (result.RequiresTwoFactor)
-    {
-        return Results.Redirect("/login?error=2fa");
-    }
-    else
-    {
-        return Results.Redirect("/login?error=invalid");
-    }
-}).AllowAnonymous();
-
-app.MapPost("/account/register", async (
-    HttpContext context,
-    UserManager<ApplicationUser> userManager,
-    SignInManager<ApplicationUser> signInManager) =>
-{
-    var form = await context.Request.ReadFormAsync();
-    var firstName = form["firstName"].ToString();
-    var lastName = form["lastName"].ToString();
-    var email = form["email"].ToString();
-    var password = form["password"].ToString();
-    var confirmPassword = form["confirmPassword"].ToString();
-
-    if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password) ||
-        string.IsNullOrWhiteSpace(firstName) || string.IsNullOrWhiteSpace(lastName))
-    {
-        return Results.Redirect("/register?error=required");
-    }
-
-    if (password != confirmPassword)
-    {
-        return Results.Redirect("/register?error=mismatch");
-    }
-
-    // Check if user already exists
-    var existingUser = await userManager.FindByEmailAsync(email);
-    if (existingUser != null)
-    {
-        return Results.Redirect("/register?error=exists");
-    }
-
-    var user = new ApplicationUser
-    {
-        UserName = email,
-        Email = email,
-        FirstName = firstName,
-        LastName = lastName,
-        CreatedAt = DateTime.UtcNow,
-        IsActive = true
-    };
-
-    var result = await userManager.CreateAsync(user, password);
-
-    if (result.Succeeded)
-    {
-        // Sign in the user
-        await signInManager.SignInAsync(user, isPersistent: false);
-        return Results.Redirect("/?registered=true");
-    }
-    else
-    {
-        // Get the first error code, or use a generic error if none found
-        var error = result.Errors.FirstOrDefault()?.Code ?? "RegistrationFailed";
-        return Results.Redirect($"/register?error={error}");
-    }
-}).AllowAnonymous();
+// NOTE: Authentication endpoints (login, logout, register) are handled by the Server.
+// The Client should submit forms to the Server's authentication endpoints, not handle them locally.
+// The Server will manage Identity services (UserManager, SignInManager) and return authentication cookies.
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
