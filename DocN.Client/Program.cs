@@ -290,8 +290,9 @@ else
     builder.Services.AddScoped<ISemanticRAGService, NoOpSemanticRAGService>();
 }
 
-// Register ApplicationSeeder
-builder.Services.AddScoped<DocN.Data.Services.ApplicationSeeder>();
+// NOTE: Database seeding is handled by the Server, not the Client
+// The Client is a Blazor WebAssembly application and should only communicate with the Server via HTTP APIs
+// Direct database access from the Client can cause race conditions and conflicts when both start simultaneously
 
 // Configure HttpClient to call the backend API with extended timeout for AI operations
 // Increased timeout to 300 seconds (5 minutes) for AI/RAG operations which can take longer
@@ -304,35 +305,19 @@ builder.Services.AddHttpClient("BackendAPI", client =>
 
 var app = builder.Build();
 
-// Seed the database with default tenant and user
-using (var scope = app.Services.CreateScope())
-{
-    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-    try
-    {
-        var seeder = scope.ServiceProvider.GetRequiredService<DocN.Data.Services.ApplicationSeeder>();
-        await seeder.SeedAsync();
-        logger.LogInformation("Database seeding completed successfully");
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex, "An error occurred while seeding the database. The application will continue but may not function correctly without initial data.\n" +
-            "Please verify:\n" +
-            "1. Database connection string is correct and database server is accessible\n" +
-            "2. Database has been created using the SQL scripts in Database/ folder\n" +
-            "3. Database user has appropriate permissions\n" +
-            "4. If this is first startup, ensure the database has been initialized\n" +
-            "5. If Client and Server start simultaneously, one may fail to seed - this is normal and can be ignored");
-
-        // Log additional diagnostic information
-        logger.LogWarning("Application will attempt to start despite seeding failure. Database may have been seeded by another instance. Some features may not work correctly.");
-
-        // Allow the application to continue even if seeding fails
-        // This prevents immediate crash and allows users to see error messages in the UI
-        // Critical database issues will be caught when users try to access features
-        // When Client and Server start together, one might fail to seed due to database locks - this is expected
-    }
-}
+// NOTE: Database seeding removed from Client
+// ═══════════════════════════════════════════════════════════════════════════════
+// The Server is responsible for all database operations including seeding.
+// The Client should ONLY communicate with the Server via HTTP APIs.
+// 
+// Previous implementation had both Client and Server seeding the database,
+// which caused race conditions, conflicts, and crashes when starting simultaneously.
+// 
+// If you see database-related errors in the Client:
+// 1. Ensure the Server is running and has completed seeding
+// 2. Check the Server logs for seeding success/failure
+// 3. The Client will automatically work once the Server has seeded the database
+// ═══════════════════════════════════════════════════════════════════════════════
 
 // Ensure upload directory exists
 var fileStorageSettings = builder.Configuration.GetSection("FileStorage").Get<FileStorageSettings>();
