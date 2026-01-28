@@ -123,27 +123,11 @@ builder.Services.AddFluentUIComponents();
 // Add HttpClient for Blazor components
 builder.Services.AddHttpClient();
 
-// Add memory cache for caching service
+// Add memory cache for client-side caching (optional)
 builder.Services.AddMemoryCache(options =>
 {
-    options.SizeLimit = 1024 * 1024 * 100; // 100MB cache limit
+    options.SizeLimit = 1024 * 1024 * 50; // 50MB cache limit for client-side data
 });
-
-// Database configuration
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-
-// Use a fallback connection string only in development
-if (string.IsNullOrEmpty(connectionString))
-{
-    if (builder.Environment.IsDevelopment())
-    {
-        connectionString = "Server=NTSPJ-060-02\\SQL2025;Database=DocNDb;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True;Encrypt=True";
-    }
-    else
-    {
-        throw new InvalidOperationException("Database connection string 'DefaultConnection' is not configured. Please set it in appsettings.json or environment variables.");
-    }
-}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // CLIENT AUTHENTICATION (Cookie-Based, No Direct Database Access)
@@ -171,92 +155,30 @@ builder.Services.AddAuthentication(Microsoft.AspNetCore.Authentication.Cookies.C
 
 builder.Services.AddCascadingAuthenticationState();
 
-// Application Settings
+// ═══════════════════════════════════════════════════════════════════════════════
+// CLIENT-SIDE SERVICES (NO DATABASE ACCESS)
+// ═══════════════════════════════════════════════════════════════════════════════
+// The Client should ONLY have UI services and HTTP clients.
+// All data services are in the Server and accessed via HTTP APIs.
+// 
+// REMOVED: All database-dependent services that were causing DI errors:
+// - DocumentService, EmbeddingService, CategoryService
+// - DocumentStatisticsService, MultiProviderAIService
+// - DashboardWidgetService, SavedSearchService, SearchSuggestionService
+// - UserActivityService, LogService, SemanticRAGService
+// 
+// These services require ApplicationDbContext which is not available in Client.
+// Client components should call Server HTTP APIs instead of using services directly.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Application Settings (for configuration only, not for data services)
 builder.Services.Configure<FileStorageSettings>(builder.Configuration.GetSection("FileStorage"));
-builder.Services.Configure<AISettings>(builder.Configuration.GetSection("AI"));
-builder.Services.Configure<OpenAISettings>(builder.Configuration.GetSection("OpenAI"));
-builder.Services.Configure<GeminiSettings>(builder.Configuration.GetSection("Gemini"));
-builder.Services.Configure<EmbeddingsSettings>(builder.Configuration.GetSection("Embeddings"));
 
-// Application Services
-builder.Services.AddScoped<IDocumentService, DocumentService>();
-builder.Services.AddScoped<DocN.Data.Services.IChunkingService, DocN.Data.Services.ChunkingService>();
-builder.Services.AddScoped<DocN.Data.Services.IEmbeddingService, EmbeddingService>();
-builder.Services.AddScoped<DocN.Data.Services.ICategoryService, CategoryService>();
-builder.Services.AddScoped<IDocumentStatisticsService, DocumentStatisticsService>();
-builder.Services.AddScoped<IMultiProviderAIService, MultiProviderAIService>();
-builder.Services.AddScoped<IOCRService, TesseractOCRService>();
-builder.Services.AddScoped<IFileProcessingService, FileProcessingService>();
-builder.Services.AddScoped<ILogService, LogService>();
-
-// Dashboard and Personalization Services
-builder.Services.AddScoped<IDashboardWidgetService, DashboardWidgetService>();
-builder.Services.AddScoped<ISavedSearchService, SavedSearchService>();
-builder.Services.AddScoped<ISearchSuggestionService, SearchSuggestionService>();
-builder.Services.AddScoped<IUserActivityService, UserActivityService>();
-
-// Notification Service for real-time updates
+// Notification Service for real-time updates (SignalR client-side only)
 builder.Services.AddScoped<DocN.Client.Services.NotificationClientService>();
 
-// Configure Semantic Kernel for RAG Service (only if AI services are configured)
-var azureOpenAIEndpoint = builder.Configuration["AzureOpenAI:Endpoint"];
-var azureOpenAIKey = builder.Configuration["AzureOpenAI:ApiKey"];
-var azureOpenAIChatDeployment = builder.Configuration["AzureOpenAI:ChatDeployment"] ?? "gpt-4";
-var azureOpenAIEmbeddingDeployment = builder.Configuration["AzureOpenAI:EmbeddingDeployment"] ?? "text-embedding-ada-002";
-var openAIKey = builder.Configuration["OpenAI:ApiKey"];
-
-var hasAIServiceConfigured = (!string.IsNullOrEmpty(azureOpenAIEndpoint) && !string.IsNullOrEmpty(azureOpenAIKey)) ||
-                             !string.IsNullOrEmpty(openAIKey);
-
-if (hasAIServiceConfigured)
-{
-    var kernelBuilder = Kernel.CreateBuilder();
-
-    if (!string.IsNullOrEmpty(azureOpenAIEndpoint) && !string.IsNullOrEmpty(azureOpenAIKey))
-    {
-        // Add Azure OpenAI Chat Completion
-        kernelBuilder.AddAzureOpenAIChatCompletion(
-            deploymentName: azureOpenAIChatDeployment,
-            endpoint: azureOpenAIEndpoint,
-            apiKey: azureOpenAIKey);
-
-        // Add Azure OpenAI Text Embedding
-        kernelBuilder.AddAzureOpenAITextEmbeddingGeneration(
-            deploymentName: azureOpenAIEmbeddingDeployment,
-            endpoint: azureOpenAIEndpoint,
-            apiKey: azureOpenAIKey);
-    }
-    else if (!string.IsNullOrEmpty(openAIKey))
-    {
-        // Fallback to OpenAI if Azure is not configured
-        kernelBuilder.AddOpenAIChatCompletion(
-            modelId: "gpt-4",
-            apiKey: openAIKey);
-
-        kernelBuilder.AddOpenAITextEmbeddingGeneration(
-            modelId: "text-embedding-ada-002",
-            apiKey: openAIKey);
-    }
-
-    var kernel = kernelBuilder.Build();
-    builder.Services.AddSingleton(kernel);
-
-    // Register additional services for RAG
-    builder.Services.AddScoped<DocN.Data.Services.IChunkingService, ChunkingService>();
-    builder.Services.AddScoped<ICacheService, CacheService>();
-
-    // Register Semantic RAG Service only when AI services are configured
-    builder.Services.AddScoped<ISemanticRAGService, SemanticRAGService>();
-}
-else
-{
-    // Register a no-op implementation when no AI service is configured
-    builder.Services.AddScoped<DocN.Data.Services.IChunkingService, ChunkingService>();
-    builder.Services.AddScoped<ICacheService, CacheService>();
-
-    // Register a no-op service that returns empty results when AI is not configured
-    builder.Services.AddScoped<ISemanticRAGService, NoOpSemanticRAGService>();
-}
+// NOTE: All data operations should be performed via HttpClient calls to Server APIs
+// Example: Instead of injecting IDocumentService, use HttpClient to call /api/documents
 
 // NOTE: Database seeding is handled by the Server, not the Client
 // The Client is a Blazor WebAssembly application and should only communicate with the Server via HTTP APIs
