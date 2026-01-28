@@ -7,15 +7,16 @@ namespace DocN.Server.Services;
 
 /// <summary>
 /// Wrapper service that handles SignalR notifications for the NotificationService
+/// IMPORTANT: Uses concrete NotificationService class (not interface) to avoid circular dependency
 /// </summary>
 public class SignalRNotificationService : INotificationService
 {
-    private readonly INotificationService _notificationService;
+    private readonly NotificationService _notificationService;
     private readonly IHubContext<NotificationHub> _hubContext;
     private readonly ILogger<SignalRNotificationService> _logger;
 
     public SignalRNotificationService(
-        INotificationService notificationService,
+        NotificationService notificationService,
         IHubContext<NotificationHub> hubContext,
         ILogger<SignalRNotificationService> logger)
     {
