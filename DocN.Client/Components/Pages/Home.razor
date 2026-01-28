@@ -4,9 +4,10 @@
 @using DocN.Data.Constants
 @using Microsoft.EntityFrameworkCore
 @rendermode InteractiveServer
-@inject DocArcContext DbContext
-@inject DocN.Data.Services.IEmbeddingService EmbeddingService
-@inject DocN.Data.Services.IChunkingService ChunkingService
+@* COMMENTED OUT - Database/Data services not available in Client (Server-only) *@
+@*@inject DocArcContext DbContext*@
+@*@inject DocN.Data.Services.IEmbeddingService EmbeddingService*@
+@*@inject DocN.Data.Services.IChunkingService ChunkingService*@
 @inject ILogger<Home> Logger
 @inject NavigationManager Navigation
 
@@ -188,210 +189,21 @@
 
     private async Task RecreateAllEmbeddings()
     {
+        // TEMPORARY PLACEHOLDER - Database services not available in Client
+        // This functionality needs to be called via Server HTTP API
         isRecreatingEmbeddings = true;
         embeddingMessage = "";
         embeddingSuccess = false;
-        totalDocuments = 0;
-        currentDocument = 0;
-        currentDocumentName = "";
-        processedSuccessCount = 0;
-        processedErrorCount = 0;
         StateHasChanged();
 
-        try
-        {
-            Logger.LogInformation("Starting recreation of all embeddings");
+        await Task.Delay(500); // Simulate processing
 
-            // Get all documents - use anonymous type to completely avoid Document entity type
-            var documents = await DbContext.Documents
-                .AsNoTracking()
-                .Where(d => !string.IsNullOrEmpty(d.ExtractedText))
-                .Select(d => new
-                {
-                    d.Id,
-                    d.FileName,
-                    d.ExtractedText,
-                    d.ChunkEmbeddingStatus
-                })
-                .ToListAsync();
-
-            totalDocuments = documents.Count;
-            Logger.LogInformation("Found {Count} documents to process", totalDocuments);
-            StateHasChanged(); // Update UI with total count
-
-            int successCount = 0;
-            int errorCount = 0;
-
-            foreach (var docInfo in documents)
-            {
-                currentDocument++;
-                currentDocumentName = docInfo.FileName ?? $"Documento #{docInfo.Id}";
-                
-                try
-                {
-                    // Regenerate the embedding
-                    var embedding = await EmbeddingService.GenerateEmbeddingAsync(docInfo.ExtractedText);
-                    
-                    if (embedding != null)
-                    {
-                        // Use raw SQL to update embeddings to completely avoid EF Core type mapping
-                        // This bypasses the vector type mapping bug entirely
-                        string vectorFieldName;
-                        string otherVectorFieldName;
-                        int dimension;
-                        
-                        if (embedding.Length == 768)
-                        {
-                            vectorFieldName = "EmbeddingVector768";
-                            otherVectorFieldName = "EmbeddingVector1536";
-                            dimension = 768;
-                        }
-                        else if (embedding.Length == 1536)
-                        {
-                            vectorFieldName = "EmbeddingVector1536";
-                            otherVectorFieldName = "EmbeddingVector768";
-                            dimension = 1536;
-                        }
-                        else
-                        {
-                            Logger.LogWarning("Unsupported embedding dimension {Dimension} for document {Id}", 
-                                embedding.Length, docInfo.Id);
-                            errorCount++;
-                            processedErrorCount++;
-                            continue;
-                        }
-                        
-                        // Convert float array to string representation for SQL
-                        // Using StringBuilder for better performance with large arrays
-                        var sb = new System.Text.StringBuilder("[");
-                        for (int i = 0; i < embedding.Length; i++)
-                        {
-                            if (i > 0) sb.Append(',');
-                            sb.Append(embedding[i].ToString("G17", System.Globalization.CultureInfo.InvariantCulture));
-                        }
-                        sb.Append(']');
-                        var vectorString = sb.ToString();
-                        
-                        // Execute raw SQL to update the vector field
-                        // Field names are hardcoded from validated enum above - no SQL injection risk
-                        await DbContext.Database.ExecuteSqlRawAsync(
-                            $"UPDATE Documents SET {vectorFieldName} = CAST(@p0 AS VECTOR({dimension})), {otherVectorFieldName} = NULL, EmbeddingDimension = @p1 WHERE Id = @p2",
-                            vectorString, dimension, docInfo.Id);
-                        
-                        successCount++;
-                        processedSuccessCount++;
-                    }
-
-                    // Delete existing chunks - use ExecuteDelete to avoid loading vector columns
-                    await DbContext.DocumentChunks
-                        .Where(c => c.DocumentId == docInfo.Id)
-                        .ExecuteDeleteAsync();
-
-                    // Create new chunks with embeddings
-                    // Create a minimal Document object for chunking (only needs Id and ExtractedText)
-                    var docForChunking = new Document 
-                    { 
-                        Id = docInfo.Id, 
-                        ExtractedText = docInfo.ExtractedText 
-                    };
-                    var newChunks = ChunkingService.ChunkDocument(docForChunking);
-                    int chunksEmbedded = 0;
-                    foreach (var chunk in newChunks)
-                    {
-                        var chunkEmbedding = await EmbeddingService.GenerateEmbeddingAsync(chunk.ChunkText);
-                        if (chunkEmbedding != null)
-                        {
-                            chunk.ChunkEmbedding = chunkEmbedding;
-                            // ChunkEmbedding setter automatically sets EmbeddingDimension
-                            chunksEmbedded++;
-                        }
-                        DbContext.DocumentChunks.Add(chunk);
-                    }
-
-                    // Update chunk embedding status using ExecuteUpdate
-                    string newStatus;
-                    if (newChunks.Count == 0)
-                    {
-                        newStatus = ChunkEmbeddingStatus.NotRequired;
-                    }
-                    else if (chunksEmbedded == newChunks.Count)
-                    {
-                        newStatus = ChunkEmbeddingStatus.Completed;
-                    }
-                    else if (chunksEmbedded > 0)
-                    {
-                        // Some chunks have embeddings but not all - mark as pending for retry
-                        newStatus = ChunkEmbeddingStatus.Pending;
-                    }
-                    else
-                    {
-                        // No chunks have embeddings
-                        newStatus = ChunkEmbeddingStatus.Pending;
-                    }
-                    
-                    await DbContext.Documents
-                        .Where(d => d.Id == docInfo.Id)
-                        .ExecuteUpdateAsync(setters => setters
-                            .SetProperty(d => d.ChunkEmbeddingStatus, newStatus));
-
-                    await DbContext.SaveChangesAsync();
-                    Logger.LogInformation("Recreated embeddings for document {Id}: {FileName} - {ChunksEmbedded}/{TotalChunks} chunks embedded", 
-                        docInfo.Id, docInfo.FileName, chunksEmbedded, newChunks.Count);
-                }
-                catch (Exception ex)
-                {
-                    errorCount++;
-                    processedErrorCount++;
-                    Logger.LogError(ex, "Error recreating embeddings for document {Id}: {FileName}", 
-                        docInfo.Id, docInfo.FileName);
-                }
-                
-                // Update UI once per document (after all processing is complete)
-                StateHasChanged();
-            }
-
-            // Provide informative feedback based on results
-            if (totalDocuments == 0)
-            {
-                embeddingMessage = "ℹ️ Nessun documento con testo estratto trovato nel database.";
-                embeddingSuccess = false;
-            }
-            else if (successCount == 0 && errorCount > 0)
-            {
-                embeddingMessage = $"❌ Errore: Tutti i {totalDocuments} documenti hanno fallito la rigenerazione. Verifica la configurazione del provider AI.";
-                embeddingSuccess = false;
-            }
-            else if (successCount == 0)
-            {
-                // This can happen if embedding service returns null but doesn't throw exceptions
-                embeddingMessage = $"⚠️ Attenzione: Nessun embedding generato per {totalDocuments} documenti. Verifica la configurazione del provider AI.";
-                embeddingSuccess = false;
-            }
-            else if (errorCount > 0)
-            {
-                embeddingMessage = $"⚠️ Completato con errori: Embeddings e chunks ricreati per {successCount}/{totalDocuments} documenti. Errori: {errorCount}";
-                embeddingSuccess = false;
-            }
-            else
-            {
-                embeddingMessage = $"✅ Successo! Embeddings e chunks ricreati per tutti i {successCount} documenti.";
-                embeddingSuccess = true;
-            }
-            
-            Logger.LogInformation("Completed recreation of embeddings: {SuccessCount} successful, {ErrorCount} errors out of {TotalDocuments} documents", 
-                successCount, errorCount, totalDocuments);
-        }
-        catch (Exception ex)
-        {
-            embeddingMessage = "❌ Errore critico durante la rigenerazione degli embeddings. Controlla i log per maggiori dettagli.";
-            embeddingSuccess = false;
-            Logger.LogError(ex, "Critical error recreating all embeddings: {Message}", ex.Message);
-        }
-        finally
-        {
-            isRecreatingEmbeddings = false;
-            StateHasChanged();
-        }
+        embeddingMessage = "⚠️ Questa funzionalità richiede accesso al database del server. Verrà implementata tramite API HTTP in una versione futura.";
+        embeddingSuccess = false;
+        isRecreatingEmbeddings = false;
+        StateHasChanged();
+        
+        Logger.LogWarning("RecreateAllEmbeddings called but database services not available in Client");
     }
 }
 
