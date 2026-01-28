@@ -2,6 +2,7 @@ using DocN.Client.Components;
 using Microsoft.FluentUI.AspNetCore.Components;
 using DocN.Data.Models;
 using DocN.Client.Services;
+using Microsoft.AspNetCore.Components.Authorization;
 
 // Helper method to ensure configuration files exist
 static void EnsureConfigurationFiles()
@@ -168,6 +169,15 @@ builder.Services.Configure<FileStorageSettings>(builder.Configuration.GetSection
 // Notification Service for real-time updates (SignalR client-side only)
 builder.Services.AddScoped<DocN.Client.Services.NotificationClientService>();
 
+// Authentication State Provider - Manages user authentication state in Client
+// This provider stores user information in browser session storage and provides
+// authentication state to all components via AuthorizeView and AuthenticationStateProvider
+builder.Services.AddScoped<DocN.Client.Services.CustomAuthenticationStateProvider>();
+builder.Services.AddScoped<AuthenticationStateProvider>(provider => 
+    provider.GetRequiredService<DocN.Client.Services.CustomAuthenticationStateProvider>());
+builder.Services.AddAuthorizationCore();
+builder.Services.AddCascadingAuthenticationState();
+
 // NOTE: All data operations should be performed via HttpClient calls to Server APIs
 // Example: Instead of injecting IDocumentService, use HttpClient to call /api/documents
 
@@ -180,8 +190,22 @@ builder.Services.AddScoped<DocN.Client.Services.NotificationClientService>();
 // This matches the server-side timeout configuration for AI providers
 builder.Services.AddHttpClient("BackendAPI", client =>
 {
-    client.BaseAddress = new Uri(builder.Configuration["BackendApiUrl"] ?? "https://localhost:5211/");
+    var backendUrl = builder.Configuration["BackendApiUrl"] ?? "https://localhost:5211/";
+    client.BaseAddress = new Uri(backendUrl);
     client.Timeout = TimeSpan.FromMinutes(5);
+    Console.WriteLine($"BackendAPI HttpClient configured with BaseAddress: {backendUrl}");
+})
+.ConfigurePrimaryHttpMessageHandler(() =>
+{
+    // In development, bypass SSL certificate validation to avoid issues with self-signed certificates
+    // This is ONLY for development - production should use valid certificates
+    var handler = new HttpClientHandler();
+    if (builder.Environment.IsDevelopment())
+    {
+        handler.ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator;
+        Console.WriteLine("SSL certificate validation bypassed for development environment");
+    }
+    return handler;
 });
 
 // Register Authentication Service to call Server API for login/register/logout

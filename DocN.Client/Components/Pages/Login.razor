@@ -3,6 +3,7 @@
 @using System.ComponentModel.DataAnnotations
 @using DocN.Client.Services
 @inject IAuthenticationService AuthService
+@inject CustomAuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 
 <PageTitle>Login - DocN</PageTitle>
@@ -306,6 +307,14 @@
 
             if (result.Success)
             {
+                // Set authentication state in the provider
+                await AuthStateProvider.SetAuthenticationStateAsync(
+                    result.UserId ?? string.Empty,
+                    result.Email ?? string.Empty,
+                    result.FirstName ?? "User",
+                    result.LastName ?? ""
+                );
+                
                 // Redirect to home page on successful login
                 Navigation.NavigateTo("/", forceLoad: true);
             }
