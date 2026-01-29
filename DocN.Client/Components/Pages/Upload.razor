@@ -167,11 +167,13 @@
                 }
 
                 <div class="analysis-actions">
-                    <button class="btn btn-primary" @onclick="ViewDocument">
-                        📄 View Document Details
+                    <button class="btn btn-analyze" @onclick="ViewDocument">
+                        👇 Clicca qui per analizzare il documento 👇
                     </button>
+                </div>
+                <div class="secondary-actions">
                     <button class="btn btn-secondary" @onclick="UploadAnother">
-                        📤 Upload Another
+                        📤 Carica un altro documento
                     </button>
                 </div>
             </div>
@@ -666,8 +668,43 @@
 
     .analysis-actions {
         display: flex;
-        gap: 1rem;
+        justify-content: center;
         margin-top: 1.5rem;
+    }
+
+    .btn-analyze {
+        padding: 1.25rem 2.5rem;
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        color: white;
+        border: none;
+        border-radius: 12px;
+        font-size: 1.25rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: all 0.3s;
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        text-align: center;
+        animation: pulse 2s infinite;
+    }
+
+    .btn-analyze:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+    }
+
+    @@keyframes pulse {
+        0%, 100% {
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        }
+        50% {
+            box-shadow: 0 6px 20px rgba(16, 185, 129, 0.5);
+        }
+    }
+
+    .secondary-actions {
+        display: flex;
+        justify-content: center;
+        margin-top: 1rem;
     }
 
     @@media (max-width: 768px) {
@@ -678,12 +715,18 @@
         }
 
         .form-actions,
-        .analysis-actions {
+        .analysis-actions,
+        .secondary-actions {
             flex-direction: column;
         }
 
         .btn {
             width: 100%;
+        }
+
+        .btn-analyze {
+            font-size: 1.1rem;
+            padding: 1rem 2rem;
         }
     }
 </style>
