@@ -1,7 +1,11 @@
 @using DocN.Data.Services
 @using System.Security.Claims
-@inject ISearchSuggestionService SearchSuggestionService
+@using System.Net.Http.Json
+@* COMMENTED OUT - SearchSuggestionService not available in Client (Server-only) *@
+@* TODO: Replace with HTTP API call to Server if autocomplete needed *@
+@*@inject ISearchSuggestionService SearchSuggestionService*@
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ILogger<SearchAutocomplete> Logger
 
 <div class="search-autocomplete">
     <div class="search-input-wrapper">
@@ -77,20 +81,12 @@
             return;
         }
 
-        if (!string.IsNullOrEmpty(currentUserId))
-        {
-            try
-            {
-                suggestions = await SearchSuggestionService.GetAutocompleteSuggestionsAsync(value, currentUserId, 8);
-                showSuggestions = suggestions.Any();
-                selectedIndex = -1;
-            }
-            catch
-            {
-                suggestions.Clear();
-                showSuggestions = false;
-            }
-        }
+        // TODO: Implement autocomplete via HTTP API to Server
+        // For now, autocomplete is disabled until the Server API is implemented
+        // The search itself works fine without autocomplete
+        Logger.LogDebug("Autocomplete disabled - waiting for Server API implementation");
+        showSuggestions = false;
+        suggestions.Clear();
     }
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
