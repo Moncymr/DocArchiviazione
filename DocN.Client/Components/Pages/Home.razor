@@ -3,6 +3,7 @@
 @using DocN.Data.Services
 @using DocN.Data.Constants
 @using Microsoft.EntityFrameworkCore
+@using System.Net.Http.Json
 @rendermode InteractiveServer
 @* COMMENTED OUT - Database/Data services not available in Client (Server-only) *@
 @*@inject DocArcContext DbContext*@
@@ -10,6 +11,7 @@
 @*@inject DocN.Data.Services.IChunkingService ChunkingService*@
 @inject ILogger<Home> Logger
 @inject NavigationManager Navigation
+@inject IHttpClientFactory HttpClientFactory
 
 <PageTitle>DocN - Document Management</PageTitle>
 
@@ -189,21 +191,73 @@
 
     private async Task RecreateAllEmbeddings()
     {
-        // TEMPORARY PLACEHOLDER - Database services not available in Client
-        // This functionality needs to be called via Server HTTP API
         isRecreatingEmbeddings = true;
         embeddingMessage = "";
         embeddingSuccess = false;
+        totalDocuments = 0;
+        currentDocument = 0;
+        processedSuccessCount = 0;
+        processedErrorCount = 0;
         StateHasChanged();
 
-        await Task.Delay(500); // Simulate processing
-
-        embeddingMessage = "⚠️ Questa funzionalità richiede accesso al database del server. Verrà implementata tramite API HTTP in una versione futura.";
-        embeddingSuccess = false;
-        isRecreatingEmbeddings = false;
-        StateHasChanged();
-        
-        Logger.LogWarning("RecreateAllEmbeddings called but database services not available in Client");
+        try
+        {
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+            
+            Logger.LogInformation("Starting embedding regeneration via API");
+            
+            var response = await httpClient.PostAsync("Documents/recreate-embeddings", null);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<RecreateEmbeddingsResult>();
+                if (result != null)
+                {
+                    totalDocuments = result.TotalDocuments;
+                    processedSuccessCount = result.SuccessCount;
+                    processedErrorCount = result.ErrorCount;
+                    embeddingMessage = result.Message;
+                    embeddingSuccess = true;
+                    
+                    Logger.LogInformation("Embedding regeneration completed: {Success} successes, {Errors} errors out of {Total} documents",
+                        result.SuccessCount, result.ErrorCount, result.TotalDocuments);
+                }
+                else
+                {
+                    embeddingMessage = "✅ Rigenerazione completata, ma impossibile leggere i dettagli della risposta.";
+                    embeddingSuccess = true;
+                }
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                embeddingMessage = $"❌ Errore durante la rigenerazione: {response.StatusCode} - {errorContent}";
+                embeddingSuccess = false;
+                
+                Logger.LogError("Embedding regeneration failed: {StatusCode} - {Error}", response.StatusCode, errorContent);
+            }
+        }
+        catch (Exception ex)
+        {
+            embeddingMessage = $"❌ Errore durante la chiamata API: {ex.Message}";
+            embeddingSuccess = false;
+            
+            Logger.LogError(ex, "Error calling embedding regeneration API");
+        }
+        finally
+        {
+            isRecreatingEmbeddings = false;
+            StateHasChanged();
+        }
+    }
+    
+    // DTO class for embedding regeneration result
+    private class RecreateEmbeddingsResult
+    {
+        public string Message { get; set; } = "";
+        public int SuccessCount { get; set; }
+        public int ErrorCount { get; set; }
+        public int TotalDocuments { get; set; }
     }
 }
 
