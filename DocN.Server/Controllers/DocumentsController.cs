@@ -510,6 +510,8 @@ public class DocumentsController : ControllerBase
             _logger.LogInformation("Document {Id} - {FileName} uploaded successfully", document.Id, document.FileName);
 
             // Perform AI analysis if text was extracted successfully
+            // NOTE: This generates document-level embeddings for semantic similarity search.
+            // Chunk-level embeddings are generated separately in the async task below for granular RAG retrieval.
             if (!string.IsNullOrEmpty(extractedText) && !extractedText.Contains("[Text extraction"))
             {
                 try
@@ -540,7 +542,7 @@ public class DocumentsController : ControllerBase
                             analysis.Embedding.Vector.Length, document.Id);
                     }
                     
-                    if (analysis.CategorySuggestions.Any())
+                    if (analysis.CategorySuggestions?.Any() == true)
                     {
                         document.SuggestedCategory = analysis.CategorySuggestions[0].CategoryName;
                         document.CategoryReasoning = analysis.CategorySuggestions[0].Reasoning;
@@ -548,14 +550,14 @@ public class DocumentsController : ControllerBase
                             document.SuggestedCategory, document.Id);
                     }
                     
-                    if (analysis.ExtractedTags.Any())
+                    if (analysis.ExtractedTags?.Any() == true)
                     {
                         document.AITagsJson = JsonSerializer.Serialize(analysis.ExtractedTags);
                         _logger.LogInformation("Extracted {TagCount} tags for document {Id}", 
                             analysis.ExtractedTags.Count, document.Id);
                     }
                     
-                    if (analysis.Metadata.Any())
+                    if (analysis.Metadata?.Any() == true)
                     {
                         document.ExtractedMetadataJson = JsonSerializer.Serialize(analysis.Metadata);
                         _logger.LogInformation("Extracted {MetadataCount} metadata fields for document {Id}", 

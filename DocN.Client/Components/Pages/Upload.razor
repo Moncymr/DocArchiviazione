@@ -122,7 +122,7 @@
                 @if (!string.IsNullOrEmpty(analysisResult.SuggestedCategory))
                 {
                     <div class="analysis-section">
-                        <h4>🏷️ Suggested Category</h4>
+                        <h4>📁 Suggested Category</h4>
                         <div class="category-suggestion">
                             <span class="category-name">@analysisResult.SuggestedCategory</span>
                             @if (!string.IsNullOrEmpty(analysisResult.CategoryReasoning))
@@ -136,7 +136,7 @@
                 @if (analysisResult.Tags != null && analysisResult.Tags.Any())
                 {
                     <div class="analysis-section">
-                        <h4>🏷️ Extracted Tags</h4>
+                        <h4>🔖 Extracted Tags</h4>
                         <div class="tags-container">
                             @foreach (var tag in analysisResult.Tags)
                             {
@@ -285,9 +285,15 @@
                     var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
                     var document = JsonSerializer.Deserialize<JsonElement>(responseContent, options);
                     
+                    // Ensure id property exists
+                    if (!document.TryGetProperty("id", out var idProp))
+                    {
+                        throw new InvalidOperationException("Response missing 'id' property");
+                    }
+                    
                     analysisResult = new DocumentAnalysisResult
                     {
-                        Id = document.GetProperty("id").GetInt32(),
+                        Id = idProp.GetInt32(),
                         SuggestedCategory = document.TryGetProperty("suggestedCategory", out var cat) ? cat.GetString() : null,
                         CategoryReasoning = document.TryGetProperty("categoryReasoning", out var reason) ? reason.GetString() : null,
                         ExtractedText = document.TryGetProperty("extractedText", out var text) ? text.GetString() : null,
