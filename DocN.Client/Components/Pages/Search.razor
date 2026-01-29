@@ -449,7 +449,8 @@
                 Filters = string.IsNullOrEmpty(categoryFilter) ? null : $"{{\"category\": \"{categoryFilter}\"}}"
             };
 
-            await SavedSearchService.CreateSearchAsync(savedSearch);
+            // TODO: Implement saved search via API
+            //await SavedSearchService.CreateSearchAsync(savedSearch);
             _showSaveSearchDialog = false;
             _saveSearchName = "";
         }
