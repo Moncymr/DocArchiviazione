@@ -206,7 +206,7 @@
             
             Logger.LogInformation("Starting embedding regeneration via API");
             
-            var response = await httpClient.PostAsync("Documents/recreate-embeddings", null);
+            var response = await httpClient.PostAsync("api/Documents/recreate-embeddings", null);
             
             if (response.IsSuccessStatusCode)
             {
@@ -231,7 +231,7 @@
             else
             {
                 var errorContent = await response.Content.ReadAsStringAsync();
-                embeddingMessage = $"❌ Errore durante la rigenerazione: {response.StatusCode} - {errorContent}";
+                embeddingMessage = $"❌ Errore durante la rigenerazione. Controlla i log del server per i dettagli.";
                 embeddingSuccess = false;
                 
                 Logger.LogError("Embedding regeneration failed: {StatusCode} - {Error}", response.StatusCode, errorContent);
@@ -239,7 +239,7 @@
         }
         catch (Exception ex)
         {
-            embeddingMessage = $"❌ Errore durante la chiamata API: {ex.Message}";
+            embeddingMessage = "❌ Errore durante la connessione al server. Riprova più tardi.";
             embeddingSuccess = false;
             
             Logger.LogError(ex, "Error calling embedding regeneration API");

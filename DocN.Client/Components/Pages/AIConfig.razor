@@ -1038,25 +1038,14 @@
             else
             {
                 var errorContent = await response.Content.ReadAsStringAsync();
-                message = $"❌ Errore nel salvataggio: {response.StatusCode} - {errorContent}";
+                message = "❌ Errore nel salvataggio della configurazione. Controlla i log del server per i dettagli.";
                 isError = true;
                 Logger.LogError("Error saving configuration: {StatusCode} - {Error}", response.StatusCode, errorContent);
             }
         }
         catch (Exception ex)
         {
-            // Capture inner exceptions for better error reporting
-            var fullErrorMessage = ex.Message;
-            var innerEx = ex.InnerException;
-            var depth = 1;
-            while (innerEx != null && depth <= 3)
-            {
-                fullErrorMessage += $"\n--- Inner Exception {depth} ---\n{innerEx.Message}";
-                innerEx = innerEx.InnerException;
-                depth++;
-            }
-            
-            message = $"❌ Errore nel salvataggio della configurazione: {fullErrorMessage}";
+            message = "❌ Errore durante il salvataggio. Controlla la connessione al server.";
             isError = true;
             Logger.LogError(ex, "Error saving configuration");
         }
