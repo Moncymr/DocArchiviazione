@@ -3,9 +3,9 @@
 @using DocN.Data.Models
 @using System.Net.Http.Json
 @using System.Text.Json
-@inject ApplicationDbContext DbContext
 @inject NavigationManager Navigation
 @inject IHttpClientFactory HttpClientFactory
+@inject ILogger<AIConfig> Logger
 @rendermode InteractiveServer
 
 <PageTitle>Configurazione AI - DocN</PageTitle>
@@ -929,51 +929,66 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // Try to load existing active configuration
-        config = await Task.Run(() => DbContext.AIConfigurations.FirstOrDefault(c => c.IsActive));
-        
-        // If none exists, create a new one with defaults
-        if (config == null)
+        try
         {
-            config = new AIConfiguration
+            // Load existing active configuration from Server API
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+            var response = await httpClient.GetAsync("api/config/active");
+            
+            if (response.IsSuccessStatusCode)
             {
-                ConfigurationName = "Configurazione Predefinita",
-                ProviderType = AIProviderType.Gemini,
-                MaxDocumentsToRetrieve = 5,
-                SimilarityThreshold = 0.7,
-                MaxTokensForContext = 4000,
-                MMRLambda = 0.7, // Default: bilanciato tra rilevanza e diversità
-                EmbeddingDimensions = 768, // Default for Gemini
-                EmbeddingModel = "text-embedding-004",
-                SystemPrompt = "Sei un assistente utile che risponde a domande basandoti sui documenti forniti. Cita sempre i documenti fonte quando fornisci informazioni.",
-                IsActive = true,
-                EnableChunking = true,
-                ChunkSize = 1000,
-                ChunkOverlap = 200,
-                EnableFallback = true,
-                // Default models
-                GeminiChatModel = "gemini-2.5-flash",
-                GeminiEmbeddingModel = "text-embedding-004",                
-                OpenAIChatModel = "gpt-4",
-                OpenAIEmbeddingModel = "text-embedding-ada-002",
-                AzureOpenAIChatModel = "gpt-4",
-                AzureOpenAIEmbeddingModel = "text-embedding-ada-002",
-                // Ollama defaults
-                OllamaEndpoint = "http://localhost:11434",
-                OllamaChatModel = "llama3",
-                OllamaEmbeddingModel = "nomic-embed-text",
-                // Groq defaults
-                GroqEndpoint = "https://api.groq.com/openai/v1",
-                GroqChatModel = "llama-3.1-8b-instant"
-            };
-        }
+                config = await response.Content.ReadFromJsonAsync<AIConfiguration>();
+            }
+            
+            // If none exists, create a new one with defaults
+            if (config == null)
+            {
+                config = new AIConfiguration
+                {
+                    ConfigurationName = "Configurazione Predefinita",
+                    ProviderType = AIProviderType.Gemini,
+                    MaxDocumentsToRetrieve = 5,
+                    SimilarityThreshold = 0.7,
+                    MaxTokensForContext = 4000,
+                    MMRLambda = 0.7, // Default: bilanciato tra rilevanza e diversità
+                    EmbeddingDimensions = 768, // Default for Gemini
+                    EmbeddingModel = "text-embedding-004",
+                    SystemPrompt = "Sei un assistente utile che risponde a domande basandoti sui documenti forniti. Cita sempre i documenti fonte quando fornisci informazioni.",
+                    IsActive = true,
+                    EnableChunking = true,
+                    ChunkSize = 1000,
+                    ChunkOverlap = 200,
+                    EnableFallback = true,
+                    // Default models
+                    GeminiChatModel = "gemini-2.5-flash",
+                    GeminiEmbeddingModel = "text-embedding-004",                
+                    OpenAIChatModel = "gpt-4",
+                    OpenAIEmbeddingModel = "text-embedding-ada-002",
+                    AzureOpenAIChatModel = "gpt-4",
+                    AzureOpenAIEmbeddingModel = "text-embedding-ada-002",
+                    // Ollama defaults
+                    OllamaEndpoint = "http://localhost:11434",
+                    OllamaChatModel = "llama3",
+                    OllamaEmbeddingModel = "nomic-embed-text",
+                    // Groq defaults
+                    GroqEndpoint = "https://api.groq.com/openai/v1",
+                    GroqChatModel = "llama-3.1-8b-instant"
+                };
+            }
 
-        // Initialize provider selections from config
-        selectedChatProvider = config.ChatProvider?.ToString("D") ?? "";
-        selectedEmbeddingsProvider = config.EmbeddingsProvider?.ToString("D") ?? "";
-        selectedTagExtractionProvider = config.TagExtractionProvider?.ToString("D") ?? "";
-        selectedMetadataExtractionProvider = config.MetadataExtractionProvider?.ToString("D") ?? "";
-        selectedRAGProvider = config.RAGProvider?.ToString("D") ?? "";
+            // Initialize provider selections from config
+            selectedChatProvider = config.ChatProvider?.ToString("D") ?? "";
+            selectedEmbeddingsProvider = config.EmbeddingsProvider?.ToString("D") ?? "";
+            selectedTagExtractionProvider = config.TagExtractionProvider?.ToString("D") ?? "";
+            selectedMetadataExtractionProvider = config.MetadataExtractionProvider?.ToString("D") ?? "";
+            selectedRAGProvider = config.RAGProvider?.ToString("D") ?? "";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading configuration");
+            message = $"❌ Errore nel caricamento della configurazione: {ex.Message}";
+            isError = true;
+        }
     }
 
     private async Task SaveConfiguration()
@@ -1004,31 +1019,29 @@
             config.MetadataExtractionProvider = string.IsNullOrEmpty(selectedMetadataExtractionProvider) ? null : (AIProviderType)int.Parse(selectedMetadataExtractionProvider);
             config.RAGProvider = string.IsNullOrEmpty(selectedRAGProvider) ? null : (AIProviderType)int.Parse(selectedRAGProvider);
 
-            // If setting this as active, deactivate all others
-            if (config.IsActive)
+            // Save configuration via HTTP API
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+            var response = await httpClient.PostAsJsonAsync("api/config", config);
+            
+            if (response.IsSuccessStatusCode)
             {
-                var otherConfigs = DbContext.AIConfigurations.Where(c => c.Id != config.Id);
-                foreach (var other in otherConfigs)
+                var savedConfig = await response.Content.ReadFromJsonAsync<AIConfiguration>();
+                if (savedConfig != null)
                 {
-                    other.IsActive = false;
+                    config = savedConfig;
                 }
-            }
-
-            if (config.Id == 0)
-            {
-                config.CreatedAt = DateTime.UtcNow;
-                DbContext.AIConfigurations.Add(config);
+                
+                message = "✅ Configurazione salvata con successo!";
+                isError = false;
+                Logger.LogInformation("Configuration saved successfully: {ConfigName}", config.ConfigurationName);
             }
             else
             {
-                config.UpdatedAt = DateTime.UtcNow;
-                DbContext.AIConfigurations.Update(config);
+                var errorContent = await response.Content.ReadAsStringAsync();
+                message = $"❌ Errore nel salvataggio: {response.StatusCode} - {errorContent}";
+                isError = true;
+                Logger.LogError("Error saving configuration: {StatusCode} - {Error}", response.StatusCode, errorContent);
             }
-
-            await DbContext.SaveChangesAsync();
-            
-            message = "✅ Configurazione salvata con successo!";
-            isError = false;
         }
         catch (Exception ex)
         {
@@ -1045,13 +1058,7 @@
             
             message = $"❌ Errore nel salvataggio della configurazione: {fullErrorMessage}";
             isError = true;
-            
-            // Log to console for debugging
-            Console.WriteLine($"AIConfiguration Save Error: {fullErrorMessage}");
-            if (ex.StackTrace != null)
-            {
-                Console.WriteLine($"Stack Trace: {ex.StackTrace}");
-            }
+            Logger.LogError(ex, "Error saving configuration");
         }
     }
 
