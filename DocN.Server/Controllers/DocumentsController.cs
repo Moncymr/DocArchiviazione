@@ -5,6 +5,8 @@ using DocN.Data.Models;
 using DocN.Data.Services;
 using DocN.Data.Constants;
 using DocN.Server.Middleware;
+using DocN.Core.AI.Interfaces;
+using System.Text.Json;
 
 namespace DocN.Server.Controllers;
 
@@ -46,6 +48,7 @@ public class DocumentsController : ControllerBase
     private readonly IEmbeddingService _embeddingService;
     private readonly IDocumentService _documentService;
     private readonly IDocumentWorkflowService _workflowService;
+    private readonly IAIProviderFactory _aiProviderFactory;
 
     public DocumentsController(
         DocArcContext context, 
@@ -54,7 +57,8 @@ public class DocumentsController : ControllerBase
         IBatchProcessingService batchProcessingService,
         IEmbeddingService embeddingService,
         IDocumentService documentService,
-        IDocumentWorkflowService workflowService)
+        IDocumentWorkflowService workflowService,
+        IAIProviderFactory aiProviderFactory)
     {
         _context = context;
         _logger = logger;
@@ -63,6 +67,7 @@ public class DocumentsController : ControllerBase
         _embeddingService = embeddingService;
         _documentService = documentService;
         _workflowService = workflowService;
+        _aiProviderFactory = aiProviderFactory;
     }
 
     /// <summary>
@@ -503,6 +508,73 @@ public class DocumentsController : ControllerBase
             await _context.SaveChangesAsync();
 
             _logger.LogInformation("Document {Id} - {FileName} uploaded successfully", document.Id, document.FileName);
+
+            // Perform AI analysis if text was extracted successfully
+            if (!string.IsNullOrEmpty(extractedText) && !extractedText.Contains("[Text extraction"))
+            {
+                try
+                {
+                    _logger.LogInformation("Starting AI analysis for document {Id}", document.Id);
+                    
+                    // Get default AI provider
+                    var aiProvider = _aiProviderFactory.GetDefaultProvider();
+                    
+                    // Get available categories from existing documents
+                    var availableCategories = await _context.Documents
+                        .Where(d => !string.IsNullOrEmpty(d.ActualCategory))
+                        .Select(d => d.ActualCategory!)
+                        .Distinct()
+                        .ToListAsync();
+                    
+                    // Analyze document (generates embeddings, tags, categories, metadata)
+                    var analysis = await aiProvider.AnalyzeDocumentAsync(
+                        extractedText, 
+                        availableCategories);
+                    
+                    // Store analysis results
+                    if (analysis.Embedding?.Vector != null && analysis.Embedding.Vector.Length > 0)
+                    {
+                        document.EmbeddingVector = analysis.Embedding.Vector;
+                        document.EmbeddingDimension = analysis.Embedding.Vector.Length;
+                        _logger.LogInformation("Generated embedding with dimension {Dimension} for document {Id}", 
+                            analysis.Embedding.Vector.Length, document.Id);
+                    }
+                    
+                    if (analysis.CategorySuggestions.Any())
+                    {
+                        document.SuggestedCategory = analysis.CategorySuggestions[0].CategoryName;
+                        document.CategoryReasoning = analysis.CategorySuggestions[0].Reasoning;
+                        _logger.LogInformation("Suggested category '{Category}' for document {Id}", 
+                            document.SuggestedCategory, document.Id);
+                    }
+                    
+                    if (analysis.ExtractedTags.Any())
+                    {
+                        document.AITagsJson = JsonSerializer.Serialize(analysis.ExtractedTags);
+                        _logger.LogInformation("Extracted {TagCount} tags for document {Id}", 
+                            analysis.ExtractedTags.Count, document.Id);
+                    }
+                    
+                    if (analysis.Metadata.Any())
+                    {
+                        document.ExtractedMetadataJson = JsonSerializer.Serialize(analysis.Metadata);
+                        _logger.LogInformation("Extracted {MetadataCount} metadata fields for document {Id}", 
+                            analysis.Metadata.Count, document.Id);
+                    }
+                    
+                    document.AIAnalysisDate = DateTime.UtcNow;
+                    
+                    // Save analysis results
+                    await _context.SaveChangesAsync();
+                    
+                    _logger.LogInformation("AI analysis completed for document {Id}", document.Id);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "AI analysis failed for document {Id}, continuing without analysis", document.Id);
+                    // Continue without analysis - not critical for upload success
+                }
+            }
 
             // If text was extracted, create chunks and embeddings asynchronously
             if (!string.IsNullOrEmpty(extractedText) && !extractedText.Contains("[Text extraction"))

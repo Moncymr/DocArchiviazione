@@ -10,6 +10,7 @@ using DocN.Server.Services;
 using DocN.Server.Services.HealthChecks;
 using DocN.Server.Middleware;
 using DocN.Core.Interfaces;
+using DocN.Core.Extensions;
 using Microsoft.AspNetCore.RateLimiting;
 using System.Threading.RateLimiting;
 using Serilog;
@@ -554,6 +555,9 @@ builder.Services.AddSingleton<IDistributedCacheService, DistributedCacheService>
 
 // Register Multi-Provider AI Service (supports Gemini, OpenAI, Azure OpenAI from database config)
 builder.Services.AddScoped<IMultiProviderAIService, MultiProviderAIService>();
+
+// Register AI Provider Services for document analysis (embeddings, tags, categories)
+builder.Services.AddDocNAIServices(builder.Configuration);
 
 // Register Audit Service for GDPR/SOC2 compliance
 builder.Services.AddScoped<IAuditService, AuditService>();
