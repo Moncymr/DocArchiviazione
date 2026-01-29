@@ -72,7 +72,26 @@
                         @GetFileIcon(doc.FileName)
                     </div>
                     <div class="doc-info">
-                        <h3 class="doc-title">@doc.FileName</h3>
+                        <div class="doc-title-row">
+                            <h3 class="doc-title">@doc.FileName</h3>
+                            <div class="doc-badges">
+                                @* Processing Status Badge *@
+                                @{
+                                    var statusInfo = GetStatusInfo(doc.WorkflowState);
+                                }
+                                <span class="badge badge-status @statusInfo.CssClass" title="@statusInfo.Tooltip">
+                                    @statusInfo.Icon @statusInfo.Text
+                                </span>
+                                
+                                @* Visibility Badge *@
+                                @{
+                                    var visibilityInfo = GetVisibilityInfo(doc.Visibility);
+                                }
+                                <span class="badge badge-visibility @visibilityInfo.CssClass" title="@visibilityInfo.Tooltip">
+                                    @visibilityInfo.Icon @visibilityInfo.Text
+                                </span>
+                            </div>
+                        </div>
                         <div class="doc-meta">
                             <span class="meta-item">
                                 📅 @doc.UploadedAt.ToString("dd/MM/yyyy HH:mm")
@@ -328,6 +347,30 @@
         return $"{len:0.##} {sizes[order]}";
     }
 
+    private (string Icon, string Text, string CssClass, string Tooltip) GetStatusInfo(string? workflowState)
+    {
+        return workflowState switch
+        {
+            "Completed" => ("✅", "Elaborato", "status-completed", "Documento elaborato completamente"),
+            "Processing" or "Extracting" or "Chunking" or "Embedding" => ("⏳", "In elaborazione", "status-processing", "Documento in fase di elaborazione"),
+            "Queued" => ("🕐", "In coda", "status-queued", "Documento in coda per l'elaborazione"),
+            "Failed" => ("❌", "Errore", "status-failed", "Errore durante l'elaborazione"),
+            _ => ("⏸️", "Sospeso", "status-unknown", "Stato sconosciuto")
+        };
+    }
+
+    private (string Icon, string Text, string CssClass, string Tooltip) GetVisibilityInfo(DocN.Data.Models.DocumentVisibility visibility)
+    {
+        return visibility switch
+        {
+            DocN.Data.Models.DocumentVisibility.Private => ("🔒", "Privato", "visibility-private", "Solo tu puoi visualizzare questo documento"),
+            DocN.Data.Models.DocumentVisibility.Shared => ("👥", "Condiviso", "visibility-shared", "Condiviso con utenti specifici"),
+            DocN.Data.Models.DocumentVisibility.Organization => ("🏢", "Organizzazione", "visibility-org", "Visibile a tutta l'organizzazione"),
+            DocN.Data.Models.DocumentVisibility.Public => ("🌐", "Pubblico", "visibility-public", "Pubblicamente visibile"),
+            _ => ("❓", "Sconosciuto", "visibility-unknown", "Visibilità sconosciuta")
+        };
+    }
+
     // DTO for document list
     private class DocumentListItem
     {
@@ -339,6 +382,8 @@
         public string? ActualCategory { get; set; }
         public int? PageCount { get; set; }
         public DateTime UploadedAt { get; set; }
+        public string? WorkflowState { get; set; }
+        public DocN.Data.Models.DocumentVisibility Visibility { get; set; }
     }
 }
 
@@ -493,11 +538,106 @@
         min-width: 0;
     }
 
+    .doc-title-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: start;
+        gap: 1rem;
+        margin-bottom: 0.75rem;
+    }
+
     .doc-title {
-        margin: 0 0 0.5rem 0;
+        margin: 0;
         font-size: 1.3rem;
         color: #333;
         word-break: break-word;
+        flex: 1;
+    }
+
+    .doc-badges {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+
+    .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.25rem 0.75rem;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+
+    .badge-status {
+        border: 1px solid;
+    }
+
+    .status-completed {
+        background: #d1fae5;
+        border-color: #10b981;
+        color: #065f46;
+    }
+
+    .status-processing {
+        background: #fef3c7;
+        border-color: #f59e0b;
+        color: #92400e;
+    }
+
+    .status-queued {
+        background: #dbeafe;
+        border-color: #3b82f6;
+        color: #1e3a8a;
+    }
+
+    .status-failed {
+        background: #fee2e2;
+        border-color: #ef4444;
+        color: #991b1b;
+    }
+
+    .status-unknown {
+        background: #f3f4f6;
+        border-color: #9ca3af;
+        color: #4b5563;
+    }
+
+    .badge-visibility {
+        border: 1px solid;
+    }
+
+    .visibility-private {
+        background: #fce7f3;
+        border-color: #ec4899;
+        color: #831843;
+    }
+
+    .visibility-shared {
+        background: #dbeafe;
+        border-color: #3b82f6;
+        color: #1e3a8a;
+    }
+
+    .visibility-org {
+        background: #e0e7ff;
+        border-color: #6366f1;
+        color: #312e81;
+    }
+
+    .visibility-public {
+        background: #d1fae5;
+        border-color: #10b981;
+        color: #065f46;
+    }
+
+    .visibility-unknown {
+        background: #f3f4f6;
+        border-color: #9ca3af;
+        color: #4b5563;
     }
 
     .doc-meta {
