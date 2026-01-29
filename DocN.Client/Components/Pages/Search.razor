@@ -1,121 +1,1105 @@
 @page "/search"
+@using System.Net.Http.Json
+@using DocN.Data.Services
+@using DocN.Data.Models
+@using System.Security.Claims
+@inject IHttpClientFactory HttpClientFactory
+@inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager Navigation
+@inject ILogger<Search> Logger
+@* COMMENTED OUT - Search services not available in Client (Server-only) *@
+@* TODO: Replace with HTTP API calls to Server *@
+@*@inject ISavedSearchService SavedSearchService*@
+@*@inject ISearchSuggestionService SearchSuggestionService*@
+@rendermode InteractiveServer
 
-<PageTitle>Search - DocN</PageTitle>
+<PageTitle>Ricerca - DocN</PageTitle>
 
-<div class="placeholder-page">
-    <div class="placeholder-card">
-        <div class="placeholder-icon">🔍</div>
-        <h1>Search Documents</h1>
-        <p class="placeholder-message">
-            This page is being refactored to use Server HTTP APIs.
-        </p>
-        <p class="placeholder-details">
-            This feature will be available once the API integration is complete.
-        </p>
-        
-        <div class="placeholder-actions">
-            <button class="btn btn-primary" @onclick='() => Navigation.NavigateTo("/documents")'>
-                View Documents
+<div class="search-page">
+    <!-- Header -->
+    <div class="page-header">
+        <h1>🔍 Ricerca Documenti</h1>
+        <p class="subtitle">Cerca nei tuoi documenti usando similarità vettoriale, ricerca testuale o ricerca ibrida</p>
+    </div>
+
+    <!-- Search Box -->
+    <div class="search-container">
+        <div class="search-with-save">
+            <div class="search-input-group-autocomplete">
+                <SearchAutocomplete 
+                    SearchQuery="@searchQuery"
+                    SearchQueryChanged="EventCallback.Factory.Create<string>(this, value => searchQuery = value)"
+                    OnSearch="EventCallback.Factory.Create<string>(this, async query => await PerformSearch())"
+                    Placeholder="Inserisci la tua query di ricerca..." />
+                <button class="btn-search" @onclick="PerformSearch" disabled="@isSearching">
+                    @if (isSearching)
+                    {
+                        <span class="spinner-small"></span>
+                    }
+                    else
+                    {
+                        <span>🔍 Cerca</span>
+                    }
+                </button>
+            </div>
+            
+            @if (hasSearched && !string.IsNullOrEmpty(searchQuery))
+            {
+                <button class="btn-save-search" @onclick="ShowSaveSearchDialog" title="Salva ricerca">
+                    🔖 Salva Ricerca
+                </button>
+            }
+        </div>
+
+        <!-- Search Type Selector -->
+        <div class="search-type-selector">
+            <button class="type-btn @(searchType == "hybrid" ? "active" : "")" 
+                    @onclick='() => SetSearchType("hybrid")'>
+                ⚡ Ricerca Ibrida
+                <small>Migliori risultati</small>
             </button>
-            <button class="btn btn-secondary" @onclick='() => Navigation.NavigateTo("/")'>
-                Go to Home
+            <button class="type-btn @(searchType == "vector" ? "active" : "")" 
+                    @onclick='() => SetSearchType("vector")'>
+                🧠 Ricerca Vettoriale
+                <small>Similarità semantica</small>
+            </button>
+            <button class="type-btn @(searchType == "text" ? "active" : "")" 
+                    @onclick='() => SetSearchType("text")'>
+                📝 Ricerca Testuale
+                <small>Corrispondenza parole chiave</small>
             </button>
         </div>
+
+        <!-- Advanced Filters -->
+        <div class="advanced-filters">
+            <details>
+                <summary>⚙️ Filtri Avanzati</summary>
+                <div class="filter-content">
+                    <div class="filter-item">
+                        <label>Categoria:</label>
+                        <select @bind="categoryFilter" class="filter-select">
+                            <option value="">Tutte le Categorie</option>
+                            @foreach (var category in categories)
+                            {
+                                <option value="@category">@category</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="filter-item">
+                        <label>Massimo Risultati:</label>
+                        <input type="number" @bind="topK" min="5" max="50" class="filter-input" />
+                    </div>
+                    <div class="filter-item">
+                        <label>Similarità Minima:</label>
+                        <input type="range" @bind="minSimilarity" min="0.3" max="1.0" step="0.01" class="filter-range" />
+                        <span class="range-value">@((minSimilarity * 100).ToString("F0"))%</span>
+                    </div>
+                </div>
+            </details>
+        </div>
     </div>
+
+    <!-- Search Results -->
+    @if (hasSearched)
+    {
+        <div class="results-section">
+            @if (isSearching)
+            {
+                <div class="loading-state">
+                    <div class="spinner-large"></div>
+                    <p>Ricerca in corso...</p>
+                </div>
+            }
+            else if (searchResults.Any())
+            {
+                <div class="results-header">
+                    <h3>📊 Risultati di Ricerca</h3>
+                    <div class="results-meta">
+                        <span class="results-count">Trovati <strong>@searchResults.Count</strong> risultati</span>
+                        <span class="results-time">in <strong>@queryTime.ToString("F0")</strong>ms</span>
+                        <span class="results-type">usando ricerca <strong>@GetSearchTypeName()</strong></span>
+                    </div>
+                </div>
+
+                <div class="results-list">
+                    @foreach (var result in searchResults)
+                    {
+                        <div class="result-card" @onclick="() => ViewDocument(result)">
+                            <div class="result-header">
+                                <div class="result-icon">@GetFileIcon(result.Document.FileName)</div>
+                                <div class="result-info">
+                                    <h4 class="result-title">@result.Document.FileName</h4>
+                                    <p class="result-category">
+                                        <span class="icon">📂</span>
+                                        @(result.Document.ActualCategory ?? "Senza Categoria")
+                                    </p>
+                                </div>
+                                <div class="result-scores">
+                                    @if (searchType == "hybrid")
+                                    {
+                                        <div class="score-item" title="Punteggio Combinato">
+                                            <span class="score-label">Combinato</span>
+                                            <div class="score-bar">
+                                                <div class="score-fill" style="width: @((result.CombinedScore * 100))%"></div>
+                                            </div>
+                                            <span class="score-value">@result.CombinedScore.ToString("F2")</span>
+                                        </div>
+                                    }
+                                    else if (searchType == "vector")
+                                    {
+                                        <div class="score-item" title="Similarità Vettoriale">
+                                            <span class="score-label">Similarità</span>
+                                            <div class="score-bar">
+                                                <div class="score-fill" style="width: @((result.VectorScore * 100))%"></div>
+                                            </div>
+                                            <span class="score-value">@result.VectorScore.ToString("F2")</span>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="score-item" title="Punteggio Corrispondenza Testo">
+                                            <span class="score-label">Corrispondenza</span>
+                                            <div class="score-bar">
+                                                <div class="score-fill" style="width: @((result.TextScore * 100))%"></div>
+                                            </div>
+                                            <span class="score-value">@result.TextScore.ToString("F2")</span>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                            <div class="result-body">
+                                <p class="result-excerpt">@GetExcerpt(result.Document.ExtractedText)</p>
+                                <div class="result-meta">
+                                    <span>📊 @FormatFileSize(result.Document.FileSize)</span>
+                                    <span>📅 @result.Document.UploadedAt.ToString("dd MMM yyyy")</span>
+                                    <span>👁️ @result.Document.AccessCount visualizzazioni</span>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="empty-results">
+                    <div class="empty-icon">🔍</div>
+                    <h3>Nessun risultato trovato</h3>
+                    @if (searchType == "vector")
+                    {
+                        <p>La ricerca vettoriale non ha trovato documenti con similarità >= @((minSimilarity * 100).ToString("F0"))%</p>
+                        <p>Suggerimenti:</p>
+                        <ul class="suggestions-list">
+                            <li>Verifica che i documenti siano stati elaborati con embedding (guarda la colonna "Embedding Status" nella pagina Documenti)</li>
+                            <li>Riduci ulteriormente la soglia di similarità nei filtri avanzati (ora: @((minSimilarity * 100).ToString("F0"))%)</li>
+                            <li>Prova con la ricerca ibrida o testuale che non richiedono embedding</li>
+                            <li>Se cerchi per nome (es. "rossi"), la ricerca testuale potrebbe dare risultati migliori</li>
+                        </ul>
+                    }
+                    else
+                    {
+                        <p>Prova a modificare la query di ricerca o i filtri</p>
+                    }
+                </div>
+            }
+        </div>
+    }
+    else
+    {
+        <!-- Welcome State -->
+        <div class="welcome-state">
+            <div class="welcome-icon">🔍</div>
+            <h2>Cerca nei Tuoi Documenti</h2>
+            <p>Utilizza la nostra potente ricerca per trovare esattamente ciò di cui hai bisogno</p>
+        </div>
+    }
 </div>
 
+@if (_showSaveSearchDialog)
+{
+    <div class="dialog-overlay" @onclick="CancelSaveSearch">
+        <div class="dialog-box" @onclick:stopPropagation="true">
+            <h3>💾 Salva Ricerca</h3>
+            <div class="dialog-content">
+                <div class="form-group">
+                    <label>Nome della ricerca:</label>
+                    <input type="text" class="form-input" @bind="_saveSearchName" placeholder="Es: Documenti fiscali 2024" />
+                </div>
+                <div class="dialog-info">
+                    <div><strong>Query:</strong> @searchQuery</div>
+                    <div><strong>Tipo:</strong> @searchType</div>
+                    @if (!string.IsNullOrEmpty(categoryFilter))
+                    {
+                        <div><strong>Categoria:</strong> @categoryFilter</div>
+                    }
+                </div>
+            </div>
+            <div class="dialog-actions">
+                <button class="btn-secondary" @onclick="CancelSaveSearch">Annulla</button>
+                <button class="btn-primary" @onclick="SaveSearch" disabled="@string.IsNullOrWhiteSpace(_saveSearchName)">
+                    Salva
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string searchQuery = string.Empty;
+    private string searchType = "hybrid"; // hybrid, vector, text
+    private string categoryFilter = string.Empty;
+    private int topK = 10;
+    private double minSimilarity = 0.3;
+    private bool isSearching = false;
+    private bool hasSearched = false;
+    private double queryTime = 0;
+
+    private List<SearchResult> searchResults = new();
+    private List<string> categories = new();
+    private string? currentUserId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        currentUserId = user?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        
+        // Load categories from API
+        await LoadCategoriesFromAPI();
+    }
+
+    private async Task LoadCategoriesFromAPI()
+    {
+        try
+        {
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+            var response = await httpClient.GetAsync("Documents/categories");
+            
+            if (response.IsSuccessStatusCode)
+            {
+                var loadedCategories = await response.Content.ReadFromJsonAsync<List<string>>();
+                if (loadedCategories != null && loadedCategories.Any())
+                {
+                    categories = loadedCategories;
+                }
+                else
+                {
+                    // Fallback to default categories if none found in database
+                    categories = new List<string> { "Documents", "Contracts", "Reports", "Technical", "Financial", "Notes" };
+                }
+            }
+            else
+            {
+                // Fallback to default categories on error
+                categories = new List<string> { "Documents", "Contracts", "Reports", "Technical", "Financial", "Notes" };
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading categories from API");
+            // Fallback to default categories
+            categories = new List<string> { "Documents", "Contracts", "Reports", "Technical", "Financial", "Notes" };
+        }
+    }
+
+    private async Task PerformSearch()
+    {
+        if (string.IsNullOrWhiteSpace(searchQuery))
+            return;
+
+        isSearching = true;
+        hasSearched = true;
+
+        try
+        {
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+            
+            var request = new
+            {
+                Query = searchQuery,
+                TopK = topK,
+                MinSimilarity = minSimilarity,
+                CategoryFilter = string.IsNullOrEmpty(categoryFilter) ? null : categoryFilter,
+                UserId = currentUserId
+            };
+
+            var response = await httpClient.PostAsJsonAsync($"api/search/{searchType}", request);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<SearchResponse>();
+                if (result != null)
+                {
+                    searchResults = result.Results;
+                    queryTime = result.QueryTimeMs;
+                }
+            }
+            else
+            {
+                searchResults = new List<SearchResult>();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error performing search for query: {Query}", searchQuery);
+            searchResults = new List<SearchResult>();
+        }
+        finally
+        {
+            isSearching = false;
+        }
+    }
+
+    private async Task HandleKeyPress(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await PerformSearch();
+        }
+    }
+
+    private void SetSearchType(string type)
+    {
+        searchType = type;
+    }
+
+    private void SetQuery(string query)
+    {
+        searchQuery = query;
+    }
+
+    private void ViewDocument(SearchResult result)
+    {
+        // Navigate to documents page (could be enhanced to open document details)
+        Navigation.NavigateTo("/documents");
+    }
+
+    private string GetFileIcon(string fileName)
+    {
+        var extension = Path.GetExtension(fileName).ToLower();
+        return extension switch
+        {
+            ".pdf" => "📕",
+            ".doc" or ".docx" => "📘",
+            ".xls" or ".xlsx" => "📗",
+            ".ppt" or ".pptx" => "📙",
+            ".txt" => "📄",
+            ".jpg" or ".jpeg" or ".png" => "🖼️",
+            _ => "📄"
+        };
+    }
+
+    private string GetExcerpt(string text, int maxLength = 200)
+    {
+        if (string.IsNullOrEmpty(text))
+            return "No content preview available";
+        
+        if (text.Length <= maxLength)
+            return text;
+        
+        return text.Substring(0, maxLength) + "...";
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+
+    private string GetSearchTypeName()
+    {
+        return searchType switch
+        {
+            "hybrid" => "ibrida",
+            "vector" => "vettoriale",
+            "text" => "testuale",
+            _ => searchType
+        };
+    }
+
+    // Save Search functionality
+    private bool _showSaveSearchDialog = false;
+    private string _saveSearchName = "";
+
+    private void ShowSaveSearchDialog()
+    {
+        _showSaveSearchDialog = true;
+        _saveSearchName = "";
+    }
+
+    private async Task SaveSearch()
+    {
+        if (string.IsNullOrWhiteSpace(_saveSearchName) || string.IsNullOrEmpty(currentUserId))
+            return;
+
+        try
+        {
+            var savedSearch = new SavedSearch
+            {
+                UserId = currentUserId,
+                Name = _saveSearchName,
+                Query = searchQuery,
+                SearchType = searchType,
+                Filters = string.IsNullOrEmpty(categoryFilter) ? null : $"{{\"category\": \"{categoryFilter}\"}}"
+            };
+
+            await SavedSearchService.CreateSearchAsync(savedSearch);
+            _showSaveSearchDialog = false;
+            _saveSearchName = "";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error saving search");
+        }
+    }
+
+    private void CancelSaveSearch()
+    {
+        _showSaveSearchDialog = false;
+        _saveSearchName = "";
+    }
+
+    // Models matching the API
+    private class SearchResult
+    {
+        public Document Document { get; set; } = null!;
+        public double VectorScore { get; set; }
+        public double TextScore { get; set; }
+        public double CombinedScore { get; set; }
+    }
+
+    private class SearchResponse
+    {
+        public string Query { get; set; } = string.Empty;
+        public List<SearchResult> Results { get; set; } = new();
+        public int TotalResults { get; set; }
+        public double QueryTimeMs { get; set; }
+        public string SearchType { get; set; } = string.Empty;
+    }
+
+    private class Document
+    {
+        public int Id { get; set; }
+        public string FileName { get; set; } = string.Empty;
+        public string ExtractedText { get; set; } = string.Empty;
+        public string? ActualCategory { get; set; }
+        public long FileSize { get; set; }
+        public DateTime UploadedAt { get; set; }
+        public int AccessCount { get; set; }
+    }
+}
+
 <style>
-    .placeholder-page {
-        min-height: 80vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+    .search-page {
         padding: 2rem;
+        max-width: 1400px;
+        margin: 0 auto;
     }
 
-    .placeholder-card {
-        background: white;
-        border-radius: 16px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        padding: 3rem;
-        max-width: 600px;
+    .page-header {
         text-align: center;
+        margin-bottom: 2rem;
     }
 
-    .placeholder-icon {
-        font-size: 4rem;
-        margin-bottom: 1rem;
+    .page-header h1 {
+        font-size: 2.5rem;
+        margin-bottom: 0.5rem;
+        background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
     }
 
-    .placeholder-card h1 {
-        color: #2d3748;
-        margin-bottom: 1rem;
-        font-size: 2rem;
+    .subtitle {
+        color: #666;
+        font-size: 1.1rem;
     }
 
-    .placeholder-message {
-        color: #718096;
-        font-size: 1.125rem;
-        margin-bottom: 1rem;
-        line-height: 1.6;
+    .search-container {
+        background: white;
+        padding: 2rem;
+        border-radius: 20px;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        margin-bottom: 2rem;
     }
 
-    .placeholder-details {
-        color: #4a5568;
-        font-size: 0.9rem;
-        margin-bottom: 1.5rem;
-        line-height: 1.6;
-    }
-
-    .placeholder-actions {
+    .search-input-group {
         display: flex;
         gap: 1rem;
-        justify-content: center;
+        margin-bottom: 1.5rem;
+    }
+
+    .search-input-large {
+        flex: 1;
+        padding: 1.2rem 1.5rem;
+        border: 2px solid #e0e0e0;
+        border-radius: 15px;
+        font-size: 1.1rem;
+        transition: all 0.3s;
+    }
+
+    .search-input-large:focus {
+        outline: none;
+        border-color: #2563eb;
+        box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+    }
+
+    .btn-search {
+        padding: 1.2rem 2.5rem;
+        background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+        color: white;
+        border: none;
+        border-radius: 15px;
+        font-size: 1.1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+
+    .btn-search:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 30px rgba(37, 99, 235, 0.4);
+    }
+
+    .btn-search:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+    }
+
+    .search-type-selector {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .type-btn {
+        padding: 1rem;
+        background: #f8f9fa;
+        border: 2px solid #e0e0e0;
+        border-radius: 12px;
+        cursor: pointer;
+        transition: all 0.3s;
+        text-align: left;
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+    }
+
+    .type-btn:hover {
+        border-color: #2563eb;
+        background: #f0f4ff;
+    }
+
+    .type-btn.active {
+        background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+        color: white;
+        border-color: transparent;
+    }
+
+    .type-btn small {
+        font-size: 0.85rem;
+        opacity: 0.8;
+    }
+
+    .advanced-filters {
+        margin-top: 1rem;
+    }
+
+    .advanced-filters details {
+        cursor: pointer;
+    }
+
+    .advanced-filters summary {
+        padding: 0.8rem;
+        background: #f8f9fa;
+        border-radius: 8px;
+        font-weight: 600;
+        list-style: none;
+    }
+
+    .filter-content {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1rem;
+        padding: 1rem;
+        margin-top: 0.5rem;
+    }
+
+    .filter-item {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .filter-item label {
+        font-weight: 600;
+        font-size: 0.9rem;
+        color: #555;
+    }
+
+    .filter-select, .filter-input {
+        padding: 0.6rem;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+    }
+
+    .filter-range {
+        width: 100%;
+    }
+
+    .range-value {
+        text-align: center;
+        font-weight: 600;
+        color: #ff6b35;
+    }
+
+    .results-section {
+        animation: fadeIn 0.3s;
+    }
+
+    .results-header {
+        background: white;
+        padding: 1.5rem 2rem;
+        border-radius: 15px;
+        margin-bottom: 1rem;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    }
+
+    .results-header h3 {
+        margin: 0 0 0.5rem 0;
+        font-size: 1.5rem;
+    }
+
+    .results-meta {
+        display: flex;
+        gap: 1.5rem;
+        color: #666;
+        font-size: 0.95rem;
+    }
+
+    .results-meta strong {
+        color: #2563eb;
+        font-weight: 700;
+    }
+
+    .results-list {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .result-card {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 15px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+
+    .result-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    }
+
+    .result-header {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .result-icon {
+        font-size: 2.5rem;
+    }
+
+    .result-info {
+        flex: 1;
+    }
+
+    .result-title {
+        margin: 0 0 0.3rem 0;
+        font-size: 1.2rem;
+        color: #333;
+    }
+
+    .result-category {
+        margin: 0;
+        color: #666;
+        font-size: 0.9rem;
+    }
+
+    .result-scores {
+        min-width: 200px;
+    }
+
+    .score-item {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.85rem;
+    }
+
+    .score-label {
+        font-weight: 600;
+        min-width: 70px;
+        color: #555;
+    }
+
+    .score-bar {
+        flex: 1;
+        height: 8px;
+        background: #e0e0e0;
+        border-radius: 4px;
+        overflow: hidden;
+    }
+
+    .score-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #2563eb 0%, #3b82f6 100%);
+        transition: width 0.5s;
+    }
+
+    .score-value {
+        font-weight: 700;
+        color: #2563eb;
+    }
+
+    .result-body {
+        padding-top: 1rem;
+        border-top: 1px solid #f0f0f0;
+    }
+
+    .result-excerpt {
+        color: #555;
+        line-height: 1.6;
+        margin-bottom: 1rem;
+    }
+
+    .result-meta {
+        display: flex;
+        gap: 1.5rem;
+        color: #888;
+        font-size: 0.85rem;
+    }
+
+    .welcome-state {
+        text-align: center;
+        padding: 3rem 2rem;
+    }
+
+    .welcome-icon {
+        font-size: 5rem;
+        margin-bottom: 1rem;
+    }
+
+    .welcome-state h2 {
+        font-size: 2rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .welcome-state p {
+        color: #666;
+        font-size: 1.1rem;
+        margin-bottom: 2rem;
+    }
+
+    .search-methods {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 2rem;
+        margin: 3rem 0;
+    }
+
+    .method-card {
+        background: white;
+        padding: 2rem;
+        border-radius: 15px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        transition: all 0.3s;
+    }
+
+    .method-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 10px 40px rgba(0,0,0,0.12);
+    }
+
+    .method-icon {
+        font-size: 3rem;
+        margin-bottom: 1rem;
+    }
+
+    .method-card h4 {
+        margin: 0 0 0.5rem 0;
+        color: #333;
+    }
+
+    .method-card p {
+        color: #666;
+        font-size: 0.9rem;
+        margin: 0;
+    }
+
+    .example-queries {
         margin-top: 2rem;
     }
 
-    .btn {
-        padding: 0.75rem 1.5rem;
-        border-radius: 8px;
-        border: none;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s;
-        font-size: 0.9rem;
+    .example-queries h4 {
+        margin-bottom: 1rem;
+        color: #555;
     }
 
-    .btn-primary {
-        background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+    .example-btn {
+        margin: 0.5rem;
+        padding: 0.8rem 1.5rem;
+        background: white;
+        border: 2px solid #2563eb;
+        color: #2563eb;
+        border-radius: 25px;
+        cursor: pointer;
+        font-weight: 600;
+        transition: all 0.3s;
+    }
+
+    .example-btn:hover {
+        background: #2563eb;
         color: white;
     }
 
-    .btn-primary:hover {
+    .empty-results {
+        text-align: center;
+        padding: 4rem 2rem;
+        background: white;
+        border-radius: 20px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+    }
+
+    .empty-icon {
+        font-size: 5rem;
+        margin-bottom: 1rem;
+    }
+
+    .empty-results h3 {
+        margin-bottom: 0.5rem;
+        color: #333;
+    }
+
+    .empty-results p {
+        color: #666;
+    }
+
+    .suggestions-list {
+        list-style: none;
+        padding: 0;
+        margin: 1rem auto;
+        max-width: 500px;
+        text-align: left;
+    }
+
+    .suggestions-list li {
+        padding: 0.5rem 1rem;
+        margin: 0.5rem 0;
+        background: #f8f9fa;
+        border-radius: 8px;
+        color: #555;
+    }
+
+    .suggestions-list li:before {
+        content: "💡 ";
+        margin-right: 0.5rem;
+    }
+
+    .loading-state {
+        text-align: center;
+        padding: 4rem 2rem;
+    }
+
+    .spinner-large {
+        width: 60px;
+        height: 60px;
+        border: 5px solid #f0f0f0;
+        border-top-color: #2563eb;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 1rem;
+    }
+
+    .spinner-small {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border: 2px solid rgba(255,255,255,0.3);
+        border-top-color: white;
+        border-radius: 50%;
+        animation: spin 0.6s linear infinite;
+    }
+
+    @@keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
+    @@keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .icon {
+        margin-right: 0.3rem;
+    }
+
+    /* Search with save button */
+    .search-with-save {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+    }
+
+    .search-input-group-autocomplete {
+        flex: 1;
+        display: flex;
+        gap: 1rem;
+    }
+
+    .btn-save-search {
+        padding: 1rem 1.5rem;
+        background: #198754;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 1rem;
+        white-space: nowrap;
+        transition: all 0.2s ease;
+    }
+
+    .btn-save-search:hover {
+        background: #157347;
         transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+        box-shadow: 0 4px 12px rgba(25, 135, 84, 0.3);
+    }
+
+    /* Dialog styles */
+    .dialog-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+    }
+
+    .dialog-box {
+        background: white;
+        border-radius: 12px;
+        padding: 2rem;
+        max-width: 500px;
+        width: 90%;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    }
+
+    .dialog-box h3 {
+        margin: 0 0 1.5rem 0;
+        font-size: 1.5rem;
+        color: #333;
+    }
+
+    .dialog-content {
+        margin-bottom: 1.5rem;
+    }
+
+    .form-group {
+        margin-bottom: 1rem;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 500;
+        color: #666;
+    }
+
+    .form-input {
+        width: 100%;
+        padding: 0.75rem;
+        border: 2px solid #e0e0e0;
+        border-radius: 6px;
+        font-size: 1rem;
+    }
+
+    .form-input:focus {
+        outline: none;
+        border-color: #2563eb;
+    }
+
+    .dialog-info {
+        padding: 1rem;
+        background: #f8f9fa;
+        border-radius: 6px;
+        font-size: 0.9rem;
+    }
+
+    .dialog-info > div {
+        margin-bottom: 0.5rem;
+    }
+
+    .dialog-info > div:last-child {
+        margin-bottom: 0;
+    }
+
+    .dialog-actions {
+        display: flex;
+        gap: 1rem;
+        justify-content: flex-end;
+    }
+
+    .btn-primary {
+        padding: 0.75rem 1.5rem;
+        background: #2563eb;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 1rem;
+        transition: all 0.2s ease;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+        background: #1d4ed8;
+    }
+
+    .btn-primary:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
     }
 
     .btn-secondary {
-        background: #e2e8f0;
-        color: #2d3748;
+        padding: 0.75rem 1.5rem;
+        background: #e9ecef;
+        color: #333;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 1rem;
+        transition: all 0.2s ease;
     }
 
     .btn-secondary:hover {
-        background: #cbd5e0;
-        transform: translateY(-2px);
-    }
-
-    @@media (max-width: 768px) {
-        .placeholder-card {
-            padding: 2rem;
-        }
-
-        .placeholder-actions {
-            flex-direction: column;
-        }
-
-        .btn {
-            width: 100%;
-        }
+        background: #dee2e6;
     }
 </style>

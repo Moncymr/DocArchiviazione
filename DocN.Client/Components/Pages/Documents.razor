@@ -1,93 +1,417 @@
 @page "/documents"
+@using System.Net.Http.Json
+@using DocN.Data.Models
+@inject IHttpClientFactory HttpClientFactory
 @inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ILogger<Documents> Logger
+@rendermode InteractiveServer
 
 <PageTitle>Documents - DocN</PageTitle>
 
-<div class="placeholder-page">
-    <div class="placeholder-card">
-        <div class="placeholder-icon">📚</div>
-        <h1>My Documents</h1>
-        <p class="placeholder-message">
-            This page is being refactored to use Server HTTP APIs.
-        </p>
-        <p class="placeholder-details">
-            Document management features will be available once the API integration is complete.
-        </p>
+<div class="documents-page">
+    <div class="page-header">
+        <div class="header-left">
+            <h1>📚 I Miei Documenti</h1>
+            <p class="subtitle">@totalDocuments document@(totalDocuments != 1 ? "i" : "o") nella tua libreria</p>
+        </div>
         
-        <div class="placeholder-actions">
-            <button class="btn btn-primary" @onclick='() => Navigation.NavigateTo("/upload")'>
-                Upload Document
-            </button>
-            <button class="btn btn-secondary" @onclick='() => Navigation.NavigateTo("/")'>
-                Go to Home
+        <div class="header-right">
+            <div class="search-box">
+                <span class="search-icon">🔍</span>
+                <input type="text" 
+                       placeholder="Cerca documenti..." 
+                       @bind="searchQuery" 
+                       @bind:event="oninput"
+                       @onkeyup="HandleSearch" 
+                       class="search-input" />
+            </div>
+            
+            <button class="btn-primary" @onclick='() => Navigation.NavigateTo("/upload")'>
+                📤 Carica Documento
             </button>
         </div>
     </div>
+
+    @if (isLoading)
+    {
+        <div class="loading-container">
+            <div class="spinner"></div>
+            <p>Caricamento documenti...</p>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger">
+            <strong>⚠️ Errore</strong>
+            <p>@errorMessage</p>
+        </div>
+    }
+    else if (!filteredDocuments.Any())
+    {
+        <div class="empty-state">
+            <div class="empty-icon">📭</div>
+            <h3>Nessun Documento</h3>
+            <p>@(string.IsNullOrEmpty(searchQuery) ? "Non ci sono ancora documenti caricati. Inizia caricando il tuo primo documento." : "Nessun documento trovato per la ricerca.")</p>
+            @if (string.IsNullOrEmpty(searchQuery))
+            {
+                <button class="btn-primary" @onclick='() => Navigation.NavigateTo("/upload")'>
+                    📤 Carica Primo Documento
+                </button>
+            }
+        </div>
+    }
+    else
+    {
+        <!-- Documents List -->
+        <div class="documents-list">
+            @foreach (var doc in filteredDocuments)
+            {
+                <div class="document-card">
+                    <div class="doc-icon">
+                        @GetFileIcon(doc.FileName)
+                    </div>
+                    <div class="doc-info">
+                        <h3 class="doc-title">@doc.FileName</h3>
+                        <div class="doc-meta">
+                            <span class="meta-item">
+                                📅 @doc.UploadedAt.ToString("dd/MM/yyyy HH:mm")
+                            </span>
+                            @if (!string.IsNullOrEmpty(doc.ActualCategory))
+                            {
+                                <span class="meta-item">
+                                    🏷️ @doc.ActualCategory
+                                </span>
+                            }
+                            else if (!string.IsNullOrEmpty(doc.SuggestedCategory))
+                            {
+                                <span class="meta-item">
+                                    🤖 @doc.SuggestedCategory
+                                </span>
+                            }
+                            <span class="meta-item">
+                                💾 @FormatFileSize(doc.FileSize)
+                            </span>
+                            @if (doc.PageCount.HasValue)
+                            {
+                                <span class="meta-item">
+                                    📄 @doc.PageCount pagine
+                                </span>
+                            }
+                        </div>
+                        @if (!string.IsNullOrEmpty(doc.ExtractedText) && doc.ExtractedText.Length > 150)
+                        {
+                            <p class="doc-preview">@doc.ExtractedText.Substring(0, 150)...</p>
+                        }
+                        else if (!string.IsNullOrEmpty(doc.ExtractedText))
+                        {
+                            <p class="doc-preview">@doc.ExtractedText</p>
+                        }
+                    </div>
+                    <div class="doc-actions">
+                        <button class="btn-icon" title="Visualizza" @onclick="() => ViewDocument(doc.Id)">
+                            👁️
+                        </button>
+                        <button class="btn-icon" title="Download" @onclick="() => DownloadDocument(doc.Id)">
+                            ⬇️
+                        </button>
+                        <button class="btn-icon" title="Elimina" @onclick="() => ShowDeleteConfirmation(doc.Id)">
+                            🗑️
+                        </button>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <!-- Pagination -->
+        @if (totalPages > 1)
+        {
+            <div class="pagination">
+                <button class="page-btn" @onclick="() => LoadPage(currentPage - 1)" disabled="@(currentPage == 1)">
+                    ← Precedente
+                </button>
+                <span class="page-info">
+                    Pagina @currentPage di @totalPages
+                </span>
+                <button class="page-btn" @onclick="() => LoadPage(currentPage + 1)" disabled="@(currentPage == totalPages)">
+                    Successiva →
+                </button>
+            </div>
+        }
+    }
 </div>
 
+<!-- Delete Confirmation Modal -->
+@if (showDeleteModal)
+{
+    <div class="modal-backdrop" @onclick="CancelDelete">
+        <div class="modal-content" @onclick:stopPropagation>
+            <h3>⚠️ Conferma Eliminazione</h3>
+            <p>Sei sicuro di voler eliminare questo documento? Questa azione non può essere annullata.</p>
+            <div class="modal-actions">
+                <button class="btn-secondary" @onclick="CancelDelete">Annulla</button>
+                <button class="btn-danger" @onclick="ConfirmDelete">Elimina</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<DocumentListItem> documents = new();
+    private List<DocumentListItem> filteredDocuments = new();
+    private bool isLoading = true;
+    private string? errorMessage;
+    private string searchQuery = "";
+    private int totalDocuments = 0;
+    private int currentPage = 1;
+    private int pageSize = 20;
+    private int totalPages = 1;
+    private bool showDeleteModal = false;
+    private int documentToDelete = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDocuments();
+    }
+
+    private async Task LoadDocuments()
+    {
+        isLoading = true;
+        errorMessage = null;
+        
+        try
+        {
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+            
+            // Get total count
+            var count = await httpClient.GetFromJsonAsync<int>($"documents/count");
+            totalDocuments = count;
+            totalPages = (int)Math.Ceiling((double)totalDocuments / pageSize);
+            
+            // Get documents for current page
+            documents = await httpClient.GetFromJsonAsync<List<DocumentListItem>>($"documents?page={currentPage}&pageSize={pageSize}") ?? new();
+            
+            FilterDocuments();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading documents");
+            errorMessage = $"Errore nel caricamento dei documenti: {ex.Message}";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task LoadPage(int page)
+    {
+        if (page < 1 || page > totalPages) return;
+        currentPage = page;
+        await LoadDocuments();
+    }
+
+    private void HandleSearch()
+    {
+        FilterDocuments();
+    }
+
+    private void FilterDocuments()
+    {
+        if (string.IsNullOrWhiteSpace(searchQuery))
+        {
+            filteredDocuments = documents;
+        }
+        else
+        {
+            var query = searchQuery.ToLowerInvariant();
+            filteredDocuments = documents.Where(d =>
+                d.FileName.ToLowerInvariant().Contains(query) ||
+                (d.ActualCategory?.ToLowerInvariant().Contains(query) ?? false) ||
+                (d.SuggestedCategory?.ToLowerInvariant().Contains(query) ?? false) ||
+                (d.ExtractedText?.ToLowerInvariant().Contains(query) ?? false)
+            ).ToList();
+        }
+    }
+
+    private void ViewDocument(int id)
+    {
+        Navigation.NavigateTo($"/documents/{id}");
+    }
+
+    private async Task DownloadDocument(int id)
+    {
+        try
+        {
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+            var response = await httpClient.GetAsync($"documents/{id}/download");
+            
+            if (response.IsSuccessStatusCode)
+            {
+                var fileBytes = await response.Content.ReadAsByteArrayAsync();
+                var fileName = response.Content.Headers.ContentDisposition?.FileName?.Trim('"') ?? "document";
+                
+                // TODO: Implement file download via JSInterop
+                Logger.LogInformation("Download requested for document {DocumentId}", id);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error downloading document {DocumentId}", id);
+        }
+    }
+
+    private void ShowDeleteConfirmation(int id)
+    {
+        documentToDelete = id;
+        showDeleteModal = true;
+    }
+
+    private void CancelDelete()
+    {
+        showDeleteModal = false;
+        documentToDelete = 0;
+    }
+
+    private async Task ConfirmDelete()
+    {
+        try
+        {
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+            var response = await httpClient.DeleteAsync($"documents/{documentToDelete}");
+            
+            if (response.IsSuccessStatusCode)
+            {
+                await LoadDocuments();
+            }
+            else
+            {
+                errorMessage = "Errore durante l'eliminazione del documento";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error deleting document {DocumentId}", documentToDelete);
+            errorMessage = $"Errore durante l'eliminazione: {ex.Message}";
+        }
+        finally
+        {
+            showDeleteModal = false;
+            documentToDelete = 0;
+        }
+    }
+
+    private string GetFileIcon(string fileName)
+    {
+        var extension = System.IO.Path.GetExtension(fileName).ToLowerInvariant();
+        return extension switch
+        {
+            ".pdf" => "📕",
+            ".doc" or ".docx" => "📘",
+            ".xls" or ".xlsx" => "📗",
+            ".txt" => "📄",
+            ".jpg" or ".jpeg" or ".png" or ".gif" => "🖼️",
+            _ => "📄"
+        };
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+
+    // DTO for document list
+    private class DocumentListItem
+    {
+        public int Id { get; set; }
+        public string FileName { get; set; } = string.Empty;
+        public long FileSize { get; set; }
+        public string? ExtractedText { get; set; }
+        public string? SuggestedCategory { get; set; }
+        public string? ActualCategory { get; set; }
+        public int? PageCount { get; set; }
+        public DateTime UploadedAt { get; set; }
+    }
+}
+
 <style>
-    .placeholder-page {
-        min-height: 80vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+    .documents-page {
         padding: 2rem;
+        max-width: 1400px;
+        margin: 0 auto;
     }
 
-    .placeholder-card {
-        background: white;
-        border-radius: 16px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        padding: 3rem;
-        max-width: 600px;
-        text-align: center;
+    .page-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 2rem;
+        gap: 2rem;
+        flex-wrap: wrap;
     }
 
-    .placeholder-icon {
-        font-size: 4rem;
-        margin-bottom: 1rem;
-    }
-
-    .placeholder-card h1 {
-        color: #2d3748;
-        margin-bottom: 1rem;
+    .header-left h1 {
+        margin: 0;
         font-size: 2rem;
+        color: #333;
     }
 
-    .placeholder-message {
-        color: #718096;
-        font-size: 1.125rem;
-        margin-bottom: 1rem;
-        line-height: 1.6;
+    .subtitle {
+        margin: 0.5rem 0 0 0;
+        color: #666;
+        font-size: 1rem;
     }
 
-    .placeholder-details {
-        color: #4a5568;
-        font-size: 0.9rem;
-        margin-bottom: 1.5rem;
-        line-height: 1.6;
-    }
-
-    .placeholder-actions {
+    .header-right {
         display: flex;
         gap: 1rem;
-        justify-content: center;
-        margin-top: 2rem;
+        align-items: center;
     }
 
-    .btn {
-        padding: 0.75rem 1.5rem;
+    .search-box {
+        display: flex;
+        align-items: center;
+        background: white;
+        border: 2px solid #e0e0e0;
         border-radius: 8px;
+        padding: 0.5rem 1rem;
+        transition: border-color 0.3s;
+    }
+
+    .search-box:focus-within {
+        border-color: #2563eb;
+    }
+
+    .search-icon {
+        margin-right: 0.5rem;
+        font-size: 1.2rem;
+    }
+
+    .search-input {
         border: none;
+        outline: none;
+        font-size: 1rem;
+        width: 300px;
+    }
+
+    .btn-primary {
+        padding: 0.75rem 1.5rem;
+        background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+        color: white;
+        border: none;
+        border-radius: 8px;
         font-weight: 600;
         cursor: pointer;
         transition: all 0.2s;
         font-size: 0.9rem;
-    }
-
-    .btn-primary {
-        background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
-        color: white;
     }
 
     .btn-primary:hover {
@@ -95,27 +419,266 @@
         box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
     }
 
+    .loading-container {
+        text-align: center;
+        padding: 4rem;
+    }
+
+    .spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #2563eb;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 1rem;
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 4rem 2rem;
+    }
+
+    .empty-icon {
+        font-size: 5rem;
+        margin-bottom: 1rem;
+    }
+
+    .empty-state h3 {
+        font-size: 1.8rem;
+        color: #333;
+        margin-bottom: 1rem;
+    }
+
+    .empty-state p {
+        color: #666;
+        font-size: 1.1rem;
+        margin-bottom: 2rem;
+    }
+
+    .documents-list {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .document-card {
+        background: white;
+        border: 2px solid #e0e0e0;
+        border-radius: 12px;
+        padding: 1.5rem;
+        display: flex;
+        gap: 1.5rem;
+        align-items: start;
+        transition: all 0.2s;
+    }
+
+    .document-card:hover {
+        border-color: #2563eb;
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
+    }
+
+    .doc-icon {
+        font-size: 3rem;
+        flex-shrink: 0;
+    }
+
+    .doc-info {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .doc-title {
+        margin: 0 0 0.5rem 0;
+        font-size: 1.3rem;
+        color: #333;
+        word-break: break-word;
+    }
+
+    .doc-meta {
+        display: flex;
+        gap: 1rem;
+        flex-wrap: wrap;
+        margin-bottom: 0.75rem;
+        font-size: 0.9rem;
+    }
+
+    .meta-item {
+        color: #666;
+    }
+
+    .doc-preview {
+        margin: 0.5rem 0 0 0;
+        color: #666;
+        font-size: 0.9rem;
+        line-height: 1.5;
+    }
+
+    .doc-actions {
+        display: flex;
+        gap: 0.5rem;
+        flex-shrink: 0;
+    }
+
+    .btn-icon {
+        width: 40px;
+        height: 40px;
+        border: 2px solid #e0e0e0;
+        background: white;
+        border-radius: 8px;
+        font-size: 1.2rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .btn-icon:hover {
+        border-color: #2563eb;
+        background: rgba(37, 99, 235, 0.05);
+    }
+
+    .pagination {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 2rem;
+        margin-top: 2rem;
+        padding: 1rem;
+    }
+
+    .page-btn {
+        padding: 0.75rem 1.5rem;
+        background: white;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .page-btn:not(:disabled):hover {
+        border-color: #2563eb;
+        background: rgba(37, 99, 235, 0.05);
+    }
+
+    .page-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+
+    .page-info {
+        font-weight: 600;
+        color: #333;
+    }
+
+    .modal-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+    }
+
+    .modal-content {
+        background: white;
+        border-radius: 12px;
+        padding: 2rem;
+        max-width: 500px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    }
+
+    .modal-content h3 {
+        margin: 0 0 1rem 0;
+        color: #333;
+    }
+
+    .modal-content p {
+        margin: 0 0 1.5rem 0;
+        color: #666;
+    }
+
+    .modal-actions {
+        display: flex;
+        gap: 1rem;
+        justify-content: flex-end;
+    }
+
     .btn-secondary {
+        padding: 0.75rem 1.5rem;
         background: #e2e8f0;
         color: #2d3748;
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
     }
 
     .btn-secondary:hover {
         background: #cbd5e0;
-        transform: translateY(-2px);
     }
 
-    @@media (max-width: 768px) {
-        .placeholder-card {
-            padding: 2rem;
+    .btn-danger {
+        padding: 0.75rem 1.5rem;
+        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .btn-danger:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
+    }
+
+    .alert {
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+    }
+
+    .alert-danger {
+        background: #f8d7da;
+        color: #721c24;
+        border-left: 4px solid #dc3545;
+    }
+
+    @media (max-width: 768px) {
+        .documents-page {
+            padding: 1rem;
         }
 
-        .placeholder-actions {
+        .page-header {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .header-right {
             flex-direction: column;
         }
 
-        .btn {
+        .search-input {
             width: 100%;
+        }
+
+        .document-card {
+            flex-direction: column;
+        }
+
+        .doc-actions {
+            justify-content: center;
         }
     }
 </style>
