@@ -401,6 +401,164 @@ public class DocumentsController : ControllerBase
     }
 
     /// <summary>
+    /// Carica un nuovo documento con file
+    /// </summary>
+    /// <param name="file">File da caricare</param>
+    /// <param name="category">Categoria del documento (opzionale)</param>
+    /// <param name="visibility">Livello di visibilità (opzionale, default: Private)</param>
+    /// <param name="notes">Note sul documento (opzionale)</param>
+    /// <returns>Il documento creato</returns>
+    /// <response code="201">Documento caricato con successo</response>
+    /// <response code="400">Richiesta non valida (file mancante o non valido)</response>
+    /// <response code="500">Errore interno del server</response>
+    [HttpPost("upload")]
+    [RequirePermission(Permissions.DocumentWrite)]
+    [ProducesResponseType(typeof(Document), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    [RequestSizeLimit(52428800)] // 50 MB limit
+    public async Task<ActionResult<Document>> UploadDocument(
+        [FromForm] IFormFile file,
+        [FromForm] string? category = null,
+        [FromForm] int visibility = 0,
+        [FromForm] string? notes = null)
+    {
+        try
+        {
+            // Validate file
+            if (file == null || file.Length == 0)
+            {
+                return BadRequest(new { error = "No file provided" });
+            }
+
+            // Check file size (50 MB)
+            if (file.Length > 52428800)
+            {
+                return BadRequest(new { error = "File size exceeds maximum limit of 50 MB" });
+            }
+
+            // Get user ID from claims
+            var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+            // Create upload directory if it doesn't exist
+            var uploadsPath = Path.Combine(Directory.GetCurrentDirectory(), "Uploads");
+            Directory.CreateDirectory(uploadsPath);
+
+            // Generate unique filename
+            var uniqueFileName = $"{Guid.NewGuid()}_{Path.GetFileName(file.FileName)}";
+            var filePath = Path.Combine(uploadsPath, uniqueFileName);
+
+            // Save file to disk
+            using (var stream = new FileStream(filePath, FileMode.Create))
+            {
+                await file.CopyToAsync(stream);
+            }
+
+            _logger.LogInformation("File saved to {FilePath}", filePath);
+
+            // Extract text from file (basic implementation)
+            string extractedText = "";
+            try
+            {
+                var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+                
+                // For text files, read content directly
+                if (extension == ".txt")
+                {
+                    extractedText = await System.IO.File.ReadAllTextAsync(filePath);
+                }
+                // For PDFs and other formats, we'll add processing later
+                // For now, just mark that text extraction is needed
+                else
+                {
+                    extractedText = $"[Text extraction pending for {extension} file]";
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error extracting text from file");
+                extractedText = "[Text extraction failed]";
+            }
+
+            // Create document entity
+            var document = new Document
+            {
+                FileName = file.FileName,
+                FilePath = filePath,
+                ContentType = file.ContentType,
+                FileSize = file.Length,
+                ExtractedText = extractedText,
+                ActualCategory = category ?? "Uncategorized",
+                Visibility = (DocumentVisibility)visibility,
+                Notes = notes,
+                OwnerId = userId,
+                UploadedAt = DateTime.UtcNow,
+                WorkflowState = DocN.Data.Constants.DocumentProcessingState.Queued,
+                StateEnteredAt = DateTime.UtcNow,
+                MaxRetries = 3
+            };
+
+            // Save to database
+            _context.Documents.Add(document);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Document {Id} - {FileName} uploaded successfully", document.Id, document.FileName);
+
+            // If text was extracted, create chunks and embeddings asynchronously
+            if (!string.IsNullOrEmpty(extractedText) && !extractedText.Contains("[Text extraction"))
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await _workflowService.TransitionToStateAsync(
+                            document.Id,
+                            DocN.Data.Constants.DocumentProcessingState.Extracting,
+                            "Document uploaded with extracted text");
+
+                        var chunks = _chunkingService.ChunkDocument(document);
+                        if (chunks.Any())
+                        {
+                            await _workflowService.TransitionToStateAsync(
+                                document.Id,
+                                DocN.Data.Constants.DocumentProcessingState.Chunking,
+                                "Creating chunks");
+
+                            var embeddedCount = await GenerateChunkEmbeddingsAsync(chunks, document.Id);
+                            
+                            _context.DocumentChunks.AddRange(chunks);
+                            await _context.SaveChangesAsync();
+                            
+                            _logger.LogInformation("Created {ChunkCount} chunks for document {Id}, {EmbeddedCount} with embeddings", 
+                                chunks.Count, document.Id, embeddedCount);
+
+                            await _workflowService.TransitionToStateAsync(
+                                document.Id,
+                                DocN.Data.Constants.DocumentProcessingState.Completed,
+                                "Document processing completed");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error processing document {Id} asynchronously", document.Id);
+                        await _workflowService.RecordErrorAsync(
+                            document.Id,
+                            ex,
+                            DocN.Data.Constants.DocumentErrorType.UnknownError);
+                    }
+                });
+            }
+
+            return CreatedAtAction(nameof(GetDocument), new { id = document.Id }, document);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error uploading document");
+            return StatusCode(500, new { error = "An error occurred while uploading the document" });
+        }
+    }
+
+    /// <summary>
     /// Aggiorna un documento esistente
     /// </summary>
     /// <param name="id">ID del documento da aggiornare</param>

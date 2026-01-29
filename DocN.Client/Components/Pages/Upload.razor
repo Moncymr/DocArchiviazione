@@ -1,88 +1,396 @@
 @page "/upload"
+@using Microsoft.AspNetCore.Components.Forms
+@using System.Net.Http.Headers
+@inject IHttpClientFactory HttpClientFactory
 @inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ILogger<Upload> Logger
+@rendermode InteractiveServer
 
-<PageTitle>Upload - DocN</PageTitle>
+<PageTitle>Upload Document - DocN</PageTitle>
 
-<div class="placeholder-page">
-    <div class="placeholder-card">
-        <div class="placeholder-icon">📄</div>
-        <h1>Upload Document</h1>
-        <p class="placeholder-message">
-            This page is being refactored to use Server HTTP APIs.
-        </p>
-        <p class="placeholder-details">
-            This feature will be available once the API integration is complete.
-        </p>
-        
-        <div class="placeholder-actions">
-            <button class="btn btn-primary" @onclick='() => Navigation.NavigateTo("/documents")'>
-                View Documents
-            </button>
-            <button class="btn btn-secondary" @onclick='() => Navigation.NavigateTo("/")'>
-                Go to Home
-            </button>
+<div class="upload-container">
+    <div class="upload-header">
+        <h2>📤 Upload Document</h2>
+        <button class="btn btn-secondary" @onclick="GoBack">
+            ← Back to Documents
+        </button>
+    </div>
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-error">
+            ❌ @errorMessage
         </div>
+    }
+
+    @if (!string.IsNullOrEmpty(successMessage))
+    {
+        <div class="alert alert-success">
+            ✅ @successMessage
+        </div>
+    }
+
+    <div class="upload-card">
+        <EditForm Model="@uploadModel" OnValidSubmit="HandleUpload">
+            <!-- File Selection -->
+            <div class="form-section">
+                <h3>Select File</h3>
+                <div class="file-upload-wrapper">
+                    <InputFile OnChange="OnFileSelected" class="file-input" id="fileInput" accept=".pdf,.doc,.docx,.txt,.xlsx,.xls,.png,.jpg,.jpeg" />
+                    <label for="fileInput" class="file-upload-button">
+                        <span class="upload-icon">📁</span>
+                        <span>@(selectedFile != null ? selectedFile.Name : "Choose a file...")</span>
+                    </label>
+                    @if (selectedFile != null)
+                    {
+                        <div class="file-info">
+                            <span>📄 @selectedFile.Name</span>
+                            <span>💾 @FormatFileSize(selectedFile.Size)</span>
+                        </div>
+                    }
+                </div>
+                <small class="form-help">Supported formats: PDF, Word, Excel, Text, Images (PNG, JPG). Max size: 50 MB</small>
+            </div>
+
+            <!-- Category -->
+            <div class="form-section">
+                <h3>Category</h3>
+                <div class="form-group">
+                    <label>Document Category</label>
+                    <InputText @bind-Value="uploadModel.Category" class="form-control" placeholder="e.g., Contracts, Reports, Technical..." />
+                    <small class="form-help">Optional - helps organize your documents</small>
+                </div>
+            </div>
+
+            <!-- Visibility -->
+            <div class="form-section">
+                <h3>Visibility</h3>
+                <div class="form-group">
+                    <label>Who can access this document?</label>
+                    <InputSelect @bind-Value="uploadModel.Visibility" class="form-control">
+                        <option value="0">Private (Only me)</option>
+                        <option value="1">Internal (My organization)</option>
+                        <option value="2">Public (Everyone)</option>
+                    </InputSelect>
+                </div>
+            </div>
+
+            <!-- Notes -->
+            <div class="form-section">
+                <h3>Notes</h3>
+                <div class="form-group">
+                    <label>Additional Notes</label>
+                    <InputTextArea @bind-Value="uploadModel.Notes" class="form-control" rows="3" placeholder="Add any notes about this document..." />
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary" disabled="@(isUploading || selectedFile == null)">
+                    @if (isUploading)
+                    {
+                        <span>⏳ Uploading...</span>
+                    }
+                    else
+                    {
+                        <span>📤 Upload Document</span>
+                    }
+                </button>
+                <button type="button" class="btn btn-secondary" @onclick="Cancel" disabled="@isUploading">
+                    Cancel
+                </button>
+            </div>
+
+            @if (isUploading)
+            {
+                <div class="upload-progress">
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: @uploadProgress%"></div>
+                    </div>
+                    <p>@uploadProgress% - @uploadStatus</p>
+                </div>
+            }
+        </EditForm>
     </div>
 </div>
 
+@code {
+    private class UploadModel
+    {
+        public string Category { get; set; } = "General";
+        public int Visibility { get; set; } = 0; // Private by default
+        public string Notes { get; set; } = "";
+    }
+
+    private UploadModel uploadModel = new();
+    private IBrowserFile? selectedFile;
+    private bool isUploading = false;
+    private string errorMessage = "";
+    private string successMessage = "";
+    private int uploadProgress = 0;
+    private string uploadStatus = "Preparing upload...";
+
+    private void OnFileSelected(InputFileChangeEventArgs e)
+    {
+        selectedFile = e.File;
+        errorMessage = "";
+        successMessage = "";
+
+        // Validate file size
+        if (selectedFile.Size > 52428800) // 50 MB
+        {
+            errorMessage = "File size exceeds maximum limit of 50 MB";
+            selectedFile = null;
+        }
+    }
+
+    private async Task HandleUpload()
+    {
+        if (selectedFile == null)
+        {
+            errorMessage = "Please select a file to upload";
+            return;
+        }
+
+        isUploading = true;
+        errorMessage = "";
+        successMessage = "";
+        uploadProgress = 0;
+        uploadStatus = "Preparing upload...";
+
+        try
+        {
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+
+            // Create multipart form data
+            using var content = new MultipartFormDataContent();
+
+            // Add file
+            uploadStatus = "Reading file...";
+            uploadProgress = 10;
+            StateHasChanged();
+
+            var fileStream = selectedFile.OpenReadStream(maxAllowedSize: 52428800);
+            var streamContent = new StreamContent(fileStream);
+            streamContent.Headers.ContentType = new MediaTypeHeaderValue(selectedFile.ContentType);
+            content.Add(streamContent, "file", selectedFile.Name);
+
+            // Add other form fields
+            content.Add(new StringContent(uploadModel.Category), "category");
+            content.Add(new StringContent(uploadModel.Visibility.ToString()), "visibility");
+            if (!string.IsNullOrEmpty(uploadModel.Notes))
+            {
+                content.Add(new StringContent(uploadModel.Notes), "notes");
+            }
+
+            uploadStatus = "Uploading to server...";
+            uploadProgress = 30;
+            StateHasChanged();
+
+            // Upload to server
+            var response = await httpClient.PostAsync("Documents/upload", content);
+
+            uploadProgress = 80;
+            uploadStatus = "Processing...";
+            StateHasChanged();
+
+            if (response.IsSuccessStatusCode)
+            {
+                uploadProgress = 100;
+                uploadStatus = "Upload complete!";
+                successMessage = $"Document '{selectedFile.Name}' uploaded successfully!";
+                
+                Logger.LogInformation("Document uploaded successfully: {FileName}", selectedFile.Name);
+
+                // Wait a moment to show success message
+                await Task.Delay(1500);
+
+                // Navigate to documents page
+                Navigation.NavigateTo("/documents");
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                errorMessage = $"Upload failed. Please try again.";
+                Logger.LogError("Upload failed: {StatusCode} - {Error}", response.StatusCode, errorContent);
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "An error occurred during upload. Please try again.";
+            Logger.LogError(ex, "Error uploading document");
+        }
+        finally
+        {
+            isUploading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void Cancel()
+    {
+        Navigation.NavigateTo("/documents");
+    }
+
+    private void GoBack()
+    {
+        Navigation.NavigateTo("/documents");
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        double len = bytes;
+        int order = 0;
+        while (len >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            len = len / 1024;
+        }
+        return $"{len:0.##} {sizes[order]}";
+    }
+}
+
 <style>
-    .placeholder-page {
-        min-height: 80vh;
+    .upload-container {
+        max-width: 900px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+    }
+
+    .upload-header {
         display: flex;
+        justify-content: space-between;
         align-items: center;
-        justify-content: center;
+        margin-bottom: 2rem;
+    }
+
+    .upload-header h2 {
+        margin: 0;
+        font-size: 2rem;
+        color: #2d3748;
+    }
+
+    .upload-card {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         padding: 2rem;
     }
 
-    .placeholder-card {
-        background: white;
-        border-radius: 16px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        padding: 3rem;
-        max-width: 600px;
-        text-align: center;
+    .form-section {
+        margin-bottom: 2rem;
+        padding-bottom: 2rem;
+        border-bottom: 1px solid #e2e8f0;
     }
 
-    .placeholder-icon {
-        font-size: 4rem;
-        margin-bottom: 1rem;
+    .form-section:last-of-type {
+        border-bottom: none;
     }
 
-    .placeholder-card h1 {
+    .form-section h3 {
+        margin: 0 0 1rem 0;
+        font-size: 1.2rem;
         color: #2d3748;
+    }
+
+    .form-group {
         margin-bottom: 1rem;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 600;
+        color: #4a5568;
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 0.75rem;
+        border: 1px solid #cbd5e0;
+        border-radius: 6px;
+        font-size: 1rem;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: #2563eb;
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    }
+
+    .form-help {
+        display: block;
+        margin-top: 0.5rem;
+        font-size: 0.875rem;
+        color: #718096;
+    }
+
+    .file-upload-wrapper {
+        position: relative;
+    }
+
+    .file-input {
+        position: absolute;
+        width: 0.1px;
+        height: 0.1px;
+        opacity: 0;
+        overflow: hidden;
+        z-index: -1;
+    }
+
+    .file-upload-button {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        padding: 2rem;
+        border: 2px dashed #cbd5e0;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.3s;
+        background: #f7fafc;
+    }
+
+    .file-upload-button:hover {
+        border-color: #2563eb;
+        background: #ebf4ff;
+    }
+
+    .upload-icon {
         font-size: 2rem;
     }
 
-    .placeholder-message {
-        color: #718096;
-        font-size: 1.125rem;
-        margin-bottom: 1rem;
-        line-height: 1.6;
-    }
-
-    .placeholder-details {
-        color: #4a5568;
-        font-size: 0.9rem;
-        margin-bottom: 1.5rem;
-        line-height: 1.6;
-    }
-
-    .placeholder-actions {
+    .file-info {
         display: flex;
         gap: 1rem;
-        justify-content: center;
+        margin-top: 1rem;
+        padding: 0.75rem;
+        background: #ebf4ff;
+        border-radius: 6px;
+        font-size: 0.9rem;
+        color: #2563eb;
+    }
+
+    .form-actions {
+        display: flex;
+        gap: 1rem;
         margin-top: 2rem;
     }
 
     .btn {
-        padding: 0.75rem 1.5rem;
-        border-radius: 8px;
+        padding: 0.75rem 2rem;
         border: none;
+        border-radius: 8px;
         font-weight: 600;
         cursor: pointer;
         transition: all 0.2s;
-        font-size: 0.9rem;
+        font-size: 1rem;
+    }
+
+    .btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
     }
 
     .btn-primary {
@@ -90,7 +398,7 @@
         color: white;
     }
 
-    .btn-primary:hover {
+    .btn-primary:hover:not(:disabled) {
         transform: translateY(-2px);
         box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
     }
@@ -100,17 +408,65 @@
         color: #2d3748;
     }
 
-    .btn-secondary:hover {
+    .btn-secondary:hover:not(:disabled) {
         background: #cbd5e0;
-        transform: translateY(-2px);
+    }
+
+    .alert {
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 1.5rem;
+    }
+
+    .alert-error {
+        background: #fee2e2;
+        border: 1px solid #fecaca;
+        color: #991b1b;
+    }
+
+    .alert-success {
+        background: #d1fae5;
+        border: 1px solid #a7f3d0;
+        color: #065f46;
+    }
+
+    .upload-progress {
+        margin-top: 1.5rem;
+        padding: 1rem;
+        background: #f7fafc;
+        border-radius: 8px;
+    }
+
+    .progress-bar {
+        width: 100%;
+        height: 8px;
+        background: #e2e8f0;
+        border-radius: 4px;
+        overflow: hidden;
+        margin-bottom: 0.5rem;
+    }
+
+    .progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #2563eb, #3b82f6);
+        transition: width 0.3s ease;
+    }
+
+    .upload-progress p {
+        margin: 0;
+        font-size: 0.9rem;
+        color: #4a5568;
+        text-align: center;
     }
 
     @@media (max-width: 768px) {
-        .placeholder-card {
-            padding: 2rem;
+        .upload-header {
+            flex-direction: column;
+            gap: 1rem;
+            align-items: flex-start;
         }
 
-        .placeholder-actions {
+        .form-actions {
             flex-direction: column;
         }
 

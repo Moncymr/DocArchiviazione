@@ -1,0 +1,121 @@
+@page "/upload"
+@inject NavigationManager Navigation
+
+<PageTitle>Upload - DocN</PageTitle>
+
+<div class="placeholder-page">
+    <div class="placeholder-card">
+        <div class="placeholder-icon">📄</div>
+        <h1>Upload Document</h1>
+        <p class="placeholder-message">
+            This page is being refactored to use Server HTTP APIs.
+        </p>
+        <p class="placeholder-details">
+            This feature will be available once the API integration is complete.
+        </p>
+        
+        <div class="placeholder-actions">
+            <button class="btn btn-primary" @onclick='() => Navigation.NavigateTo("/documents")'>
+                View Documents
+            </button>
+            <button class="btn btn-secondary" @onclick='() => Navigation.NavigateTo("/")'>
+                Go to Home
+            </button>
+        </div>
+    </div>
+</div>
+
+<style>
+    .placeholder-page {
+        min-height: 80vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem;
+    }
+
+    .placeholder-card {
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        padding: 3rem;
+        max-width: 600px;
+        text-align: center;
+    }
+
+    .placeholder-icon {
+        font-size: 4rem;
+        margin-bottom: 1rem;
+    }
+
+    .placeholder-card h1 {
+        color: #2d3748;
+        margin-bottom: 1rem;
+        font-size: 2rem;
+    }
+
+    .placeholder-message {
+        color: #718096;
+        font-size: 1.125rem;
+        margin-bottom: 1rem;
+        line-height: 1.6;
+    }
+
+    .placeholder-details {
+        color: #4a5568;
+        font-size: 0.9rem;
+        margin-bottom: 1.5rem;
+        line-height: 1.6;
+    }
+
+    .placeholder-actions {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+        margin-top: 2rem;
+    }
+
+    .btn {
+        padding: 0.75rem 1.5rem;
+        border-radius: 8px;
+        border: none;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-size: 0.9rem;
+    }
+
+    .btn-primary {
+        background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+        color: white;
+    }
+
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+    }
+
+    .btn-secondary {
+        background: #e2e8f0;
+        color: #2d3748;
+    }
+
+    .btn-secondary:hover {
+        background: #cbd5e0;
+        transform: translateY(-2px);
+    }
+
+    @@media (max-width: 768px) {
+        .placeholder-card {
+            padding: 2rem;
+        }
+
+        .placeholder-actions {
+            flex-direction: column;
+        }
+
+        .btn {
+            width: 100%;
+        }
+    }
+</style>
