@@ -1,7 +1,8 @@
 @page "/user-activity"
 @using System.Net.Http.Json
-@inject HttpClient Http
+@inject IHttpClientFactory HttpClientFactory
 @inject NavigationManager Navigation
+@inject ILogger<UserActivity> Logger
 
 <PageTitle>Attività Utente - DocN</PageTitle>
 
@@ -228,14 +229,17 @@
         
         try
         {
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+            
             // Load activities
-            activities = await Http.GetFromJsonAsync<List<UserActivityDto>>($"/api/user-activity/{userId}?count=50");
+            activities = await httpClient.GetFromJsonAsync<List<UserActivityDto>>($"api/user-activity/{userId}?count=50");
             
             // Load statistics
-            statistics = await Http.GetFromJsonAsync<UserActivityStatistics>($"/api/user-activity/{userId}/statistics");
+            statistics = await httpClient.GetFromJsonAsync<UserActivityStatistics>($"api/user-activity/{userId}/statistics");
         }
         catch (Exception ex)
         {
+            Logger.LogError(ex, "Error loading user activities for {UserId}", userId);
             errorMessage = $"Errore nel caricamento delle attività: {ex.Message}";
             activities = null;
             statistics = null;

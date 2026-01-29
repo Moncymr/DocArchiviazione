@@ -1,11 +1,10 @@
 @page "/messages"
-@using DocN.Data
-@using DocN.Data.Models
-@using Microsoft.EntityFrameworkCore
+@using System.Net.Http.Json
 @rendermode InteractiveServer
-@inject ApplicationDbContext DbContext
+@inject IHttpClientFactory HttpClientFactory
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject NavigationManager Navigation
+@inject ILogger<Messages> Logger
 
 <PageTitle>Messaggi - DocN</PageTitle>
 
@@ -185,17 +184,57 @@
 
     private async Task LoadConversations(string userId)
     {
-        conversations = await DbContext.Conversations
-            .Include(c => c.Messages)
-            .Where(c => c.UserId == userId)
-            .OrderByDescending(c => c.LastMessageAt)
-            .ToListAsync();
+        try
+        {
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+            
+            // Get conversation summaries
+            var conversationSummaries = await httpClient.GetFromJsonAsync<List<ConversationDto>>($"api/chat/conversations?userId={userId}");
+            
+            if (conversationSummaries != null)
+            {
+                // Convert to full conversation objects by loading messages for each
+                conversations = new List<Conversation>();
+                foreach (var summary in conversationSummaries)
+                {
+                    var messages = await httpClient.GetFromJsonAsync<List<MessageDto>>($"api/chat/conversations/{summary.Id}/messages");
+                    
+                    conversations.Add(new Conversation
+                    {
+                        Id = summary.Id,
+                        UserId = userId,
+                        Title = summary.Title,
+                        CreatedAt = summary.CreatedAt,
+                        LastMessageAt = summary.LastMessageAt,
+                        IsStarred = summary.IsStarred,
+                        IsArchived = false, // Default value, can be extended if API provides it
+                        Messages = messages?.Select(m => new Message
+                        {
+                            Id = m.Id,
+                            ConversationId = summary.Id,
+                            Role = m.Role,
+                            Content = m.Content,
+                            Timestamp = m.Timestamp,
+                            UserRating = m.UserRating,
+                            UserFeedback = m.UserFeedback,
+                            IsError = m.IsError
+                        }).ToList() ?? new List<Message>()
+                    });
+                }
+            }
 
-        totalConversations = conversations.Count;
-        starredCount = conversations.Count(c => c.IsStarred);
-        archivedCount = conversations.Count(c => c.IsArchived);
+            totalConversations = conversations.Count;
+            starredCount = conversations.Count(c => c.IsStarred);
+            archivedCount = conversations.Count(c => c.IsArchived);
 
-        FilterConversations();
+            FilterConversations();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading conversations for user {UserId}", userId);
+            conversations = new List<Conversation>();
+            FilterConversations();
+        }
     }
 
     private void FilterConversations()
@@ -248,6 +287,54 @@
     private string GetStars(int rating)
     {
         return new string('⭐', rating);
+    }
+
+    // DTOs for API communication
+    private class ConversationDto
+    {
+        public int Id { get; set; }
+        public string Title { get; set; } = string.Empty;
+        public DateTime CreatedAt { get; set; }
+        public DateTime LastMessageAt { get; set; }
+        public int MessageCount { get; set; }
+        public bool IsStarred { get; set; }
+    }
+
+    private class MessageDto
+    {
+        public int Id { get; set; }
+        public string Role { get; set; } = string.Empty;
+        public string Content { get; set; } = string.Empty;
+        public DateTime Timestamp { get; set; }
+        public int? UserRating { get; set; }
+        public string? UserFeedback { get; set; }
+        public bool IsError { get; set; }
+    }
+
+    // Local models for UI binding
+    private class Conversation
+    {
+        public int Id { get; set; }
+        public string UserId { get; set; } = string.Empty;
+        public string? Title { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime LastMessageAt { get; set; }
+        public bool IsStarred { get; set; }
+        public bool IsArchived { get; set; }
+        public string? Tags { get; set; }
+        public List<Message> Messages { get; set; } = new();
+    }
+
+    private class Message
+    {
+        public int Id { get; set; }
+        public int ConversationId { get; set; }
+        public string Role { get; set; } = string.Empty;
+        public string Content { get; set; } = string.Empty;
+        public DateTime Timestamp { get; set; }
+        public int? UserRating { get; set; }
+        public string? UserFeedback { get; set; }
+        public bool IsError { get; set; }
     }
 }
 

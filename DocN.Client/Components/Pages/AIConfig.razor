@@ -1,11 +1,10 @@
 @page "/config"
-@using DocN.Data
 @using DocN.Data.Models
 @using System.Net.Http.Json
 @using System.Text.Json
-@inject ApplicationDbContext DbContext
 @inject NavigationManager Navigation
 @inject IHttpClientFactory HttpClientFactory
+@inject ILogger<AIConfig> Logger
 @rendermode InteractiveServer
 
 <PageTitle>Configurazione AI - DocN</PageTitle>
@@ -929,8 +928,18 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // Try to load existing active configuration
-        config = await Task.Run(() => DbContext.AIConfigurations.FirstOrDefault(c => c.IsActive));
+        try
+        {
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+            
+            // Try to load existing active configuration
+            config = await httpClient.GetFromJsonAsync<AIConfiguration>("api/config/active");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "No active configuration found, creating new one");
+            config = null;
+        }
         
         // If none exists, create a new one with defaults
         if (config == null)
@@ -1004,50 +1013,31 @@
             config.MetadataExtractionProvider = string.IsNullOrEmpty(selectedMetadataExtractionProvider) ? null : (AIProviderType)int.Parse(selectedMetadataExtractionProvider);
             config.RAGProvider = string.IsNullOrEmpty(selectedRAGProvider) ? null : (AIProviderType)int.Parse(selectedRAGProvider);
 
-            // If setting this as active, deactivate all others
-            if (config.IsActive)
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+            
+            // Save configuration via API
+            var response = await httpClient.PostAsJsonAsync("api/config", config);
+            
+            if (response.IsSuccessStatusCode)
             {
-                var otherConfigs = DbContext.AIConfigurations.Where(c => c.Id != config.Id);
-                foreach (var other in otherConfigs)
-                {
-                    other.IsActive = false;
-                }
-            }
-
-            if (config.Id == 0)
-            {
-                config.CreatedAt = DateTime.UtcNow;
-                DbContext.AIConfigurations.Add(config);
+                config = await response.Content.ReadFromJsonAsync<AIConfiguration>();
+                message = "✅ Configurazione salvata con successo!";
+                isError = false;
             }
             else
             {
-                config.UpdatedAt = DateTime.UtcNow;
-                DbContext.AIConfigurations.Update(config);
+                var errorContent = await response.Content.ReadAsStringAsync();
+                message = $"❌ Errore nel salvataggio: {errorContent}";
+                isError = true;
             }
-
-            await DbContext.SaveChangesAsync();
-            
-            message = "✅ Configurazione salvata con successo!";
-            isError = false;
         }
         catch (Exception ex)
         {
-            // Capture inner exceptions for better error reporting
-            var fullErrorMessage = ex.Message;
-            var innerEx = ex.InnerException;
-            var depth = 1;
-            while (innerEx != null && depth <= 3)
-            {
-                fullErrorMessage += $"\n--- Inner Exception {depth} ---\n{innerEx.Message}";
-                innerEx = innerEx.InnerException;
-                depth++;
-            }
-            
-            message = $"❌ Errore nel salvataggio della configurazione: {fullErrorMessage}";
+            Logger.LogError(ex, "Error saving configuration");
+            message = $"❌ Errore nel salvataggio della configurazione: {ex.Message}";
             isError = true;
-            
-            // Log to console for debugging
-            Console.WriteLine($"AIConfiguration Save Error: {fullErrorMessage}");
+        }
+    }
             if (ex.StackTrace != null)
             {
                 Console.WriteLine($"Stack Trace: {ex.StackTrace}");
