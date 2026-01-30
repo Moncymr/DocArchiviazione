@@ -210,7 +210,33 @@ builder.Services.AddHttpClient("BackendAPI", client =>
 // Register Authentication Service to call Server API for login/register/logout
 builder.Services.AddScoped<DocN.Client.Services.IAuthenticationService, DocN.Client.Services.AuthenticationService>();
 
-var app = builder.Build();
+WebApplication app;
+try
+{
+    app = builder.Build();
+}
+catch (Exception ex)
+{
+    Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+    Console.WriteLine("FATAL ERROR: Failed to build the application");
+    Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+    Console.WriteLine($"Exception Type: {ex.GetType().Name}");
+    Console.WriteLine($"Message: {ex.Message}");
+    Console.WriteLine($"Stack Trace:\n{ex.StackTrace}");
+    
+    if (ex.InnerException != null)
+    {
+        Console.WriteLine("\nInner Exception:");
+        Console.WriteLine($"Type: {ex.InnerException.GetType().Name}");
+        Console.WriteLine($"Message: {ex.InnerException.Message}");
+        Console.WriteLine($"Stack Trace:\n{ex.InnerException.StackTrace}");
+    }
+    
+    Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+    Console.WriteLine("Press any key to exit...");
+    Console.ReadKey();
+    return;
+}
 
 // NOTE: Database seeding removed from Client
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -266,4 +292,59 @@ app.UseAuthorization();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
-app.Run();
+try
+{
+    Console.WriteLine("Starting the application...");
+    app.Run();
+}
+catch (Exception ex)
+{
+    Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+    Console.WriteLine("FATAL ERROR: Application crashed during execution");
+    Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+    Console.WriteLine($"Exception Type: {ex.GetType().Name}");
+    Console.WriteLine($"Message: {ex.Message}");
+    Console.WriteLine($"Stack Trace:\n{ex.StackTrace}");
+    
+    if (ex.InnerException != null)
+    {
+        Console.WriteLine("\nInner Exception:");
+        Console.WriteLine($"Type: {ex.InnerException.GetType().Name}");
+        Console.WriteLine($"Message: {ex.InnerException.Message}");
+        Console.WriteLine($"Stack Trace:\n{ex.InnerException.StackTrace}");
+    }
+    
+    Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+    
+    // Log to a file as well for easier debugging
+    var errorLogPath = Path.Combine(AppContext.BaseDirectory, "client-crash.log");
+    try
+    {
+        var errorLog = $@"
+Client Crash Log - {DateTime.Now:yyyy-MM-dd HH:mm:ss}
+═══════════════════════════════════════════════════════════════════
+Exception Type: {ex.GetType().Name}
+Message: {ex.Message}
+Stack Trace:
+{ex.StackTrace}
+
+{(ex.InnerException != null ? $@"Inner Exception:
+Type: {ex.InnerException.GetType().Name}
+Message: {ex.InnerException.Message}
+Stack Trace:
+{ex.InnerException.StackTrace}
+" : "")}
+═══════════════════════════════════════════════════════════════════
+";
+        File.WriteAllText(errorLogPath, errorLog);
+        Console.WriteLine($"\nError details have been written to: {errorLogPath}");
+    }
+    catch
+    {
+        // Ignore file writing errors
+    }
+    
+    Console.WriteLine("\nPress any key to exit...");
+    Console.ReadKey();
+    throw; // Re-throw to ensure proper exit code
+}
