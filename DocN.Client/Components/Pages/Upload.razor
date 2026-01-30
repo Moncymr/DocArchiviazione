@@ -110,14 +110,46 @@
                         <div class="progress-fill" style="width: @uploadProgress%"></div>
                     </div>
                     <p>@uploadProgress% - @uploadStatus</p>
+                    @if (uploadProgress >= 80)
+                    {
+                        <div class="analysis-status">
+                            <div class="spinner-small"></div>
+                            <span>🤖 Analisi del documento in corso: estrazione testo, generazione embeddings, proposta categoria, estrazione tag e metadati...</span>
+                        </div>
+                    }
                 </div>
             }
         </EditForm>
 
-        @if (analysisResult != null)
+        @if (showAnalysisSection)
         {
             <div class="analysis-results">
-                <h3>📊 Document Analysis Results</h3>
+                <h3>📊 Risultati Analisi Documento</h3>
+                
+                @if (analysisResult == null && !analysisError)
+                {
+                    <div class="analysis-loading">
+                        <div class="spinner-large"></div>
+                        <p>⏳ Analisi in corso...</p>
+                        <p class="analysis-steps">
+                            ✓ Estrazione testo<br/>
+                            ✓ Generazione embeddings<br/>
+                            ✓ Proposta categoria con motivazione<br/>
+                            ✓ Estrazione tag e metadati
+                        </p>
+                    </div>
+                }
+                
+                @if (analysisError)
+                {
+                    <div class="analysis-error">
+                        <p>⚠️ L'analisi AI non è stata completata. Il documento è stato caricato con successo ma senza analisi automatica.</p>
+                        <p>Possibili cause: AI provider non configurato o servizio non disponibile.</p>
+                    </div>
+                }
+                
+                @if (analysisResult != null)
+                {
                 
                 @if (!string.IsNullOrEmpty(analysisResult.SuggestedCategory))
                 {
@@ -161,14 +193,14 @@
                 @if (analysisResult.EmbeddingDimension > 0)
                 {
                     <div class="analysis-section">
-                        <h4>🧮 Embeddings Generated</h4>
-                        <p>Vector embedding with <strong>@analysisResult.EmbeddingDimension dimensions</strong> generated for semantic search.</p>
+                        <h4>🧮 Embeddings Generati</h4>
+                        <p>Embedding vettoriale con <strong>@analysisResult.EmbeddingDimension dimensioni</strong> generato per la ricerca semantica.</p>
                     </div>
                 }
 
                 <div class="analysis-actions">
                     <button class="btn btn-analyze" @onclick="ViewDocument">
-                        👇 Clicca qui per analizzare il documento 👇
+                        📄 Visualizza il Documento Completo
                     </button>
                 </div>
                 <div class="secondary-actions">
@@ -176,6 +208,7 @@
                         📤 Carica un altro documento
                     </button>
                 </div>
+                }
             </div>
         }
     </div>
@@ -207,6 +240,8 @@
     private int uploadProgress = 0;
     private string uploadStatus = "Preparing upload...";
     private DocumentAnalysisResult? analysisResult = null;
+    private bool showAnalysisSection = false;
+    private bool analysisError = false;
 
     private void OnFileSelected(InputFileChangeEventArgs e)
     {
@@ -269,14 +304,18 @@
             var response = await httpClient.PostAsync("Documents/upload", content);
 
             uploadProgress = 80;
-            uploadStatus = "Processing...";
+            uploadStatus = "Analisi documento in corso...";
             StateHasChanged();
 
             if (response.IsSuccessStatusCode)
             {
                 uploadProgress = 100;
-                uploadStatus = "Upload complete!";
-                successMessage = $"Document '{selectedFile.Name}' uploaded successfully!";
+                uploadStatus = "Caricamento completato!";
+                successMessage = $"Documento '{selectedFile.Name}' caricato con successo!";
+                
+                // Show analysis section immediately
+                showAnalysisSection = true;
+                StateHasChanged();
                 
                 Logger.LogInformation("Document uploaded successfully: {FileName}", selectedFile.Name);
 
@@ -313,13 +352,21 @@
                     }
 
                     StateHasChanged();
+                    
+                    // Check if we got any analysis data
+                    if (analysisResult.SuggestedCategory == null && 
+                        (analysisResult.Tags == null || !analysisResult.Tags.Any()) && 
+                        analysisResult.EmbeddingDimension == 0)
+                    {
+                        analysisError = true;
+                        Logger.LogWarning("No analysis data received for document {FileName}", selectedFile.Name);
+                    }
                 }
                 catch (Exception ex)
                 {
                     Logger.LogError(ex, "Error parsing analysis results");
-                    // Continue without showing analysis - not critical
-                    await Task.Delay(1500);
-                    Navigation.NavigateTo("/documents");
+                    analysisError = true;
+                    StateHasChanged();
                 }
             }
             else
@@ -364,6 +411,8 @@
         // Reset form
         selectedFile = null;
         analysisResult = null;
+        showAnalysisSection = false;
+        analysisError = false;
         successMessage = "";
         errorMessage = "";
         uploadModel = new UploadModel();
@@ -591,6 +640,41 @@
         text-align: center;
     }
 
+    .analysis-status {
+        margin-top: 1rem;
+        padding: 0.75rem;
+        background: #ebf4ff;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        font-size: 0.9rem;
+        color: #1e40af;
+    }
+
+    .spinner-small {
+        width: 16px;
+        height: 16px;
+        border: 2px solid #2563eb;
+        border-top-color: transparent;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+    }
+
+    .spinner-large {
+        width: 48px;
+        height: 48px;
+        border: 4px solid #e2e8f0;
+        border-top-color: #2563eb;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 1rem;
+    }
+
+    @@keyframes spin {
+        to { transform: rotate(360deg); }
+    }
+
     .analysis-results {
         margin-top: 2rem;
         padding: 2rem;
@@ -603,6 +687,36 @@
         margin: 0 0 1.5rem 0;
         font-size: 1.5rem;
         color: #2d3748;
+    }
+
+    .analysis-loading {
+        text-align: center;
+        padding: 2rem;
+    }
+
+    .analysis-loading p {
+        margin: 0.5rem 0;
+        font-size: 1rem;
+        color: #4a5568;
+    }
+
+    .analysis-steps {
+        margin-top: 1rem;
+        font-size: 0.9rem;
+        color: #10b981;
+        line-height: 1.8;
+    }
+
+    .analysis-error {
+        padding: 1.5rem;
+        background: #fef3c7;
+        border: 2px solid #fbbf24;
+        border-radius: 8px;
+        color: #92400e;
+    }
+
+    .analysis-error p {
+        margin: 0.5rem 0;
     }
 
     .analysis-section {
