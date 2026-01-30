@@ -54,13 +54,112 @@
                 <small class="form-help">Supported formats: PDF, Word, Excel, Text, Images (PNG, JPG). Max size: 50 MB</small>
             </div>
 
+            @* Show Analyze Button when file is selected and not yet analyzed *@
+            @if (selectedFile != null && !processingComplete && !isAnalyzing)
+            {
+                <div class="analyze-button-section">
+                    <div class="analyze-instruction">
+                        <h3 style="color: #48bb78; margin: 0 0 0.5rem 0; font-size: 1.2rem;">
+                            👇 Clicca qui per analizzare il documento prima del caricamento 👇
+                        </h3>
+                        <p style="color: #666; font-size: 0.9rem; margin: 0;">
+                            L'analisi AI estrarrà il testo, suggerirà una categoria e genererà tag automaticamente
+                        </p>
+                    </div>
+                    <button type="button" class="btn btn-analyze-large" @onclick="AnalyzeDocument">
+                        <span>🔬 Analizza Documento</span>
+                    </button>
+                </div>
+            }
+
+            @* Show analyzing status *@
+            @if (isAnalyzing)
+            {
+                <div class="analyzing-section">
+                    <div class="spinner-large"></div>
+                    <p>🔄 Analisi del documento in corso...</p>
+                    <p class="analysis-steps">
+                        ✓ Estrazione testo<br/>
+                        ✓ Generazione embeddings<br/>
+                        ✓ Proposta categoria con motivazione<br/>
+                        ✓ Estrazione tag e metadati
+                    </p>
+                </div>
+            }
+
+            @* Show analysis results after processing is complete *@
+            @if (showAnalysisSection && processingComplete)
+            {
+                <div class="analysis-results-preview">
+                    <h3>📊 Anteprima Analisi Documento</h3>
+                    
+                    @if (analysisResult != null)
+                    {
+                        @if (!string.IsNullOrEmpty(analysisResult.SuggestedCategory))
+                        {
+                            <div class="analysis-section">
+                                <h4>📁 Categoria Suggerita</h4>
+                                <div class="category-suggestion">
+                                    <span class="category-name">@analysisResult.SuggestedCategory</span>
+                                    @if (!string.IsNullOrEmpty(analysisResult.CategoryReasoning))
+                                    {
+                                        <p class="category-reasoning">@analysisResult.CategoryReasoning</p>
+                                    }
+                                </div>
+                            </div>
+                        }
+
+                        @if (analysisResult.Tags != null && analysisResult.Tags.Any())
+                        {
+                            <div class="analysis-section">
+                                <h4>🔖 Tag Estratti</h4>
+                                <div class="tags-container">
+                                    @foreach (var tag in analysisResult.Tags)
+                                    {
+                                        <span class="tag">@tag</span>
+                                    }
+                                </div>
+                            </div>
+                        }
+
+                        @if (!string.IsNullOrEmpty(analysisResult.ExtractedText))
+                        {
+                            <div class="analysis-section">
+                                <h4>📄 Anteprima Documento</h4>
+                                <div class="preview-text">
+                                    @(analysisResult.ExtractedText.Length > 500 
+                                        ? analysisResult.ExtractedText.Substring(0, 500) + "..." 
+                                        : analysisResult.ExtractedText)
+                                </div>
+                            </div>
+                        }
+
+                        @if (analysisResult.EmbeddingDimension > 0)
+                        {
+                            <div class="analysis-section">
+                                <h4>🧮 Embeddings Generati</h4>
+                                <p>Embedding vettoriale con <strong>@analysisResult.EmbeddingDimension dimensioni</strong> generato per la ricerca semantica.</p>
+                            </div>
+                        }
+                    }
+                    
+                    @if (analysisError)
+                    {
+                        <div class="analysis-error">
+                            <p>⚠️ L'analisi AI non è stata completata. Puoi comunque caricare il documento senza analisi automatica.</p>
+                            <p>Possibili cause: AI provider non configurato o servizio non disponibile.</p>
+                        </div>
+                    }
+                </div>
+            }
+
             <!-- Category -->
             <div class="form-section">
                 <h3>Category</h3>
                 <div class="form-group">
                     <label>Document Category</label>
                     <InputText @bind-Value="uploadModel.Category" class="form-control" placeholder="e.g., Contracts, Reports, Technical..." />
-                    <small class="form-help">Optional - helps organize your documents</small>
+                    <small class="form-help">Optional - helps organize your documents @(processingComplete && !string.IsNullOrEmpty(analysisResult?.SuggestedCategory) ? "(pre-compilato con suggerimento AI)" : "")</small>
                 </div>
             </div>
 
@@ -88,7 +187,7 @@
 
             <!-- Actions -->
             <div class="form-actions">
-                <button type="submit" class="btn btn-primary" disabled="@(isUploading || selectedFile == null)">
+                <button type="submit" class="btn btn-primary" disabled="@(isUploading || selectedFile == null || !processingComplete)">
                     @if (isUploading)
                     {
                         <span>⏳ Uploading...</span>
@@ -103,6 +202,15 @@
                 </button>
             </div>
 
+            @if (!processingComplete && selectedFile != null && !isAnalyzing)
+            {
+                <div class="help-text">
+                    <small>
+                        ℹ️ Clicca prima su "🔬 Analizza Documento" per abilitare il caricamento
+                    </small>
+                </div>
+            }
+
             @if (isUploading)
             {
                 <div class="upload-progress">
@@ -110,107 +218,9 @@
                         <div class="progress-fill" style="width: @uploadProgress%"></div>
                     </div>
                     <p>@uploadProgress% - @uploadStatus</p>
-                    @if (uploadProgress >= 80)
-                    {
-                        <div class="analysis-status">
-                            <div class="spinner-small"></div>
-                            <span>🤖 Analisi del documento in corso: estrazione testo, generazione embeddings, proposta categoria, estrazione tag e metadati...</span>
-                        </div>
-                    }
                 </div>
             }
         </EditForm>
-
-        @if (showAnalysisSection)
-        {
-            <div class="analysis-results">
-                <h3>📊 Risultati Analisi Documento</h3>
-                
-                @if (analysisResult == null && !analysisError)
-                {
-                    <div class="analysis-loading">
-                        <div class="spinner-large"></div>
-                        <p>⏳ Analisi in corso...</p>
-                        <p class="analysis-steps">
-                            ✓ Estrazione testo<br/>
-                            ✓ Generazione embeddings<br/>
-                            ✓ Proposta categoria con motivazione<br/>
-                            ✓ Estrazione tag e metadati
-                        </p>
-                    </div>
-                }
-                
-                @if (analysisError)
-                {
-                    <div class="analysis-error">
-                        <p>⚠️ L'analisi AI non è stata completata. Il documento è stato caricato con successo ma senza analisi automatica.</p>
-                        <p>Possibili cause: AI provider non configurato o servizio non disponibile.</p>
-                    </div>
-                }
-                
-                @if (analysisResult != null)
-                {
-                
-                @if (!string.IsNullOrEmpty(analysisResult.SuggestedCategory))
-                {
-                    <div class="analysis-section">
-                        <h4>📁 Suggested Category</h4>
-                        <div class="category-suggestion">
-                            <span class="category-name">@analysisResult.SuggestedCategory</span>
-                            @if (!string.IsNullOrEmpty(analysisResult.CategoryReasoning))
-                            {
-                                <p class="category-reasoning">@analysisResult.CategoryReasoning</p>
-                            }
-                        </div>
-                    </div>
-                }
-
-                @if (analysisResult.Tags != null && analysisResult.Tags.Any())
-                {
-                    <div class="analysis-section">
-                        <h4>🔖 Extracted Tags</h4>
-                        <div class="tags-container">
-                            @foreach (var tag in analysisResult.Tags)
-                            {
-                                <span class="tag">@tag</span>
-                            }
-                        </div>
-                    </div>
-                }
-
-                @if (!string.IsNullOrEmpty(analysisResult.ExtractedText))
-                {
-                    <div class="analysis-section">
-                        <h4>📄 Document Preview</h4>
-                        <div class="preview-text">
-                            @(analysisResult.ExtractedText.Length > 500 
-                                ? analysisResult.ExtractedText.Substring(0, 500) + "..." 
-                                : analysisResult.ExtractedText)
-                        </div>
-                    </div>
-                }
-
-                @if (analysisResult.EmbeddingDimension > 0)
-                {
-                    <div class="analysis-section">
-                        <h4>🧮 Embeddings Generati</h4>
-                        <p>Embedding vettoriale con <strong>@analysisResult.EmbeddingDimension dimensioni</strong> generato per la ricerca semantica.</p>
-                    </div>
-                }
-
-                <div class="analysis-actions">
-                    <button class="btn btn-analyze" @onclick="ViewDocument">
-                        📄 Visualizza il Documento Completo
-                    </button>
-                </div>
-                <div class="secondary-actions">
-                    <button class="btn btn-secondary" @onclick="UploadAnother">
-                        📤 Carica un altro documento
-                    </button>
-                </div>
-                }
-            </div>
-        }
     </div>
 </div>
 
@@ -235,6 +245,7 @@
     private UploadModel uploadModel = new();
     private IBrowserFile? selectedFile;
     private bool isUploading = false;
+    private bool isAnalyzing = false;
     private string errorMessage = "";
     private string successMessage = "";
     private int uploadProgress = 0;
@@ -242,18 +253,130 @@
     private DocumentAnalysisResult? analysisResult = null;
     private bool showAnalysisSection = false;
     private bool analysisError = false;
+    private bool processingComplete = false;
 
     private void OnFileSelected(InputFileChangeEventArgs e)
     {
         selectedFile = e.File;
         errorMessage = "";
         successMessage = "";
+        analysisResult = null;
+        showAnalysisSection = false;
+        processingComplete = false;
+        analysisError = false;
 
         // Validate file size
         if (selectedFile.Size > 52428800) // 50 MB
         {
             errorMessage = "File size exceeds maximum limit of 50 MB";
             selectedFile = null;
+        }
+    }
+
+    private async Task AnalyzeDocument()
+    {
+        if (selectedFile == null)
+        {
+            errorMessage = "Please select a file to analyze";
+            return;
+        }
+
+        isAnalyzing = true;
+        errorMessage = "";
+        successMessage = "";
+        analysisError = false;
+        showAnalysisSection = true;
+        StateHasChanged();
+
+        try
+        {
+            var httpClient = HttpClientFactory.CreateClient("BackendAPI");
+
+            // Create multipart form data
+            using var content = new MultipartFormDataContent();
+
+            // Add file
+            var fileStream = selectedFile.OpenReadStream(maxAllowedSize: 52428800);
+            var streamContent = new StreamContent(fileStream);
+            streamContent.Headers.ContentType = new MediaTypeHeaderValue(selectedFile.ContentType);
+            content.Add(streamContent, "file", selectedFile.Name);
+
+            Logger.LogInformation("Calling preview endpoint for file {FileName}", selectedFile.Name);
+
+            // Call preview endpoint
+            var response = await httpClient.PostAsync("Documents/preview", content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var responseContent = await response.Content.ReadAsStringAsync();
+                var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var previewResult = JsonSerializer.Deserialize<JsonElement>(responseContent, options);
+                
+                // Check if analysis succeeded
+                if (previewResult.TryGetProperty("success", out var successProp) && successProp.GetBoolean())
+                {
+                    analysisResult = new DocumentAnalysisResult
+                    {
+                        Id = 0, // No ID yet since document is not uploaded
+                        SuggestedCategory = previewResult.TryGetProperty("suggestedCategory", out var cat) ? cat.GetString() : null,
+                        CategoryReasoning = previewResult.TryGetProperty("categoryReasoning", out var reason) ? reason.GetString() : null,
+                        ExtractedText = previewResult.TryGetProperty("extractedText", out var text) ? text.GetString() : null,
+                        EmbeddingDimension = previewResult.TryGetProperty("embeddingDimension", out var dim) ? dim.GetInt32() : 0
+                    };
+
+                    // Parse tags from JSON array
+                    if (previewResult.TryGetProperty("tags", out var tagsJson) && tagsJson.ValueKind == JsonValueKind.Array)
+                    {
+                        var tagsList = new List<string>();
+                        foreach (var tag in tagsJson.EnumerateArray())
+                        {
+                            var tagValue = tag.GetString();
+                            if (!string.IsNullOrEmpty(tagValue))
+                            {
+                                tagsList.Add(tagValue);
+                            }
+                        }
+                        analysisResult.Tags = tagsList;
+                    }
+
+                    // Update category if AI suggested one
+                    if (!string.IsNullOrEmpty(analysisResult.SuggestedCategory))
+                    {
+                        uploadModel.Category = analysisResult.SuggestedCategory;
+                    }
+
+                    processingComplete = true;
+                    successMessage = $"✅ Analisi completata! Il documento '{selectedFile.Name}' è pronto per essere caricato.";
+                    
+                    Logger.LogInformation("Preview analysis completed successfully for {FileName}", selectedFile.Name);
+                }
+                else
+                {
+                    // Analysis failed on server
+                    var errorMsg = previewResult.TryGetProperty("error", out var errProp) ? errProp.GetString() : "Unknown error";
+                    analysisError = true;
+                    errorMessage = $"⚠️ L'analisi AI non è stata completata: {errorMsg}";
+                    Logger.LogWarning("Preview analysis failed: {Error}", errorMsg);
+                }
+            }
+            else
+            {
+                var errorContent = await response.Content.ReadAsStringAsync();
+                analysisError = true;
+                errorMessage = $"Preview analysis failed. Please try again.";
+                Logger.LogError("Preview failed: {StatusCode} - {Error}", response.StatusCode, errorContent);
+            }
+        }
+        catch (Exception ex)
+        {
+            analysisError = true;
+            errorMessage = "An error occurred during analysis. Please try again.";
+            Logger.LogError(ex, "Error during preview analysis");
+        }
+        finally
+        {
+            isAnalyzing = false;
+            StateHasChanged();
         }
     }
 
@@ -267,7 +390,6 @@
 
         isUploading = true;
         errorMessage = "";
-        successMessage = "";
         uploadProgress = 0;
         uploadStatus = "Preparing upload...";
 
@@ -280,7 +402,7 @@
 
             // Add file
             uploadStatus = "Reading file...";
-            uploadProgress = 10;
+            uploadProgress = 20;
             StateHasChanged();
 
             var fileStream = selectedFile.OpenReadStream(maxAllowedSize: 52428800);
@@ -297,76 +419,48 @@
             }
 
             uploadStatus = "Uploading to server...";
-            uploadProgress = 30;
+            uploadProgress = 50;
             StateHasChanged();
 
             // Upload to server
             var response = await httpClient.PostAsync("Documents/upload", content);
 
-            uploadProgress = 80;
-            uploadStatus = "Analisi documento in corso...";
+            uploadProgress = 90;
+            uploadStatus = "Finalizing...";
             StateHasChanged();
 
             if (response.IsSuccessStatusCode)
             {
                 uploadProgress = 100;
                 uploadStatus = "Caricamento completato!";
-                successMessage = $"Documento '{selectedFile.Name}' caricato con successo!";
-                
-                // Show analysis section immediately
-                showAnalysisSection = true;
-                StateHasChanged();
                 
                 Logger.LogInformation("Document uploaded successfully: {FileName}", selectedFile.Name);
 
-                // Parse response to get document with analysis results
+                // Parse response to get document ID
                 try
                 {
                     var responseContent = await response.Content.ReadAsStringAsync();
                     var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
                     var document = JsonSerializer.Deserialize<JsonElement>(responseContent, options);
                     
-                    // Ensure id property exists
-                    if (!document.TryGetProperty("id", out var idProp))
+                    // Update the analysis result with the document ID so we can navigate to it
+                    if (document.TryGetProperty("id", out var idProp) && analysisResult != null)
                     {
-                        throw new InvalidOperationException("Response missing 'id' property");
-                    }
-                    
-                    analysisResult = new DocumentAnalysisResult
-                    {
-                        Id = idProp.GetInt32(),
-                        SuggestedCategory = document.TryGetProperty("suggestedCategory", out var cat) ? cat.GetString() : null,
-                        CategoryReasoning = document.TryGetProperty("categoryReasoning", out var reason) ? reason.GetString() : null,
-                        ExtractedText = document.TryGetProperty("extractedText", out var text) ? text.GetString() : null,
-                        EmbeddingDimension = document.TryGetProperty("embeddingDimension", out var dim) ? dim.GetInt32() : 0
-                    };
-
-                    // Parse tags from JSON
-                    if (document.TryGetProperty("aiTagsJson", out var tagsJson) && tagsJson.ValueKind == JsonValueKind.String)
-                    {
-                        var tagsStr = tagsJson.GetString();
-                        if (!string.IsNullOrEmpty(tagsStr))
-                        {
-                            analysisResult.Tags = JsonSerializer.Deserialize<List<string>>(tagsStr, options);
-                        }
+                        analysisResult.Id = idProp.GetInt32();
                     }
 
                     StateHasChanged();
                     
-                    // Check if we got any analysis data
-                    if (analysisResult.SuggestedCategory == null && 
-                        (analysisResult.Tags == null || !analysisResult.Tags.Any()) && 
-                        analysisResult.EmbeddingDimension == 0)
-                    {
-                        analysisError = true;
-                        Logger.LogWarning("No analysis data received for document {FileName}", selectedFile.Name);
-                    }
+                    // Navigate to documents list after a short delay
+                    await Task.Delay(2000);
+                    Navigation.NavigateTo("/documents");
                 }
                 catch (Exception ex)
                 {
-                    Logger.LogError(ex, "Error parsing analysis results");
-                    analysisError = true;
-                    StateHasChanged();
+                    Logger.LogError(ex, "Error parsing upload response");
+                    // Still navigate even if parsing fails
+                    await Task.Delay(2000);
+                    Navigation.NavigateTo("/documents");
                 }
             }
             else
@@ -673,6 +767,88 @@
 
     @@keyframes spin {
         to { transform: rotate(360deg); }
+    }
+
+    .analyze-button-section {
+        margin: 2rem 0;
+        padding: 2rem;
+        background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+        border: 2px solid #10b981;
+        border-radius: 12px;
+        text-align: center;
+    }
+
+    .analyze-instruction {
+        margin-bottom: 1.5rem;
+    }
+
+    .btn-analyze-large {
+        padding: 1.25rem 2.5rem;
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        color: white;
+        border: none;
+        border-radius: 12px;
+        font-size: 1.25rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: all 0.3s;
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        animation: pulse 2s infinite;
+    }
+
+    .btn-analyze-large:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+    }
+
+    .analyzing-section {
+        text-align: center;
+        padding: 2rem;
+        background: #f7fafc;
+        border-radius: 12px;
+        margin: 2rem 0;
+    }
+
+    .analyzing-section p {
+        margin: 0.5rem 0;
+        font-size: 1rem;
+        color: #4a5568;
+    }
+
+    .analysis-results-preview {
+        margin: 2rem 0;
+        padding: 2rem;
+        background: #f7fafc;
+        border-radius: 12px;
+        border: 2px solid #10b981;
+    }
+
+    .analysis-results-preview h3 {
+        margin: 0 0 1.5rem 0;
+        font-size: 1.5rem;
+        color: #2d3748;
+    }
+
+    .help-text {
+        text-align: center;
+        margin-top: 1rem;
+        padding: 0.75rem;
+        background: #fef3c7;
+        border-radius: 6px;
+    }
+
+    .help-text small {
+        color: #92400e;
+        font-weight: 600;
+    }
+
+    @@keyframes pulse {
+        0%, 100% {
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        }
+        50% {
+            box-shadow: 0 6px 20px rgba(16, 185, 129, 0.5);
+        }
     }
 
     .analysis-results {

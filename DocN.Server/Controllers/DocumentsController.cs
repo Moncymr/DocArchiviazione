@@ -49,6 +49,7 @@ public class DocumentsController : ControllerBase
     private readonly IDocumentService _documentService;
     private readonly IDocumentWorkflowService _workflowService;
     private readonly IAIProviderFactory _aiProviderFactory;
+    private readonly IFileProcessingService _fileProcessingService;
 
     public DocumentsController(
         DocArcContext context, 
@@ -58,7 +59,8 @@ public class DocumentsController : ControllerBase
         IEmbeddingService embeddingService,
         IDocumentService documentService,
         IDocumentWorkflowService workflowService,
-        IAIProviderFactory aiProviderFactory)
+        IAIProviderFactory aiProviderFactory,
+        IFileProcessingService fileProcessingService)
     {
         _context = context;
         _logger = logger;
@@ -68,6 +70,7 @@ public class DocumentsController : ControllerBase
         _documentService = documentService;
         _workflowService = workflowService;
         _aiProviderFactory = aiProviderFactory;
+        _fileProcessingService = fileProcessingService;
     }
 
     /// <summary>
@@ -402,6 +405,158 @@ public class DocumentsController : ControllerBase
             }
             
             return StatusCode(500, "An error occurred while creating the document");
+        }
+    }
+
+    /// <summary>
+    /// Anteprima analisi AI di un documento prima del caricamento
+    /// Estrae il testo e esegue l'analisi AI senza salvare il documento nel database
+    /// </summary>
+    /// <param name="file">File da analizzare</param>
+    /// <returns>Risultati dell'analisi AI (categoria suggerita, tag, embedding dimension, testo estratto)</returns>
+    /// <response code="200">Analisi completata con successo</response>
+    /// <response code="400">Richiesta non valida (file mancante o non valido)</response>
+    /// <response code="500">Errore interno del server</response>
+    [HttpPost("preview")]
+    [RequirePermission(Permissions.DocumentWrite)]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+    [RequestSizeLimit(52428800)] // 50 MB limit
+    public async Task<ActionResult> PreviewDocument([FromForm] IFormFile file)
+    {
+        try
+        {
+            // Validate file
+            if (file == null || file.Length == 0)
+            {
+                return BadRequest(new { error = "No file provided" });
+            }
+
+            // Check file size (50 MB)
+            if (file.Length > 52428800)
+            {
+                return BadRequest(new { error = "File size exceeds maximum limit of 50 MB" });
+            }
+
+            _logger.LogInformation("Starting preview analysis for file {FileName}", file.FileName);
+
+            // Extract text from file using FileProcessingService
+            string extractedText = "";
+            try
+            {
+                using var stream = file.OpenReadStream();
+                var processingResult = await _fileProcessingService.ProcessFileAsync(
+                    stream,
+                    file.FileName,
+                    file.ContentType);
+
+                if (processingResult.Success && !string.IsNullOrEmpty(processingResult.ExtractedText))
+                {
+                    extractedText = processingResult.ExtractedText;
+                    _logger.LogInformation("Text extraction successful: {Length} characters", extractedText.Length);
+                }
+                else
+                {
+                    _logger.LogWarning("Text extraction failed or returned empty: {Error}", processingResult.ErrorMessage);
+                    return Ok(new
+                    {
+                        success = false,
+                        error = "Could not extract text from file",
+                        extractedText = "",
+                        suggestedCategory = (string?)null,
+                        categoryReasoning = (string?)null,
+                        tags = new List<string>(),
+                        embeddingDimension = 0
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error extracting text from file {FileName}", file.FileName);
+                return Ok(new
+                {
+                    success = false,
+                    error = "Error extracting text from file",
+                    extractedText = "",
+                    suggestedCategory = (string?)null,
+                    categoryReasoning = (string?)null,
+                    tags = new List<string>(),
+                    embeddingDimension = 0
+                });
+            }
+
+            // Perform AI analysis if text was extracted successfully
+            string? suggestedCategory = null;
+            string? categoryReasoning = null;
+            List<string>? tags = null;
+            int embeddingDimension = 0;
+
+            if (!string.IsNullOrEmpty(extractedText))
+            {
+                try
+                {
+                    _logger.LogInformation("Starting AI analysis for preview");
+                    
+                    // Get default AI provider
+                    var aiProvider = _aiProviderFactory.GetDefaultProvider();
+                    
+                    // Get available categories from existing documents
+                    var availableCategories = await _context.Documents
+                        .Where(d => !string.IsNullOrEmpty(d.ActualCategory))
+                        .Select(d => d.ActualCategory!)
+                        .Distinct()
+                        .ToListAsync();
+                    
+                    // Analyze document (generates embeddings, tags, categories, metadata)
+                    var analysis = await aiProvider.AnalyzeDocumentAsync(
+                        extractedText, 
+                        availableCategories);
+                    
+                    // Extract analysis results
+                    if (analysis.Embedding?.Vector != null && analysis.Embedding.Vector.Length > 0)
+                    {
+                        embeddingDimension = analysis.Embedding.Vector.Length;
+                        _logger.LogInformation("Generated embedding with dimension {Dimension}", embeddingDimension);
+                    }
+                    
+                    if (analysis.CategorySuggestions?.Any() == true)
+                    {
+                        suggestedCategory = analysis.CategorySuggestions[0].CategoryName;
+                        categoryReasoning = analysis.CategorySuggestions[0].Reasoning;
+                        _logger.LogInformation("Suggested category '{Category}'", suggestedCategory);
+                    }
+                    
+                    if (analysis.ExtractedTags?.Any() == true)
+                    {
+                        tags = analysis.ExtractedTags;
+                        _logger.LogInformation("Extracted {TagCount} tags", tags.Count);
+                    }
+                    
+                    _logger.LogInformation("AI analysis completed successfully for preview");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "AI analysis failed for preview, returning partial results");
+                    // Continue with partial results - analysis failure is not critical
+                }
+            }
+
+            // Return preview results
+            return Ok(new
+            {
+                success = true,
+                extractedText = extractedText.Length > 1000 ? extractedText.Substring(0, 1000) : extractedText,
+                suggestedCategory = suggestedCategory,
+                categoryReasoning = categoryReasoning,
+                tags = tags ?? new List<string>(),
+                embeddingDimension = embeddingDimension
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during preview analysis");
+            return StatusCode(500, new { error = "An error occurred during preview analysis" });
         }
     }
 
