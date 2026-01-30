@@ -176,7 +176,6 @@ builder.Services.AddScoped<DocN.Client.Services.CustomAuthenticationStateProvide
 builder.Services.AddScoped<AuthenticationStateProvider>(provider => 
     provider.GetRequiredService<DocN.Client.Services.CustomAuthenticationStateProvider>());
 builder.Services.AddAuthorizationCore();
-builder.Services.AddCascadingAuthenticationState();
 
 // NOTE: All data operations should be performed via HttpClient calls to Server APIs
 // Example: Instead of injecting IDocumentService, use HttpClient to call /api/documents
