@@ -578,6 +578,7 @@ builder.Services.AddScoped<IIngestionService, IngestionService>();
 builder.Services.AddScoped<IIngestionSchedulerHelper, IngestionSchedulerHelper>();
 builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddScoped<IDocumentWorkflowService, DocumentWorkflowService>();
+builder.Services.AddScoped<IFileProcessingService, FileProcessingService>();
 
 // Configure batch processing settings
 builder.Services.Configure<DocN.Data.Configuration.BatchProcessingConfiguration>(
