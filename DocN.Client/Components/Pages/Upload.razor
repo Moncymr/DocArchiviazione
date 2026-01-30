@@ -296,7 +296,7 @@
             using var content = new MultipartFormDataContent();
 
             // Add file
-            var fileStream = selectedFile.OpenReadStream(maxAllowedSize: 52428800);
+            using var fileStream = selectedFile.OpenReadStream(maxAllowedSize: 52428800);
             var streamContent = new StreamContent(fileStream);
             streamContent.Headers.ContentType = new MediaTypeHeaderValue(selectedFile.ContentType);
             content.Add(streamContent, "file", selectedFile.Name);
@@ -352,10 +352,11 @@
                 }
                 else
                 {
-                    // Analysis failed on server
+                    // Analysis failed on server - allow upload anyway
                     var errorMsg = previewResult.TryGetProperty("error", out var errProp) ? errProp.GetString() : "Unknown error";
                     analysisError = true;
-                    errorMessage = $"⚠️ L'analisi AI non è stata completata: {errorMsg}";
+                    processingComplete = true; // Allow upload even if analysis fails
+                    errorMessage = $"⚠️ L'analisi AI non è stata completata: {errorMsg}. Puoi comunque procedere con il caricamento.";
                     Logger.LogWarning("Preview analysis failed: {Error}", errorMsg);
                 }
             }
@@ -363,14 +364,16 @@
             {
                 var errorContent = await response.Content.ReadAsStringAsync();
                 analysisError = true;
-                errorMessage = $"Preview analysis failed. Please try again.";
+                processingComplete = true; // Allow upload even if analysis fails
+                errorMessage = $"⚠️ Analisi non riuscita. Puoi comunque procedere con il caricamento.";
                 Logger.LogError("Preview failed: {StatusCode} - {Error}", response.StatusCode, errorContent);
             }
         }
         catch (Exception ex)
         {
             analysisError = true;
-            errorMessage = "An error occurred during analysis. Please try again.";
+            processingComplete = true; // Allow upload even if analysis fails
+            errorMessage = "⚠️ Errore durante l'analisi. Puoi comunque procedere con il caricamento.";
             Logger.LogError(ex, "Error during preview analysis");
         }
         finally
@@ -390,6 +393,7 @@
 
         isUploading = true;
         errorMessage = "";
+        successMessage = ""; // Clear previous success message
         uploadProgress = 0;
         uploadStatus = "Preparing upload...";
 
@@ -405,7 +409,7 @@
             uploadProgress = 20;
             StateHasChanged();
 
-            var fileStream = selectedFile.OpenReadStream(maxAllowedSize: 52428800);
+            using var fileStream = selectedFile.OpenReadStream(maxAllowedSize: 52428800);
             var streamContent = new StreamContent(fileStream);
             streamContent.Headers.ContentType = new MediaTypeHeaderValue(selectedFile.ContentType);
             content.Add(streamContent, "file", selectedFile.Name);
@@ -433,6 +437,8 @@
             {
                 uploadProgress = 100;
                 uploadStatus = "Caricamento completato!";
+                successMessage = $"✅ Documento '{selectedFile.Name}' caricato con successo! Reindirizzamento in corso...";
+                StateHasChanged();
                 
                 Logger.LogInformation("Document uploaded successfully: {FileName}", selectedFile.Name);
 
@@ -448,31 +454,26 @@
                     {
                         analysisResult.Id = idProp.GetInt32();
                     }
-
-                    StateHasChanged();
-                    
-                    // Navigate to documents list after a short delay
-                    await Task.Delay(2000);
-                    Navigation.NavigateTo("/documents");
                 }
                 catch (Exception ex)
                 {
                     Logger.LogError(ex, "Error parsing upload response");
-                    // Still navigate even if parsing fails
-                    await Task.Delay(2000);
-                    Navigation.NavigateTo("/documents");
                 }
+                
+                // Navigate to documents list after showing success message
+                await Task.Delay(1500);
+                Navigation.NavigateTo("/documents");
             }
             else
             {
                 var errorContent = await response.Content.ReadAsStringAsync();
-                errorMessage = $"Upload failed. Please try again.";
+                errorMessage = $"⚠️ Caricamento fallito. Riprova.";
                 Logger.LogError("Upload failed: {StatusCode} - {Error}", response.StatusCode, errorContent);
             }
         }
         catch (Exception ex)
         {
-            errorMessage = "An error occurred during upload. Please try again.";
+            errorMessage = "⚠️ Errore durante il caricamento. Riprova.";
             Logger.LogError(ex, "Error uploading document");
         }
         finally

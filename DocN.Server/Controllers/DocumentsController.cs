@@ -433,12 +433,6 @@ public class DocumentsController : ControllerBase
                 return BadRequest(new { error = "No file provided" });
             }
 
-            // Check file size (50 MB)
-            if (file.Length > 52428800)
-            {
-                return BadRequest(new { error = "File size exceeds maximum limit of 50 MB" });
-            }
-
             _logger.LogInformation("Starting preview analysis for file {FileName}", file.FileName);
 
             // Extract text from file using FileProcessingService
@@ -459,7 +453,7 @@ public class DocumentsController : ControllerBase
                 else
                 {
                     _logger.LogWarning("Text extraction failed or returned empty: {Error}", processingResult.ErrorMessage);
-                    return Ok(new
+                    return StatusCode(422, new
                     {
                         success = false,
                         error = "Could not extract text from file",
@@ -474,7 +468,7 @@ public class DocumentsController : ControllerBase
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error extracting text from file {FileName}", file.FileName);
-                return Ok(new
+                return StatusCode(500, new
                 {
                     success = false,
                     error = "Error extracting text from file",
