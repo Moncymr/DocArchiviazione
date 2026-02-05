@@ -339,10 +339,12 @@
         catch (HttpRequestException ex)
         {
             errorMessage = "Unable to connect to server. Please check your connection and try again.";
+            Console.WriteLine($"Registration connection error: {ex.Message}");
         }
         catch (Exception ex)
         {
             errorMessage = "An unexpected error occurred. Please try again.";
+            Console.WriteLine($"Registration error: {ex.Message}");
         }
         finally
         {
