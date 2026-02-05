@@ -210,6 +210,9 @@ builder.Services.AddHttpClient("BackendAPI", client =>
 // Register Authentication Service to call Server API for login/register/logout
 builder.Services.AddScoped<DocN.Client.Services.IAuthenticationService, DocN.Client.Services.AuthenticationService>();
 
+// Register Server Health Check Service for startup validation
+builder.Services.AddSingleton<DocN.Client.Services.IServerHealthCheckService, DocN.Client.Services.ServerHealthCheckService>();
+
 WebApplication app;
 try
 {
@@ -236,6 +239,64 @@ catch (Exception ex)
     Console.WriteLine("Press any key to exit...");
     Console.ReadKey();
     return;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SERVER AVAILABILITY CHECK
+// ═══════════════════════════════════════════════════════════════════════════════
+// When starting from Visual Studio with multiple startup projects (F5), both Client 
+// and Server start simultaneously. The Client needs to wait for the Server to be ready.
+// 
+// This check ensures the Server is available before the Client starts accepting requests.
+// Without this, users may see "Unable to connect to server" errors during startup.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+try
+{
+    var healthCheckService = app.Services.GetRequiredService<DocN.Client.Services.IServerHealthCheckService>();
+    
+    Console.WriteLine("════════════════════════════════════════════════════════════════════");
+    Console.WriteLine("Checking Server availability...");
+    Console.WriteLine("════════════════════════════════════════════════════════════════════");
+    
+    // Wait for Server to be available (30 retries * ~1-5 seconds = max 2.5 minutes)
+    using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+    var serverAvailable = await healthCheckService.WaitForServerAsync(
+        maxRetries: 30, 
+        delayMs: 1000, 
+        cancellationToken: cts.Token
+    );
+    
+    if (!serverAvailable)
+    {
+        Console.WriteLine("════════════════════════════════════════════════════════════════════");
+        Console.WriteLine("⚠️  WARNING: Server is not available");
+        Console.WriteLine("════════════════════════════════════════════════════════════════════");
+        Console.WriteLine();
+        Console.WriteLine("The Server API is not responding. The Client will start anyway,");
+        Console.WriteLine("but features that require the Server will not work.");
+        Console.WriteLine();
+        Console.WriteLine("Please ensure the Server is running:");
+        Console.WriteLine($"  - Server should be at: {builder.Configuration["BackendApiUrl"] ?? "https://localhost:5211/"}");
+        Console.WriteLine("  - Check Server console for errors");
+        Console.WriteLine("  - Verify database connection is configured");
+        Console.WriteLine();
+        Console.WriteLine("════════════════════════════════════════════════════════════════════");
+        Console.WriteLine();
+    }
+    else
+    {
+        Console.WriteLine("════════════════════════════════════════════════════════════════════");
+        Console.WriteLine("✅ Server is available and ready");
+        Console.WriteLine("════════════════════════════════════════════════════════════════════");
+        Console.WriteLine();
+    }
+}
+catch (Exception ex)
+{
+    app.Logger.LogWarning(ex, "Could not check Server availability. Client will start anyway.");
+    Console.WriteLine($"⚠️  Warning: Server health check failed: {ex.Message}");
+    Console.WriteLine("Client will start anyway, but Server connectivity may be limited.");
 }
 
 // NOTE: Database seeding removed from Client
