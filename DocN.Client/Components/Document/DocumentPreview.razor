@@ -2,6 +2,7 @@
 @using Microsoft.FluentUI.AspNetCore.Components
 @inject HttpClient Http
 @inject IJSRuntime JS
+@implements IAsyncDisposable
 
 @if (IsOpen)
 {
@@ -47,8 +48,21 @@
                                 Visualizzazione delle prime 3 pagine del documento PDF
                             </p>
                             <div class="pdf-viewer" id="pdf-viewer-@DocumentId">
-                                <!-- PDF rendering would be handled by JavaScript -->
-                                <p>Anteprima PDF non disponibile. Apri il documento completo per visualizzarlo.</p>
+                                @if (_pdfLoading)
+                                {
+                                    <div class="pdf-loading-container">
+                                        <FluentProgressRing />
+                                        <p>Caricamento PDF...</p>
+                                    </div>
+                                }
+                                else if (!string.IsNullOrEmpty(_pdfError))
+                                {
+                                    <div class="pdf-error-container">
+                                        <FluentIcon Value="@(new Icons.Regular.Size24.Warning())" Color="Color.Error" />
+                                        <p>@_pdfError</p>
+                                        <p class="hint">Apri il documento completo per visualizzarlo.</p>
+                                    </div>
+                                }
                             </div>
                         </div>
                     }
@@ -149,6 +163,8 @@
     private string? _category;
     private string? _imageUrl;
     private string _fileExtension = "";
+    private bool _pdfLoading = false;
+    private string? _pdfError;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -195,6 +211,12 @@
                 {
                     _imageUrl = $"api/documents/{DocumentId}/download";
                 }
+                else if (IsPdfDocument())
+                {
+                    // PDF rendering will be handled by JavaScript after component renders
+                    await Task.Delay(100); // Small delay to ensure DOM is ready
+                    await LoadPdfPreviewAsync();
+                }
             }
         }
         catch (Exception ex)
@@ -205,6 +227,52 @@
         {
             _isLoading = false;
             StateHasChanged();
+        }
+    }
+
+    private async Task LoadPdfPreviewAsync()
+    {
+        try
+        {
+            _pdfLoading = true;
+            _pdfError = null;
+            StateHasChanged();
+
+            var containerId = $"pdf-viewer-{DocumentId}";
+            var result = await JS.InvokeAsync<PdfLoadResult>("pdfPreview.loadPdf", containerId, DocumentId, 3);
+            
+            if (!result.Success)
+            {
+                _pdfError = result.Error ?? "Errore durante il caricamento del PDF";
+            }
+        }
+        catch (Exception ex)
+        {
+            _pdfError = $"Errore: {ex.Message}";
+        }
+        finally
+        {
+            _pdfLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private class PdfLoadResult
+    {
+        public bool Success { get; set; }
+        public string? Error { get; set; }
+        public int Pages { get; set; }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("pdfPreview.cleanup");
+        }
+        catch
+        {
+            // Ignore cleanup errors
         }
     }
 

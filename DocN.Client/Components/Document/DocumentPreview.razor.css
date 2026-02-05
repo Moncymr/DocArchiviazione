@@ -144,9 +144,61 @@
     background: var(--neutral-layer-2);
     border: 1px solid var(--neutral-stroke-divider-rest);
     border-radius: 6px;
-    padding: 48px 24px;
+    max-height: 600px;
+    overflow-y: auto;
+}
+
+::deep .pdf-page-container {
+    margin-bottom: 1.5rem;
+    background: white;
+    padding: 1rem;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+::deep .pdf-page-label {
+    font-size: 0.875rem;
+    color: #666;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+}
+
+::deep .pdf-page-container canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-width: 100%;
+}
+
+::deep .pdf-loading-container,
+::deep .pdf-error-container {
     text-align: center;
-    color: var(--neutral-foreground-hint);
+    padding: 2rem;
+    color: #666;
+}
+
+::deep .pdf-error-container {
+    color: #d32f2f;
+}
+
+::deep .pdf-more-pages {
+    text-align: center;
+    padding: 1rem;
+    background: #fff3cd;
+    border-radius: 4px;
+    margin-top: 1rem;
+    color: #856404;
+}
+
+::deep .pdf-more-pages svg {
+    vertical-align: middle;
+    margin-right: 0.5rem;
+}
+
+::deep .hint {
+    font-size: 0.875rem;
+    color: #999;
+    margin-top: 0.5rem;
 }
 
 .preview-footer {
