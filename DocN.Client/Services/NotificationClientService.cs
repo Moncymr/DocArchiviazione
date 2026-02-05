@@ -10,7 +10,6 @@ public class NotificationClientService : IAsyncDisposable
     private readonly IConfiguration _configuration;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<NotificationClientService> _logger;
-    private readonly NavigationManager _navigationManager;
     private HubConnection? _hubConnection;
     private bool _isConnected;
     private string? _currentUserId;
@@ -25,13 +24,11 @@ public class NotificationClientService : IAsyncDisposable
     public NotificationClientService(
         IConfiguration configuration,
         IHttpClientFactory httpClientFactory,
-        ILogger<NotificationClientService> logger,
-        NavigationManager navigationManager)
+        ILogger<NotificationClientService> logger)
     {
         _configuration = configuration;
         _httpClientFactory = httpClientFactory;
         _logger = logger;
-        _navigationManager = navigationManager;
     }
 
     public async Task StartAsync(string userId)
