@@ -336,9 +336,13 @@
                 }
             }
         }
-        catch (Exception ex)
+        catch (HttpRequestException ex)
         {
             errorMessage = "Unable to connect to server. Please check your connection and try again.";
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "An unexpected error occurred. Please try again.";
         }
         finally
         {
