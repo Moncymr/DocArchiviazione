@@ -350,9 +350,23 @@ catch (Exception ex)
 Console.WriteLine("Configuring Razor Components...");
 try
 {
-    app.MapRazorComponents<App>()
-        .AddInteractiveServerRenderMode();
-    Console.WriteLine("Razor Components configured successfully ✓");
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // TEMPORARY FIX: Interactive Server mode disabled to prevent crash
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // The crash occurs AFTER app.Run() when Interactive Server mode tries to establish
+    // a SignalR connection. This happens during the first HTTP request or when the
+    // Blazor Circuit is initialized.
+    //
+    // Root cause: Interactive Server mode with multi-project Visual Studio setup
+    // causes initialization race conditions and SignalR connection issues.
+    //
+    // Solution: Use static server-side rendering instead of interactive mode.
+    // ═══════════════════════════════════════════════════════════════════════════════
+    
+    app.MapRazorComponents<App>();
+        // .AddInteractiveServerRenderMode();  // ❌ DISABLED - This causes crash
+    
+    Console.WriteLine("Razor Components configured successfully ✓ (Static rendering mode)");
 }
 catch (Exception ex)
 {
