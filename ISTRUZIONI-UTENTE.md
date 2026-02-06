@@ -38,12 +38,18 @@ Questo è il metodo **consigliato** perché Visual Studio avvia automaticamente 
 
 6. **Configura i progetti**:
    ```
-   ✅ DocN.Server    → Action: Start
-   ✅ DocN.Client    → Action: Start
+   ✅ DocN.Server    → Action: Start (WITH debugging, not "Start without debugging")
+   ✅ DocN.Client    → Action: Start (WITH debugging, not "Start without debugging")
    ```
    
-   **IMPORTANTE**: Assicurati che **DocN.Server** sia **PRIMA** di DocN.Client nell'ordine!
-   (Usa le frecce ↑↓ per cambiare l'ordine se necessario)
+   **MOLTO IMPORTANTE**:
+   - **Entrambi** devono avere Action = **"Start"** (NON "Start without debugging")
+   - **DocN.Server** deve essere **PRIMA** di DocN.Client nell'ordine
+   - Usa le frecce ↑↓ per cambiare l'ordine se necessario
+   
+   **Perché è importante?**
+   - Se usi "Start without debugging", il progetto si avvia e si chiude immediatamente
+   - Entrambi devono rimanere aperti con Visual Studio che li mantiene in esecuzione
 
 7. **Click "OK"**
 
@@ -146,6 +152,25 @@ Poi clicca "Sì" quando chiede di fidarsi del certificato.
 1. Verifica che "Multiple startup projects" sia selezionato
 2. Verifica che entrambi i progetti abbiano Action = "Start"
 3. Verifica l'ordine: Server PRIMA, Client DOPO
+
+### Problema: Il Server si chiude immediatamente (exit code 0)
+
+**Sintomo**: Nel log vedi:
+```
+The program '[XXXXX] DocN.Server.exe' has exited with code 0 (0x0).
+```
+...e poi il Client crasha.
+
+**Causa**: Hai configurato il Server su "Start without debugging" invece di "Start".
+
+**Soluzione**:
+1. Visual Studio → Click destro Solution → Properties
+2. Startup Project → Multiple startup projects
+3. **DocN.Server** → Cambia da "Start without debugging" a **"Start"**
+4. **DocN.Client** → Assicurati sia "Start" (non "Start without debugging")
+5. Click OK e riprova F5
+
+**Spiegazione**: "Start without debugging" avvia il progetto ma non lo mantiene aperto. Il Server si avvia, completa la configurazione e si chiude immediatamente. Il Client poi crasha perché non trova più il Server.
 
 ---
 
