@@ -242,55 +242,22 @@ catch (Exception ex)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SERVER AVAILABILITY CHECK (REMOVED FROM CRITICAL PATH)
+// SERVER AVAILABILITY CHECK (COMPLETELY DISABLED)
 // ═══════════════════════════════════════════════════════════════════════════════
-// The health check has been removed from the startup critical path to prevent
-// blocking issues when launching from Visual Studio with F5.
+// The health check has been completely disabled to prevent any startup issues.
+// The Client will start immediately without any server connectivity checks.
 // 
-// The Server health check can be performed by components that need it,
-// but it won't block the Client from starting.
+// If server connectivity is needed, components can check it individually when needed.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// Start the application immediately without waiting for Server
+// Start the application immediately without any server checks
 Console.WriteLine("════════════════════════════════════════════════════════════════════");
 Console.WriteLine("Starting Client...");
 Console.WriteLine("════════════════════════════════════════════════════════════════════");
 Console.WriteLine();
 
-// Optional: Start health check in background (fire and forget)
-_ = Task.Run(async () =>
-{
-    try
-    {
-        // Wait a bit for the app to fully start before checking
-        await Task.Delay(2000);
-        
-        var healthCheckService = app.Services.GetService<DocN.Client.Services.IServerHealthCheckService>();
-        if (healthCheckService != null)
-        {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            var serverAvailable = await healthCheckService.WaitForServerAsync(
-                maxRetries: 5, 
-                delayMs: 1000, 
-                cancellationToken: cts.Token
-            );
-            
-            if (serverAvailable)
-            {
-                Console.WriteLine("✅ Server connection established");
-            }
-            else
-            {
-                Console.WriteLine("⚠️  Server not available - some features may not work");
-            }
-        }
-    }
-    catch (Exception ex)
-    {
-        // Silently log - this is optional background check
-        app.Logger.LogDebug(ex, "Background server health check failed");
-    }
-});
+// NOTE: Health check completely disabled to prevent crashes
+// If you need server connectivity check, implement it in individual components that need it
 
 // NOTE: Database seeding removed from Client
 // ═══════════════════════════════════════════════════════════════════════════════
