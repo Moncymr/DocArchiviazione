@@ -83,37 +83,66 @@ public class ServerHealthCheckService : IServerHealthCheckService
     /// </summary>
     public async Task<bool> WaitForServerAsync(int maxRetries = 30, int delayMs = 1000, CancellationToken cancellationToken = default)
     {
-        var stopwatch = Stopwatch.StartNew();
-        _logger.LogInformation("Waiting for Server to become available (max {MaxRetries} retries, {DelayMs}ms initial delay)...", maxRetries, delayMs);
-
-        for (int attempt = 1; attempt <= maxRetries; attempt++)
+        try
         {
-            if (cancellationToken.IsCancellationRequested)
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("Waiting for Server to become available (max {MaxRetries} retries, {DelayMs}ms initial delay)...", maxRetries, delayMs);
+
+            for (int attempt = 1; attempt <= maxRetries; attempt++)
             {
-                _logger.LogWarning("Server wait cancelled");
-                return false;
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    _logger.LogWarning("Server wait cancelled");
+                    return false;
+                }
+
+                try
+                {
+                    var isHealthy = await IsServerHealthyAsync(cancellationToken);
+                    if (isHealthy)
+                    {
+                        _logger.LogInformation("Server is available after {Attempts} attempts ({ElapsedMs}ms)", attempt, stopwatch.ElapsedMilliseconds);
+                        return true;
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    _logger.LogWarning("Server health check cancelled during attempt {Attempt}", attempt);
+                    return false;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Error checking server health on attempt {Attempt}", attempt);
+                    // Continue to next attempt
+                }
+
+                if (attempt < maxRetries)
+                {
+                    try
+                    {
+                        // Exponential backoff with jitter: wait longer between retries, up to 5 seconds max
+                        var delay = Math.Min(delayMs * Math.Pow(1.5, attempt - 1), 5000);
+                        var jitter = Random.Shared.Next(0, 100); // Add randomness to avoid thundering herd
+                        var totalDelay = (int)(delay + jitter);
+                        
+                        _logger.LogDebug("Server not available yet. Retry {Attempt}/{MaxRetries} in {DelayMs}ms...", attempt, maxRetries, totalDelay);
+                        await Task.Delay(totalDelay, cancellationToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        _logger.LogWarning("Server wait cancelled during delay after attempt {Attempt}", attempt);
+                        return false;
+                    }
+                }
             }
 
-            var isHealthy = await IsServerHealthyAsync(cancellationToken);
-            if (isHealthy)
-            {
-                _logger.LogInformation("Server is available after {Attempts} attempts ({ElapsedMs}ms)", attempt, stopwatch.ElapsedMilliseconds);
-                return true;
-            }
-
-            if (attempt < maxRetries)
-            {
-                // Exponential backoff with jitter: wait longer between retries, up to 5 seconds max
-                var delay = Math.Min(delayMs * Math.Pow(1.5, attempt - 1), 5000);
-                var jitter = Random.Shared.Next(0, 100); // Add randomness to avoid thundering herd
-                var totalDelay = (int)(delay + jitter);
-                
-                _logger.LogDebug("Server not available yet. Retry {Attempt}/{MaxRetries} in {DelayMs}ms...", attempt, maxRetries, totalDelay);
-                await Task.Delay(totalDelay, cancellationToken);
-            }
+            _logger.LogError("Server did not become available after {MaxRetries} attempts ({ElapsedMs}ms)", maxRetries, stopwatch.ElapsedMilliseconds);
+            return false;
         }
-
-        _logger.LogError("Server did not become available after {MaxRetries} attempts ({ElapsedMs}ms)", maxRetries, stopwatch.ElapsedMilliseconds);
-        return false;
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected error during WaitForServerAsync");
+            return false;
+        }
     }
 }

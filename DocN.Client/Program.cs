@@ -253,49 +253,62 @@ catch (Exception ex)
 
 try
 {
-    var healthCheckService = app.Services.GetRequiredService<DocN.Client.Services.IServerHealthCheckService>();
+    var healthCheckService = app.Services.GetService<DocN.Client.Services.IServerHealthCheckService>();
     
-    Console.WriteLine("════════════════════════════════════════════════════════════════════");
-    Console.WriteLine("Checking Server availability...");
-    Console.WriteLine("════════════════════════════════════════════════════════════════════");
-    
-    // Wait for Server to be available (30 retries * ~1-5 seconds = max 2.5 minutes)
-    using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
-    var serverAvailable = await healthCheckService.WaitForServerAsync(
-        maxRetries: 30, 
-        delayMs: 1000, 
-        cancellationToken: cts.Token
-    );
-    
-    if (!serverAvailable)
+    if (healthCheckService == null)
     {
-        Console.WriteLine("════════════════════════════════════════════════════════════════════");
-        Console.WriteLine("⚠️  WARNING: Server is not available");
-        Console.WriteLine("════════════════════════════════════════════════════════════════════");
-        Console.WriteLine();
-        Console.WriteLine("The Server API is not responding. The Client will start anyway,");
-        Console.WriteLine("but features that require the Server will not work.");
-        Console.WriteLine();
-        Console.WriteLine("Please ensure the Server is running:");
-        Console.WriteLine($"  - Server should be at: {builder.Configuration["BackendApiUrl"] ?? "https://localhost:5211/"}");
-        Console.WriteLine("  - Check Server console for errors");
-        Console.WriteLine("  - Verify database connection is configured");
-        Console.WriteLine();
-        Console.WriteLine("════════════════════════════════════════════════════════════════════");
-        Console.WriteLine();
+        app.Logger.LogWarning("Server health check service not available. Skipping health check.");
+        Console.WriteLine("⚠️  Warning: Server health check service not configured. Continuing startup...");
     }
     else
     {
         Console.WriteLine("════════════════════════════════════════════════════════════════════");
-        Console.WriteLine("✅ Server is available and ready");
+        Console.WriteLine("Checking Server availability...");
         Console.WriteLine("════════════════════════════════════════════════════════════════════");
-        Console.WriteLine();
+        
+        // Wait for Server to be available (30 retries * ~1-5 seconds = max 2.5 minutes)
+        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+        var serverAvailable = await healthCheckService.WaitForServerAsync(
+            maxRetries: 30, 
+            delayMs: 1000, 
+            cancellationToken: cts.Token
+        );
+        
+        if (!serverAvailable)
+        {
+            Console.WriteLine("════════════════════════════════════════════════════════════════════");
+            Console.WriteLine("⚠️  WARNING: Server is not available");
+            Console.WriteLine("════════════════════════════════════════════════════════════════════");
+            Console.WriteLine();
+            Console.WriteLine("The Server API is not responding. The Client will start anyway,");
+            Console.WriteLine("but features that require the Server will not work.");
+            Console.WriteLine();
+            Console.WriteLine("Please ensure the Server is running:");
+            Console.WriteLine($"  - Server should be at: {builder.Configuration["BackendApiUrl"] ?? "https://localhost:5211/"}");
+            Console.WriteLine("  - Check Server console for errors");
+            Console.WriteLine("  - Verify database connection is configured");
+            Console.WriteLine();
+            Console.WriteLine("════════════════════════════════════════════════════════════════════");
+            Console.WriteLine();
+        }
+        else
+        {
+            Console.WriteLine("════════════════════════════════════════════════════════════════════");
+            Console.WriteLine("✅ Server is available and ready");
+            Console.WriteLine("════════════════════════════════════════════════════════════════════");
+            Console.WriteLine();
+        }
     }
 }
 catch (Exception ex)
 {
     app.Logger.LogWarning(ex, "Could not check Server availability. Client will start anyway.");
     Console.WriteLine($"⚠️  Warning: Server health check failed: {ex.Message}");
+    Console.WriteLine($"   Exception Type: {ex.GetType().Name}");
+    if (ex.InnerException != null)
+    {
+        Console.WriteLine($"   Inner Exception: {ex.InnerException.Message}");
+    }
     Console.WriteLine("Client will start anyway, but Server connectivity may be limited.");
 }
 
