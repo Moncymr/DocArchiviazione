@@ -242,75 +242,55 @@ catch (Exception ex)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SERVER AVAILABILITY CHECK
+// SERVER AVAILABILITY CHECK (REMOVED FROM CRITICAL PATH)
 // ═══════════════════════════════════════════════════════════════════════════════
-// When starting from Visual Studio with multiple startup projects (F5), both Client 
-// and Server start simultaneously. The Client needs to wait for the Server to be ready.
+// The health check has been removed from the startup critical path to prevent
+// blocking issues when launching from Visual Studio with F5.
 // 
-// This check ensures the Server is available before the Client starts accepting requests.
-// Without this, users may see "Unable to connect to server" errors during startup.
+// The Server health check can be performed by components that need it,
+// but it won't block the Client from starting.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-try
+// Start the application immediately without waiting for Server
+Console.WriteLine("════════════════════════════════════════════════════════════════════");
+Console.WriteLine("Starting Client...");
+Console.WriteLine("════════════════════════════════════════════════════════════════════");
+Console.WriteLine();
+
+// Optional: Start health check in background (fire and forget)
+_ = Task.Run(async () =>
 {
-    var healthCheckService = app.Services.GetService<DocN.Client.Services.IServerHealthCheckService>();
-    
-    if (healthCheckService == null)
+    try
     {
-        app.Logger.LogWarning("Server health check service not available. Skipping health check.");
-        Console.WriteLine("⚠️  Warning: Server health check service not configured. Continuing startup...");
-    }
-    else
-    {
-        Console.WriteLine("════════════════════════════════════════════════════════════════════");
-        Console.WriteLine("Checking Server availability...");
-        Console.WriteLine("════════════════════════════════════════════════════════════════════");
+        // Wait a bit for the app to fully start before checking
+        await Task.Delay(2000);
         
-        // Wait for Server to be available (30 retries * ~1-5 seconds = max 2.5 minutes)
-        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
-        var serverAvailable = await healthCheckService.WaitForServerAsync(
-            maxRetries: 30, 
-            delayMs: 1000, 
-            cancellationToken: cts.Token
-        );
-        
-        if (!serverAvailable)
+        var healthCheckService = app.Services.GetService<DocN.Client.Services.IServerHealthCheckService>();
+        if (healthCheckService != null)
         {
-            Console.WriteLine("════════════════════════════════════════════════════════════════════");
-            Console.WriteLine("⚠️  WARNING: Server is not available");
-            Console.WriteLine("════════════════════════════════════════════════════════════════════");
-            Console.WriteLine();
-            Console.WriteLine("The Server API is not responding. The Client will start anyway,");
-            Console.WriteLine("but features that require the Server will not work.");
-            Console.WriteLine();
-            Console.WriteLine("Please ensure the Server is running:");
-            Console.WriteLine($"  - Server should be at: {builder.Configuration["BackendApiUrl"] ?? "https://localhost:5211/"}");
-            Console.WriteLine("  - Check Server console for errors");
-            Console.WriteLine("  - Verify database connection is configured");
-            Console.WriteLine();
-            Console.WriteLine("════════════════════════════════════════════════════════════════════");
-            Console.WriteLine();
-        }
-        else
-        {
-            Console.WriteLine("════════════════════════════════════════════════════════════════════");
-            Console.WriteLine("✅ Server is available and ready");
-            Console.WriteLine("════════════════════════════════════════════════════════════════════");
-            Console.WriteLine();
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            var serverAvailable = await healthCheckService.WaitForServerAsync(
+                maxRetries: 5, 
+                delayMs: 1000, 
+                cancellationToken: cts.Token
+            );
+            
+            if (serverAvailable)
+            {
+                Console.WriteLine("✅ Server connection established");
+            }
+            else
+            {
+                Console.WriteLine("⚠️  Server not available - some features may not work");
+            }
         }
     }
-}
-catch (Exception ex)
-{
-    app.Logger.LogWarning(ex, "Could not check Server availability. Client will start anyway.");
-    Console.WriteLine($"⚠️  Warning: Server health check failed: {ex.Message}");
-    Console.WriteLine($"   Exception Type: {ex.GetType().Name}");
-    if (ex.InnerException != null)
+    catch (Exception ex)
     {
-        Console.WriteLine($"   Inner Exception: {ex.InnerException.Message}");
+        // Silently log - this is optional background check
+        app.Logger.LogDebug(ex, "Background server health check failed");
     }
-    Console.WriteLine("Client will start anyway, but Server connectivity may be limited.");
-}
+});
 
 // NOTE: Database seeding removed from Client
 // ═══════════════════════════════════════════════════════════════════════════════
