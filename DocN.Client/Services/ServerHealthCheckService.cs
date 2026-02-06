@@ -46,22 +46,21 @@ public class ServerHealthCheckService : IServerHealthCheckService
             // Check if already cancelled before starting
             if (cancellationToken.IsCancellationRequested)
             {
-                _logger.LogWarning("Server health check skipped - cancellation already requested");
+                _logger.LogDebug("Server health check skipped - cancellation already requested");
                 return false;
             }
 
             var client = _httpClientFactory.CreateClient("BackendAPI");
             
-            // Set a short timeout for health check (5 seconds)
-            // Use try-catch for CreateLinkedTokenSource as it can throw if token is disposed
-            CancellationTokenSource? cts = null;
+            // Use HttpClient with a timeout wrapper instead of CancellationTokenSource
+            // This is safer and avoids issues with linked token disposal
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            
             try
             {
-                cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                cts.CancelAfter(TimeSpan.FromSeconds(5));
-                
-                // Try to reach the server's health endpoint or root endpoint
-                var response = await client.GetAsync("/health", cts.Token);
+                // Use only the timeout CTS, not a linked one
+                // This avoids the complexity and potential issues with CreateLinkedTokenSource
+                var response = await client.GetAsync("/health", timeoutCts.Token);
                 
                 if (response.IsSuccessStatusCode)
                 {
@@ -72,24 +71,29 @@ public class ServerHealthCheckService : IServerHealthCheckService
                 _logger.LogWarning("Server returned non-success status: {StatusCode}", response.StatusCode);
                 return false;
             }
-            finally
+            catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested)
             {
-                cts?.Dispose();
+                // This was our timeout, not the parent cancellation
+                _logger.LogDebug("Server health check timed out after 5 seconds");
+                return false;
             }
         }
-        catch (ObjectDisposedException ex)
+        catch (OperationCanceledException)
         {
-            _logger.LogWarning(ex, "Server health check failed - cancellation token disposed");
+            // Parent cancellation token was triggered
+            _logger.LogDebug("Server health check cancelled");
             return false;
         }
-        catch (OperationCanceledException ex)
+        catch (ObjectDisposedException)
         {
-            _logger.LogWarning(ex, "Server health check cancelled or timed out");
+            // Log as Debug to reduce console noise
+            _logger.LogDebug("Server health check failed - cancellation token disposed");
             return false;
         }
         catch (HttpRequestException ex)
         {
-            _logger.LogWarning(ex, "Server not reachable: {Message}", ex.Message);
+            // Log as Debug instead of Warning to reduce console noise during startup retries
+            _logger.LogDebug("Server not reachable: {Message}", ex.Message);
             return false;
         }
         catch (Exception ex)
@@ -113,7 +117,7 @@ public class ServerHealthCheckService : IServerHealthCheckService
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
-                    _logger.LogWarning("Server wait cancelled");
+                    _logger.LogInformation("Server wait cancelled after {Attempts} attempts", attempt);
                     return false;
                 }
 
@@ -125,15 +129,23 @@ public class ServerHealthCheckService : IServerHealthCheckService
                         _logger.LogInformation("Server is available after {Attempts} attempts ({ElapsedMs}ms)", attempt, stopwatch.ElapsedMilliseconds);
                         return true;
                     }
+                    
+                    // Log progress every 5 attempts to show we're still trying
+                    if (attempt % 5 == 0)
+                    {
+                        _logger.LogInformation("Still waiting for Server... (attempt {Attempt}/{MaxRetries})", attempt, maxRetries);
+                        Console.WriteLine($"   Tentativo {attempt}/{maxRetries} - Server non ancora disponibile...");
+                    }
                 }
                 catch (OperationCanceledException)
                 {
-                    _logger.LogWarning("Server health check cancelled during attempt {Attempt}", attempt);
+                    _logger.LogInformation("Server health check cancelled during attempt {Attempt}", attempt);
                     return false;
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "Error checking server health on attempt {Attempt}", attempt);
+                    // Log as Debug instead of Warning to reduce noise
+                    _logger.LogDebug(ex, "Error checking server health on attempt {Attempt}", attempt);
                     // Continue to next attempt
                 }
 
