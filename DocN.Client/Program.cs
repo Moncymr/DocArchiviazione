@@ -310,12 +310,38 @@ app.UseAuthorization();
 // The Client should submit forms to the Server's authentication endpoints, not handle them locally.
 // The Server will manage Identity services (UserManager, SignInManager) and return authentication cookies.
 
-app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
-
+Console.WriteLine("Configuring Razor Components...");
 try
 {
-    Console.WriteLine("Starting the application...");
+    app.MapRazorComponents<App>()
+        .AddInteractiveServerRenderMode();
+    Console.WriteLine("Razor Components configured successfully ✓");
+}
+catch (Exception ex)
+{
+    Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+    Console.WriteLine("ERROR: Failed to configure Razor Components");
+    Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+    Console.WriteLine($"Exception Type: {ex.GetType().Name}");
+    Console.WriteLine($"Message: {ex.Message}");
+    if (ex.InnerException != null)
+    {
+        Console.WriteLine($"Inner Exception: {ex.InnerException.GetType().Name}");
+        Console.WriteLine($"Inner Message: {ex.InnerException.Message}");
+    }
+    Console.WriteLine($"Stack Trace:\n{ex.StackTrace}");
+    Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+    
+    // Log and exit gracefully instead of crashing
+    app.Logger.LogCritical(ex, "Failed to configure Razor Components. Application cannot start.");
+    Console.WriteLine("\nPress any key to exit...");
+    Console.ReadKey();
+    return;
+}
+
+Console.WriteLine("Starting the application...");
+try
+{
     app.Run();
 }
 catch (Exception ex)
