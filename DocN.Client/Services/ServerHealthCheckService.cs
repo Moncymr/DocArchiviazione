@@ -43,32 +43,53 @@ public class ServerHealthCheckService : IServerHealthCheckService
     {
         try
         {
+            // Check if already cancelled before starting
+            if (cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogWarning("Server health check skipped - cancellation already requested");
+                return false;
+            }
+
             var client = _httpClientFactory.CreateClient("BackendAPI");
             
             // Set a short timeout for health check (5 seconds)
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            cts.CancelAfter(TimeSpan.FromSeconds(5));
-            
-            // Try to reach the server's health endpoint or root endpoint
-            var response = await client.GetAsync("/health", cts.Token);
-            
-            if (response.IsSuccessStatusCode)
+            // Use try-catch for CreateLinkedTokenSource as it can throw if token is disposed
+            CancellationTokenSource? cts = null;
+            try
             {
-                _logger.LogInformation("Server health check passed");
-                return true;
+                cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                cts.CancelAfter(TimeSpan.FromSeconds(5));
+                
+                // Try to reach the server's health endpoint or root endpoint
+                var response = await client.GetAsync("/health", cts.Token);
+                
+                if (response.IsSuccessStatusCode)
+                {
+                    _logger.LogInformation("Server health check passed");
+                    return true;
+                }
+                
+                _logger.LogWarning("Server returned non-success status: {StatusCode}", response.StatusCode);
+                return false;
             }
-            
-            _logger.LogWarning("Server returned non-success status: {StatusCode}", response.StatusCode);
+            finally
+            {
+                cts?.Dispose();
+            }
+        }
+        catch (ObjectDisposedException ex)
+        {
+            _logger.LogWarning(ex, "Server health check failed - cancellation token disposed");
             return false;
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
         {
-            _logger.LogWarning("Server health check timed out");
+            _logger.LogWarning(ex, "Server health check cancelled or timed out");
             return false;
         }
         catch (HttpRequestException ex)
         {
-            _logger.LogWarning("Server not reachable: {Message}", ex.Message);
+            _logger.LogWarning(ex, "Server not reachable: {Message}", ex.Message);
             return false;
         }
         catch (Exception ex)
