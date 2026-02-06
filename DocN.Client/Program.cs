@@ -291,19 +291,56 @@ if (fileStorageSettings != null && !string.IsNullOrEmpty(fileStorageSettings.Upl
 }
 
 // Configure the HTTP request pipeline.
-if (!app.Environment.IsDevelopment())
+Console.WriteLine("Configuring HTTP request pipeline...");
+
+try
 {
-    app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    app.UseHsts();
+    if (!app.Environment.IsDevelopment())
+    {
+        Console.WriteLine("  - Adding ExceptionHandler middleware...");
+        app.UseExceptionHandler("/Error", createScopeForErrors: true);
+        Console.WriteLine("  - Adding HSTS middleware...");
+        app.UseHsts();
+    }
+
+    Console.WriteLine("  - Adding HttpsRedirection middleware...");
+    app.UseHttpsRedirection();
+    
+    Console.WriteLine("  - Adding StaticFiles middleware...");
+    app.UseStaticFiles();
+    
+    Console.WriteLine("  - Adding Antiforgery middleware...");
+    app.UseAntiforgery();
+
+    // Authentication & Authorization
+    Console.WriteLine("  - Adding Authentication middleware...");
+    app.UseAuthentication();
+    
+    Console.WriteLine("  - Adding Authorization middleware...");
+    app.UseAuthorization();
+    
+    Console.WriteLine("HTTP request pipeline configured successfully ✓");
 }
-
-app.UseHttpsRedirection();
-app.UseStaticFiles();
-app.UseAntiforgery();
-
-// Authentication & Authorization
-app.UseAuthentication();
-app.UseAuthorization();
+catch (Exception ex)
+{
+    Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+    Console.WriteLine("ERROR: Failed to configure HTTP request pipeline");
+    Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+    Console.WriteLine($"Exception Type: {ex.GetType().Name}");
+    Console.WriteLine($"Message: {ex.Message}");
+    if (ex.InnerException != null)
+    {
+        Console.WriteLine($"Inner Exception: {ex.InnerException.GetType().Name}");
+        Console.WriteLine($"Inner Message: {ex.InnerException.Message}");
+    }
+    Console.WriteLine($"Stack Trace:\n{ex.StackTrace}");
+    Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+    
+    app.Logger.LogCritical(ex, "Failed to configure HTTP request pipeline. Application cannot start.");
+    Console.WriteLine("\nPress any key to exit...");
+    Console.ReadKey();
+    return;
+}
 
 // Authentication endpoints
 // NOTE: Authentication endpoints (login, logout, register) are handled by the Server.
