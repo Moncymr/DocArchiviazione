@@ -115,6 +115,19 @@ builder.Services.AddFluentUIComponents();
 // Add HttpClient for Blazor components
 builder.Services.AddHttpClient();
 
+// Add HttpContextAccessor for accessing HttpContext in services (required for session-based auth)
+builder.Services.AddHttpContextAccessor();
+
+// Add Session support for storing authentication state (replaces ProtectedSessionStorage)
+builder.Services.AddDistributedMemoryCache();
+builder.Services.AddSession(options =>
+{
+    options.IdleTimeout = TimeSpan.FromHours(12);
+    options.Cookie.HttpOnly = true;
+    options.Cookie.IsEssential = true;
+    options.Cookie.Name = ".DocN.Session";
+});
+
 // Add memory cache for client-side caching (optional)
 builder.Services.AddMemoryCache(options =>
 {
@@ -308,6 +321,9 @@ try
     
     Console.WriteLine("  - Adding StaticFiles middleware...");
     app.UseStaticFiles();
+    
+    Console.WriteLine("  - Adding Session middleware...");
+    app.UseSession();
     
     Console.WriteLine("  - Adding Antiforgery middleware...");
     app.UseAntiforgery();
