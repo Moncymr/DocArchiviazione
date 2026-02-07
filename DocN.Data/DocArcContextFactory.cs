@@ -14,7 +14,7 @@ public class DocArcContextFactory : IDesignTimeDbContextFactory<DocArcContext>
     {
         var optionsBuilder = new DbContextOptionsBuilder<DocArcContext>();
         // This connection string is only used for design-time operations (migrations)
-        optionsBuilder.UseSqlServer("ServerNTSPJ-MRM2\\SQL2025;Database=DocNDb;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True");
+        optionsBuilder.UseSqlServer("Server=NTSPJ-060-02\\SQL2025;Database=DocNDb;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True");
 
         return new DocArcContext(optionsBuilder.Options);
     }

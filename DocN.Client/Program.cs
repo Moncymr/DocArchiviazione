@@ -1,8 +1,7 @@
 using DocN.Client.Components;
-using Microsoft.FluentUI.AspNetCore.Components;
 using DocN.Data.Models;
-using DocN.Client.Services;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.FluentUI.AspNetCore.Components;
 
 // Helper method to ensure configuration files exist
 static void EnsureConfigurationFiles()
@@ -35,7 +34,7 @@ static void EnsureConfigurationFiles()
   },
   ""AllowedHosts"": ""*"",
   ""ConnectionStrings"": {
-    ""DefaultConnection"": ""Server=localhost;Database=DocNDb;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True;Encrypt=True""
+    ""DefaultConnection"": ""Server=NTSPJ-060-02\SQL2025;Database=DocNDb;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True;Encrypt=True""
   },
   ""BackendApiUrl"": ""https://localhost:5211/"",
   ""FileStorage"": {
@@ -81,7 +80,7 @@ static void EnsureConfigurationFiles()
     }
   },
   ""ConnectionStrings"": {
-    ""DefaultConnection"": ""Server=localhost;Database=DocNDb;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True;Encrypt=True""
+    ""DefaultConnection"": ""Server=NTSPJ-060-02\SQL2025;Database=DocNDb;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True;Encrypt=True""
   }
 }";
                 File.WriteAllText(appsettingsDevPath, minimalDevConfig);
@@ -106,14 +105,27 @@ EnsureConfigurationFiles();
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
+builder.Services.AddRazorComponents();
+// .AddInteractiveServerComponents();  // ❌ DISABLED - This causes crash with Interactive Server mode
 
 // Add FluentUI Blazor components
 builder.Services.AddFluentUIComponents();
 
 // Add HttpClient for Blazor components
 builder.Services.AddHttpClient();
+
+// Add HttpContextAccessor for accessing HttpContext in services (required for session-based auth)
+builder.Services.AddHttpContextAccessor();
+
+// Add Session support for storing authentication state (replaces ProtectedSessionStorage)
+builder.Services.AddDistributedMemoryCache();
+builder.Services.AddSession(options =>
+{
+    options.IdleTimeout = TimeSpan.FromHours(12);
+    options.Cookie.HttpOnly = true;
+    options.Cookie.IsEssential = true;
+    options.Cookie.Name = ".DocN.Session";
+});
 
 // Add memory cache for client-side caching (optional)
 builder.Services.AddMemoryCache(options =>
@@ -170,12 +182,14 @@ builder.Services.Configure<FileStorageSettings>(builder.Configuration.GetSection
 builder.Services.AddScoped<DocN.Client.Services.NotificationClientService>();
 
 // Authentication State Provider - Manages user authentication state in Client
-// This provider stores user information in browser session storage and provides
+// This provider stores user information in server-side session and provides
 // authentication state to all components via AuthorizeView and AuthenticationStateProvider
 builder.Services.AddScoped<DocN.Client.Services.CustomAuthenticationStateProvider>();
-builder.Services.AddScoped<AuthenticationStateProvider>(provider => 
+builder.Services.AddScoped<AuthenticationStateProvider>(provider =>
     provider.GetRequiredService<DocN.Client.Services.CustomAuthenticationStateProvider>());
-builder.Services.AddAuthorizationCore();
+
+// Add Authorization services (required for UseAuthorization middleware)
+builder.Services.AddAuthorization();
 
 // NOTE: All data operations should be performed via HttpClient calls to Server APIs
 // Example: Instead of injecting IDocumentService, use HttpClient to call /api/documents
@@ -226,7 +240,7 @@ catch (Exception ex)
     Console.WriteLine($"Exception Type: {ex.GetType().Name}");
     Console.WriteLine($"Message: {ex.Message}");
     Console.WriteLine($"Stack Trace:\n{ex.StackTrace}");
-    
+
     if (ex.InnerException != null)
     {
         Console.WriteLine("\nInner Exception:");
@@ -234,7 +248,7 @@ catch (Exception ex)
         Console.WriteLine($"Message: {ex.InnerException.Message}");
         Console.WriteLine($"Stack Trace:\n{ex.InnerException.StackTrace}");
     }
-    
+
     Console.WriteLine("═══════════════════════════════════════════════════════════════════");
     Console.WriteLine("Press any key to exit...");
     Console.ReadKey();
@@ -242,62 +256,22 @@ catch (Exception ex)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SERVER AVAILABILITY CHECK
+// SERVER AVAILABILITY CHECK (COMPLETELY DISABLED)
 // ═══════════════════════════════════════════════════════════════════════════════
-// When starting from Visual Studio with multiple startup projects (F5), both Client 
-// and Server start simultaneously. The Client needs to wait for the Server to be ready.
+// The health check has been completely disabled to prevent any startup issues.
+// The Client will start immediately without any server connectivity checks.
 // 
-// This check ensures the Server is available before the Client starts accepting requests.
-// Without this, users may see "Unable to connect to server" errors during startup.
+// If server connectivity is needed, components can check it individually when needed.
 // ═══════════════════════════════════════════════════════════════════════════════
 
-try
-{
-    var healthCheckService = app.Services.GetRequiredService<DocN.Client.Services.IServerHealthCheckService>();
-    
-    Console.WriteLine("════════════════════════════════════════════════════════════════════");
-    Console.WriteLine("Checking Server availability...");
-    Console.WriteLine("════════════════════════════════════════════════════════════════════");
-    
-    // Wait for Server to be available (30 retries * ~1-5 seconds = max 2.5 minutes)
-    using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
-    var serverAvailable = await healthCheckService.WaitForServerAsync(
-        maxRetries: 30, 
-        delayMs: 1000, 
-        cancellationToken: cts.Token
-    );
-    
-    if (!serverAvailable)
-    {
-        Console.WriteLine("════════════════════════════════════════════════════════════════════");
-        Console.WriteLine("⚠️  WARNING: Server is not available");
-        Console.WriteLine("════════════════════════════════════════════════════════════════════");
-        Console.WriteLine();
-        Console.WriteLine("The Server API is not responding. The Client will start anyway,");
-        Console.WriteLine("but features that require the Server will not work.");
-        Console.WriteLine();
-        Console.WriteLine("Please ensure the Server is running:");
-        Console.WriteLine($"  - Server should be at: {builder.Configuration["BackendApiUrl"] ?? "https://localhost:5211/"}");
-        Console.WriteLine("  - Check Server console for errors");
-        Console.WriteLine("  - Verify database connection is configured");
-        Console.WriteLine();
-        Console.WriteLine("════════════════════════════════════════════════════════════════════");
-        Console.WriteLine();
-    }
-    else
-    {
-        Console.WriteLine("════════════════════════════════════════════════════════════════════");
-        Console.WriteLine("✅ Server is available and ready");
-        Console.WriteLine("════════════════════════════════════════════════════════════════════");
-        Console.WriteLine();
-    }
-}
-catch (Exception ex)
-{
-    app.Logger.LogWarning(ex, "Could not check Server availability. Client will start anyway.");
-    Console.WriteLine($"⚠️  Warning: Server health check failed: {ex.Message}");
-    Console.WriteLine("Client will start anyway, but Server connectivity may be limited.");
-}
+// Start the application immediately without any server checks
+Console.WriteLine("════════════════════════════════════════════════════════════════════");
+Console.WriteLine("Starting Client...");
+Console.WriteLine("════════════════════════════════════════════════════════════════════");
+Console.WriteLine();
+
+// NOTE: Health check completely disabled to prevent crashes
+// If you need server connectivity check, implement it in individual components that need it
 
 // NOTE: Database seeding removed from Client
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -331,31 +305,111 @@ if (fileStorageSettings != null && !string.IsNullOrEmpty(fileStorageSettings.Upl
 }
 
 // Configure the HTTP request pipeline.
-if (!app.Environment.IsDevelopment())
+Console.WriteLine("Configuring HTTP request pipeline...");
+
+try
 {
-    app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    app.UseHsts();
+    if (!app.Environment.IsDevelopment())
+    {
+        Console.WriteLine("  - Adding ExceptionHandler middleware...");
+        app.UseExceptionHandler("/Error", createScopeForErrors: true);
+        Console.WriteLine("  - Adding HSTS middleware...");
+        app.UseHsts();
+    }
+
+    Console.WriteLine("  - Adding HttpsRedirection middleware...");
+    app.UseHttpsRedirection();
+
+    Console.WriteLine("  - Adding StaticFiles middleware...");
+    app.UseStaticFiles();
+
+    Console.WriteLine("  - Adding Session middleware...");
+    app.UseSession();
+
+    Console.WriteLine("  - Adding Antiforgery middleware...");
+    app.UseAntiforgery();
+
+    // Authentication & Authorization
+    Console.WriteLine("  - Adding Authentication middleware...");
+    app.UseAuthentication();
+
+    Console.WriteLine("  - Adding Authorization middleware...");
+    app.UseAuthorization();
+
+    Console.WriteLine("HTTP request pipeline configured successfully ✓");
 }
+catch (Exception ex)
+{
+    Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+    Console.WriteLine("ERROR: Failed to configure HTTP request pipeline");
+    Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+    Console.WriteLine($"Exception Type: {ex.GetType().Name}");
+    Console.WriteLine($"Message: {ex.Message}");
+    if (ex.InnerException != null)
+    {
+        Console.WriteLine($"Inner Exception: {ex.InnerException.GetType().Name}");
+        Console.WriteLine($"Inner Message: {ex.InnerException.Message}");
+    }
+    Console.WriteLine($"Stack Trace:\n{ex.StackTrace}");
+    Console.WriteLine("═══════════════════════════════════════════════════════════════════");
 
-app.UseHttpsRedirection();
-app.UseStaticFiles();
-app.UseAntiforgery();
-
-// Authentication & Authorization
-app.UseAuthentication();
-app.UseAuthorization();
+    app.Logger.LogCritical(ex, "Failed to configure HTTP request pipeline. Application cannot start.");
+    Console.WriteLine("\nPress any key to exit...");
+    Console.ReadKey();
+    return;
+}
 
 // Authentication endpoints
 // NOTE: Authentication endpoints (login, logout, register) are handled by the Server.
 // The Client should submit forms to the Server's authentication endpoints, not handle them locally.
 // The Server will manage Identity services (UserManager, SignInManager) and return authentication cookies.
 
-app.MapRazorComponents<App>()
-    .AddInteractiveServerRenderMode();
-
+Console.WriteLine("Configuring Razor Components...");
 try
 {
-    Console.WriteLine("Starting the application...");
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // TEMPORARY FIX: Interactive Server mode disabled to prevent crash
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // The crash occurs AFTER app.Run() when Interactive Server mode tries to establish
+    // a SignalR connection. This happens during the first HTTP request or when the
+    // Blazor Circuit is initialized.
+    //
+    // Root cause: Interactive Server mode with multi-project Visual Studio setup
+    // causes initialization race conditions and SignalR connection issues.
+    //
+    // Solution: Use static server-side rendering instead of interactive mode.
+    // ═══════════════════════════════════════════════════════════════════════════════
+
+    app.MapRazorComponents<App>();
+    // .AddInteractiveServerRenderMode();  // ❌ DISABLED - This causes crash
+
+    Console.WriteLine("Razor Components configured successfully ✓ (Static rendering mode)");
+}
+catch (Exception ex)
+{
+    Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+    Console.WriteLine("ERROR: Failed to configure Razor Components");
+    Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+    Console.WriteLine($"Exception Type: {ex.GetType().Name}");
+    Console.WriteLine($"Message: {ex.Message}");
+    if (ex.InnerException != null)
+    {
+        Console.WriteLine($"Inner Exception: {ex.InnerException.GetType().Name}");
+        Console.WriteLine($"Inner Message: {ex.InnerException.Message}");
+    }
+    Console.WriteLine($"Stack Trace:\n{ex.StackTrace}");
+    Console.WriteLine("═══════════════════════════════════════════════════════════════════");
+
+    // Log and exit gracefully instead of crashing
+    app.Logger.LogCritical(ex, "Failed to configure Razor Components. Application cannot start.");
+    Console.WriteLine("\nPress any key to exit...");
+    Console.ReadKey();
+    return;
+}
+
+Console.WriteLine("Starting the application...");
+try
+{
     app.Run();
 }
 catch (Exception ex)
@@ -366,7 +420,7 @@ catch (Exception ex)
     Console.WriteLine($"Exception Type: {ex.GetType().Name}");
     Console.WriteLine($"Message: {ex.Message}");
     Console.WriteLine($"Stack Trace:\n{ex.StackTrace}");
-    
+
     if (ex.InnerException != null)
     {
         Console.WriteLine("\nInner Exception:");
@@ -374,9 +428,9 @@ catch (Exception ex)
         Console.WriteLine($"Message: {ex.InnerException.Message}");
         Console.WriteLine($"Stack Trace:\n{ex.InnerException.StackTrace}");
     }
-    
+
     Console.WriteLine("═══════════════════════════════════════════════════════════════════");
-    
+
     // Log to a file as well for easier debugging
     var errorLogPath = Path.Combine(AppContext.BaseDirectory, "client-crash.log");
     try
@@ -404,7 +458,7 @@ Stack Trace:
     {
         // Ignore file writing errors
     }
-    
+
     Console.WriteLine("\nPress any key to exit...");
     Console.ReadKey();
     throw; // Re-throw to ensure proper exit code

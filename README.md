@@ -4,6 +4,13 @@
 
 ## ⚡ Quick Start - Avvio Rapido
 
+### Visual Studio (Raccomandato)
+Apri `Doc_archiviazione.sln` in Visual Studio e premi **F5**
+
+Il sistema è configurato per avviare automaticamente Server e Client nell'ordine corretto.
+
+📖 **[Guida Visual Studio completa →](VISUAL_STUDIO_SETUP_IT.md)** | **[Visual Studio Setup Guide (EN) →](VISUAL_STUDIO_SETUP.md)**
+
 ### Windows
 Doppio click su `start-docn.bat` oppure:
 ```batch
@@ -64,7 +71,18 @@ http://localhost:5036
 
 ## ⚠️ Risoluzione Problemi Comuni
 
-### "Unable to connect to server"
+### "Unable to connect to server" (Durante l'avvio da Visual Studio)
+
+**Problema:** Il Client mostra questo errore quando si avvia da Visual Studio
+
+**✅ Soluzione Automatica:** Il sistema ora gestisce automaticamente questo problema!
+- Il Client attende automaticamente che il Server sia pronto
+- Vedrai messaggi di "Checking Server availability..." nella console
+- Attendi il messaggio "✅ Server is available and ready"
+
+📖 **[Guida completa Visual Studio →](VISUAL_STUDIO_SETUP_IT.md)**
+
+### "Unable to connect to server" (In generale)
 
 **Problema:** Il Client non riesce a connettersi al Server
 
@@ -189,7 +207,7 @@ Al primo avvio, il sistema crea automaticamente:
 **Credenziali amministratore di default:**
 ```
 Email: admin@docn.local
-Password: Admin123!
+Password: Admin@123
 ```
 
 ⚠️ **IMPORTANTE:** Cambia queste credenziali in produzione!

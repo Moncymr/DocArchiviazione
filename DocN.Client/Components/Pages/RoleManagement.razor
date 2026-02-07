@@ -5,7 +5,7 @@
 @using DocN.Client.Components.Admin
 @inject IHttpClientFactory HttpClientFactory
 @inject AuthenticationStateProvider AuthenticationStateProvider
-@rendermode InteractiveServer
+@* @rendermode InteractiveServer - DISABLED to prevent crash *@
 @attribute [Authorize(Roles = "SuperAdmin,TenantAdmin")]
 
 <PageTitle>Gestione Ruoli - DocN</PageTitle>

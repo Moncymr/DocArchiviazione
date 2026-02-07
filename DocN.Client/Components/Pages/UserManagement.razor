@@ -5,7 +5,7 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ILogger<UserManagement> Logger
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "SuperAdmin,TenantAdmin")]
-@rendermode InteractiveServer
+@* @rendermode InteractiveServer - DISABLED to prevent crash *@
 
 <PageTitle>Gestione Utenti - DocN</PageTitle>
 
