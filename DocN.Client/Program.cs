@@ -1,8 +1,7 @@
 using DocN.Client.Components;
-using Microsoft.FluentUI.AspNetCore.Components;
 using DocN.Data.Models;
-using DocN.Client.Services;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.FluentUI.AspNetCore.Components;
 
 // Helper method to ensure configuration files exist
 static void EnsureConfigurationFiles()
@@ -35,7 +34,7 @@ static void EnsureConfigurationFiles()
   },
   ""AllowedHosts"": ""*"",
   ""ConnectionStrings"": {
-    ""DefaultConnection"": ""Server=localhost;Database=DocNDb;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True;Encrypt=True""
+    ""DefaultConnection"": ""Server=NTSPJ-060-02\SQL2025;Database=DocNDb;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True;Encrypt=True""
   },
   ""BackendApiUrl"": ""https://localhost:5211/"",
   ""FileStorage"": {
@@ -81,7 +80,7 @@ static void EnsureConfigurationFiles()
     }
   },
   ""ConnectionStrings"": {
-    ""DefaultConnection"": ""Server=localhost;Database=DocNDb;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True;Encrypt=True""
+    ""DefaultConnection"": ""Server=NTSPJ-060-02\SQL2025;Database=DocNDb;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True;Encrypt=True""
   }
 }";
                 File.WriteAllText(appsettingsDevPath, minimalDevConfig);
@@ -107,7 +106,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddRazorComponents();
-    // .AddInteractiveServerComponents();  // ❌ DISABLED - This causes crash with Interactive Server mode
+// .AddInteractiveServerComponents();  // ❌ DISABLED - This causes crash with Interactive Server mode
 
 // Add FluentUI Blazor components
 builder.Services.AddFluentUIComponents();
@@ -186,7 +185,7 @@ builder.Services.AddScoped<DocN.Client.Services.NotificationClientService>();
 // This provider stores user information in server-side session and provides
 // authentication state to all components via AuthorizeView and AuthenticationStateProvider
 builder.Services.AddScoped<DocN.Client.Services.CustomAuthenticationStateProvider>();
-builder.Services.AddScoped<AuthenticationStateProvider>(provider => 
+builder.Services.AddScoped<AuthenticationStateProvider>(provider =>
     provider.GetRequiredService<DocN.Client.Services.CustomAuthenticationStateProvider>());
 
 // Add Authorization services (required for UseAuthorization middleware)
@@ -241,7 +240,7 @@ catch (Exception ex)
     Console.WriteLine($"Exception Type: {ex.GetType().Name}");
     Console.WriteLine($"Message: {ex.Message}");
     Console.WriteLine($"Stack Trace:\n{ex.StackTrace}");
-    
+
     if (ex.InnerException != null)
     {
         Console.WriteLine("\nInner Exception:");
@@ -249,7 +248,7 @@ catch (Exception ex)
         Console.WriteLine($"Message: {ex.InnerException.Message}");
         Console.WriteLine($"Stack Trace:\n{ex.InnerException.StackTrace}");
     }
-    
+
     Console.WriteLine("═══════════════════════════════════════════════════════════════════");
     Console.WriteLine("Press any key to exit...");
     Console.ReadKey();
@@ -320,23 +319,23 @@ try
 
     Console.WriteLine("  - Adding HttpsRedirection middleware...");
     app.UseHttpsRedirection();
-    
+
     Console.WriteLine("  - Adding StaticFiles middleware...");
     app.UseStaticFiles();
-    
+
     Console.WriteLine("  - Adding Session middleware...");
     app.UseSession();
-    
+
     Console.WriteLine("  - Adding Antiforgery middleware...");
     app.UseAntiforgery();
 
     // Authentication & Authorization
     Console.WriteLine("  - Adding Authentication middleware...");
     app.UseAuthentication();
-    
+
     Console.WriteLine("  - Adding Authorization middleware...");
     app.UseAuthorization();
-    
+
     Console.WriteLine("HTTP request pipeline configured successfully ✓");
 }
 catch (Exception ex)
@@ -353,7 +352,7 @@ catch (Exception ex)
     }
     Console.WriteLine($"Stack Trace:\n{ex.StackTrace}");
     Console.WriteLine("═══════════════════════════════════════════════════════════════════");
-    
+
     app.Logger.LogCritical(ex, "Failed to configure HTTP request pipeline. Application cannot start.");
     Console.WriteLine("\nPress any key to exit...");
     Console.ReadKey();
@@ -380,10 +379,10 @@ try
     //
     // Solution: Use static server-side rendering instead of interactive mode.
     // ═══════════════════════════════════════════════════════════════════════════════
-    
+
     app.MapRazorComponents<App>();
-        // .AddInteractiveServerRenderMode();  // ❌ DISABLED - This causes crash
-    
+    // .AddInteractiveServerRenderMode();  // ❌ DISABLED - This causes crash
+
     Console.WriteLine("Razor Components configured successfully ✓ (Static rendering mode)");
 }
 catch (Exception ex)
@@ -400,7 +399,7 @@ catch (Exception ex)
     }
     Console.WriteLine($"Stack Trace:\n{ex.StackTrace}");
     Console.WriteLine("═══════════════════════════════════════════════════════════════════");
-    
+
     // Log and exit gracefully instead of crashing
     app.Logger.LogCritical(ex, "Failed to configure Razor Components. Application cannot start.");
     Console.WriteLine("\nPress any key to exit...");
@@ -421,7 +420,7 @@ catch (Exception ex)
     Console.WriteLine($"Exception Type: {ex.GetType().Name}");
     Console.WriteLine($"Message: {ex.Message}");
     Console.WriteLine($"Stack Trace:\n{ex.StackTrace}");
-    
+
     if (ex.InnerException != null)
     {
         Console.WriteLine("\nInner Exception:");
@@ -429,9 +428,9 @@ catch (Exception ex)
         Console.WriteLine($"Message: {ex.InnerException.Message}");
         Console.WriteLine($"Stack Trace:\n{ex.InnerException.StackTrace}");
     }
-    
+
     Console.WriteLine("═══════════════════════════════════════════════════════════════════");
-    
+
     // Log to a file as well for easier debugging
     var errorLogPath = Path.Combine(AppContext.BaseDirectory, "client-crash.log");
     try
@@ -459,7 +458,7 @@ Stack Trace:
     {
         // Ignore file writing errors
     }
-    
+
     Console.WriteLine("\nPress any key to exit...");
     Console.ReadKey();
     throw; // Re-throw to ensure proper exit code
