@@ -42,11 +42,27 @@ while attempting to activate 'CustomAuthenticationStateProvider'
 
 **Status**: ✅ **RISOLTO** (Commit: 724f930)
 
-**⚠️ ACTION REQUIRED**: L'utente DEVE fare REBUILD per applicare questo fix!
+---
+
+### ✅ PROBLEMA 3: Client Authorization Services Mismatch (RISOLTO)
+
+**Sintomo**:
+```
+InvalidOperationException: Unable to find the required services. 
+Please add all the required services by calling 'IServiceCollection.AddAuthorization'
+```
+
+**Causa**: Usava `AddAuthorizationCore()` (solo per components) ma chiamava `UseAuthorization()` middleware (richiede `AddAuthorization()`)
+
+**Fix Applicato**:
+- ✅ Cambiato `AddAuthorizationCore()` → `AddAuthorization()`
+- ✅ Ora middleware e components funzionano entrambi
+
+**Status**: ✅ **RISOLTO** (Commit: e7976c3)
 
 ---
 
-### 🔴 PROBLEMA 3: Server Build Failed - IOCRService (DA FIXARE)
+### 🔴 PROBLEMA 4: Server Build Failed - IOCRService (DA FIXARE)
 
 **Sintomo**:
 ```
@@ -140,6 +156,7 @@ Il Server ha un problema diverso con `IOCRService`. Questo richiede:
 - [x] Interactive Server mode disabilitato
 - [x] @rendermode rimosso da componenti
 - [x] ProtectedSessionStorage sostituito con Session
+- [x] Authorization services corretti (Core → Full)
 - [x] Build verificato (0 errors)
 - [x] Documentazione completa
 
