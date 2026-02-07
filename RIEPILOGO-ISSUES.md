@@ -104,6 +104,8 @@ Questo impedisce al server di avviarsi correttamente e a Swagger di generare la 
 |------|-------|-------|
 | **CREDENZIALI-DEFAULT.md** | Credenziali admin e istruzioni login | ✅ Nuovo |
 | **SWAGGER-ERROR-FIX.md** | Guida risoluzione errore Swagger 500 | ✅ Nuovo |
+| **GUIDA-LOGIN-TROUBLESHOOTING.md** | Risoluzione completa problemi di login | ✅ Nuovo |
+| **diagnose-login.ps1** | Script automatico diagnosi login | ✅ Nuovo |
 | **README.md** | Correzione password admin | ✅ Aggiornato |
 
 ---
@@ -120,9 +122,72 @@ Questo impedisce al server di avviarsi correttamente e a Swagger di generare la 
 
 ### Se Hai Ancora Problemi:
 
+- **Login non funziona**: Leggi [GUIDA-LOGIN-TROUBLESHOOTING.md](./GUIDA-LOGIN-TROUBLESHOOTING.md) oppure esegui `.\diagnose-login.ps1`
 - **Database**: Leggi [SWAGGER-ERROR-FIX.md](./SWAGGER-ERROR-FIX.md) sezione "Soluzione 1"
 - **Credenziali**: Leggi [CREDENZIALI-DEFAULT.md](./CREDENZIALI-DEFAULT.md)
 - **Avvio applicazione**: Leggi [ISTRUZIONI-UTENTE.md](./ISTRUZIONI-UTENTE.md)
+
+---
+
+---
+
+## ⚠️ Issue 3: Non Riesco a Fare il Login (IN CORSO)
+
+**Problema:** "non riesco afare il login"
+
+### Causa Principale: Stessa del Issue 2 - Database Non Connesso
+
+Il problema di login è strettamente correlato al problema Swagger:
+- Se SQL Server NON è connesso → utente admin NON viene creato
+- Se l'utente admin non esiste → login FALLISCE sempre
+- Entrambi i problemi hanno la stessa root cause: **connection string database**
+
+### Soluzione Completa:
+
+📄 **[GUIDA-LOGIN-TROUBLESHOOTING.md](./GUIDA-LOGIN-TROUBLESHOOTING.md)** - Guida completa con:
+- Diagnosi passo-passo
+- Soluzioni per problemi comuni
+- Test di verifica
+- Checklist completa
+
+### Script di Diagnosi Automatica:
+
+```powershell
+# Esegui questo script per verificare automaticamente la configurazione
+.\diagnose-login.ps1
+```
+
+Lo script controlla:
+- ✅ SQL Server in esecuzione
+- ✅ DocN Server in esecuzione (porta 5211)
+- ✅ DocN Client in esecuzione (porta 5036)
+- ✅ File di configurazione
+- ✅ Database esistente
+- ✅ API funzionante
+- ✅ Log del Server
+
+### Quick Fix (se tutto è configurato correttamente):
+
+1. **Verifica SQL Server in esecuzione:**
+   ```powershell
+   Get-Service MSSQLSERVER
+   # Se stopped: Start-Service MSSQLSERVER
+   ```
+
+2. **Ricrea il database:**
+   ```bash
+   cd DocN.Server
+   dotnet ef database drop --force
+   dotnet ef database update
+   ```
+
+3. **Riavvia Server e Client**
+
+4. **Prova login con credenziali corrette:**
+   ```
+   Email:    admin@docn.local
+   Password: Admin@123
+   ```
 
 ---
 
@@ -132,6 +197,7 @@ Questo impedisce al server di avviarsi correttamente e a Swagger di generare la 
 |-------|--------|-----------|
 | Password admin errata in documentazione | ✅ **RISOLTO** | Password corretta: `Admin@123` |
 | Swagger Error 500 | ⚠️ **RICHIEDE AZIONE** | Configurare SQL Server |
+| Non riesco a fare il login | ⚠️ **RICHIEDE AZIONE** | Stesso fix: configurare SQL Server |
 | Client avvio su porta 7114 | ✅ **FUNZIONA** | Nessun problema |
 
 ---
