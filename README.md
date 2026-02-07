@@ -207,7 +207,7 @@ Al primo avvio, il sistema crea automaticamente:
 **Credenziali amministratore di default:**
 ```
 Email: admin@docn.local
-Password: Admin123!
+Password: Admin@123
 ```
 
 ⚠️ **IMPORTANTE:** Cambia queste credenziali in produzione!
