@@ -183,12 +183,14 @@ builder.Services.Configure<FileStorageSettings>(builder.Configuration.GetSection
 builder.Services.AddScoped<DocN.Client.Services.NotificationClientService>();
 
 // Authentication State Provider - Manages user authentication state in Client
-// This provider stores user information in browser session storage and provides
+// This provider stores user information in server-side session and provides
 // authentication state to all components via AuthorizeView and AuthenticationStateProvider
 builder.Services.AddScoped<DocN.Client.Services.CustomAuthenticationStateProvider>();
 builder.Services.AddScoped<AuthenticationStateProvider>(provider => 
     provider.GetRequiredService<DocN.Client.Services.CustomAuthenticationStateProvider>());
-builder.Services.AddAuthorizationCore();
+
+// Add Authorization services (required for UseAuthorization middleware)
+builder.Services.AddAuthorization();
 
 // NOTE: All data operations should be performed via HttpClient calls to Server APIs
 // Example: Instead of injecting IDocumentService, use HttpClient to call /api/documents
