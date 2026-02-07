@@ -578,6 +578,7 @@ builder.Services.AddScoped<IIngestionService, IngestionService>();
 builder.Services.AddScoped<IIngestionSchedulerHelper, IngestionSchedulerHelper>();
 builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddScoped<IDocumentWorkflowService, DocumentWorkflowService>();
+builder.Services.AddScoped<IOCRService, TesseractOCRService>();  // OCR service for text extraction from images
 builder.Services.AddScoped<IFileProcessingService, FileProcessingService>();
 
 // Configure batch processing settings
