@@ -190,6 +190,18 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // Check if user is authenticated before loading documents
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        
+        if (!user.Identity?.IsAuthenticated ?? true)
+        {
+            // User is not authenticated, redirect to login
+            Logger.LogWarning("User not authenticated, redirecting to login");
+            Navigation.NavigateTo("/login?returnUrl=/documents", forceLoad: true);
+            return;
+        }
+        
         await LoadDocuments();
     }
 
@@ -211,6 +223,12 @@
             documents = await httpClient.GetFromJsonAsync<List<DocumentListItem>>($"documents?page={currentPage}&pageSize={pageSize}") ?? new();
             
             FilterDocuments();
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Unauthorized)
+        {
+            // Handle 401 Unauthorized specifically
+            Logger.LogWarning("Unauthorized access to documents, redirecting to login");
+            Navigation.NavigateTo("/login?returnUrl=/documents", forceLoad: true);
         }
         catch (Exception ex)
         {
